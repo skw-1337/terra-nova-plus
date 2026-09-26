@@ -1,0 +1,6 @@
+dist/
+pack/
+*.zip
+*.exe
+src/TNPlus.ini
+src/TNPlus_16x9.conf
