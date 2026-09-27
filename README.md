@@ -16,7 +16,7 @@ One small external tool. Pick your options in a menu, press Enter, and the game 
 
 ## Download & use
 
-1. Download `TerraNovaPlus_v1.0.zip` from the [Releases](../../releases) page and unzip it anywhere.
+1. Download `TerraNovaPlus_v1.0.1.zip` from the [Releases](../../releases) page and unzip it anywhere.
 2. Run **`TNPlus.exe`**. A menu appears:
 
    ```
@@ -36,7 +36,9 @@ One small external tool. Pick your options in a menu, press Enter, and the game 
 
 The game folder is detected automatically (**GOG** registry and **Steam** libraries). If you have both, **G** switches between them. For any other install, start the game yourself and choose **A**: everything works except widescreen, which needs the tool to start DOSBox.
 
-SHA-256 of `TNPlus.exe` v1.0: `F60B47C7C673C3BB45CB080FD7437D0C3FA838AE622737A32EBF7829DE1CD817`
+SHA-256 of `TNPlus.exe` v1.0.1: `D49ED4F7ECF3ADF69DD5C0F3A14F199BE185459E0BCE8C6192E13B04E99D0FDC`
+
+v1.0.1 only adds version info and an icon to the exe (fewer antivirus false alarms). The tool itself is unchanged.
 
 ## Tips
 
@@ -72,7 +74,13 @@ Feedback welcome, especially from Steam players and DOSBox-X users.
 
 - It only changes, in the running game, values located from the game's own code: heading, head pitch, mouse cursor, the player's physics state (noclip), the fog table, the resolution setting and the 3D view scale.
 - Freelook and noclip only start inside the 3D view of a mission and switch off by themselves when you leave it, so nothing is written into stale memory.
-- Because it reads/writes another program's memory, some antivirus software may flag it, like any game trainer. The full source is here: read it and build it yourself (below).
+- Because it reads/writes another program's memory, some antivirus software may flag it, like any game trainer: see below.
+
+## Antivirus warnings
+
+A few antivirus programs may flag the exe, mostly with "AI" or generic detections (Microsoft Defender finds nothing). It's a false positive: the tool reads and writes the game's memory and reads your keyboard and mouse, which is also what cheats and keyloggers do, and it's a small unsigned program that few people have run yet.
+
+The full source is in `src/`: you can read it and build the exe yourself with `build.bat` (nothing to install).
 
 ## Anti-cheat note
 
@@ -90,7 +98,7 @@ build.bat
 or manually:
 
 ```bat
-%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /out:TNPlus.exe TNPlus.cs
+%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs
 ```
 
 ## How it works (short)

@@ -16,7 +16,7 @@
 //
 //  Build (no install needed, uses the C# compiler shipped with Windows):
 //    C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize
-//        /out:TNPlus.exe TNPlus.cs
+//        /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs   (or run build.bat)
 // ============================================================================
 using System;
 using System.Collections.Generic;
@@ -27,10 +27,21 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.Win32;
+using System.Reflection;
+
+[assembly: AssemblyTitle("Terra Nova Plus")]
+[assembly: AssemblyDescription("Quality-of-life pack for Terra Nova: Strike Force Centauri (mouse freelook, noclip, view distance, widescreen)")]
+[assembly: AssemblyCompany("skw-1337")]
+[assembly: AssemblyProduct("Terra Nova Plus")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 skw-1337 - MIT License - github.com/skw-1337/terra-nova-plus")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyInformationalVersion("1.0.1")]
+[assembly: ComVisible(false)]
 
 static class TNPlus
 {
-    const string VERSION = "1.0";
+    const string VERSION = "1.0.1";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
