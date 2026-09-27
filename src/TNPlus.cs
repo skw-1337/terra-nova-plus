@@ -288,7 +288,11 @@ static class TNPlus
         if (OptNoclip) Console.WriteLine("Noclip: move keys, Space / Left Ctrl up / down, Left Shift x4. Land before switching it off!");
         Console.WriteLine("When you are done playing, close this window (anti-cheat note: see README).");
         Console.WriteLine();
-        ShowWindow(GetConsoleWindow(), 6);          // minimize: never steal the game's focus
+        attached = false;
+        if (launched != null)
+            ShowWindow(GetConsoleWindow(), 6);      // minimize: never steal the game's focus
+        else                                        // attach mode: stay visible until the game is found
+            Say("Waiting for Terra Nova: start the game (this window minimizes once it is found).", 0);
 
         int vkFree = (int)MapVirtualKey((uint)ScanFreelook, 1), vkClip = (int)MapVirtualKey((uint)ScanNoclip, 1);
         int vkDist = (int)MapVirtualKey((uint)ScanDistance, 1), vkOptions = (int)MapVirtualKey(0x18, 1);
@@ -324,6 +328,12 @@ static class TNPlus
                 if (hProc == IntPtr.Zero || !GameStillLoaded())
                 {
                     if (freelook || noclip) Say("Freelook / noclip OFF (game left)", 500);
+                    if (attached && launched == null)
+                    {   // attach mode: the game was closed, wait for the next one (no focus stealing)
+                        attached = false;
+                        ShowWindow(GetConsoleWindow(), 4);
+                        Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
+                    }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
                     mouse.Take(); Thread.Sleep(50); continue;
@@ -647,6 +657,8 @@ static class TNPlus
     }
 
     // ------------------------------------------------------------------ attach / signature scan
+    static bool attached;                          // a game was found (attach mode messages)
+
     static void TryAttach()
     {
         foreach (Process p in Process.GetProcesses())
@@ -662,6 +674,8 @@ static class TNPlus
                     (have400 ? "" : " - 320x400 unavailable") +
                     (OptWide && !haveWide ? " - widescreen unavailable" : "") +
                     (OptWide && haveWide && (launched == null || p.Id != launched.Id) ? " - widescreen off (game not started from this tool)" : ""), 0);
+                attached = true;
+                ShowWindow(GetConsoleWindow(), 6);  // minimize: never steal the game's focus
                 return;
             }
             CloseHandle(h); hProc = IntPtr.Zero; gamePid = 0;

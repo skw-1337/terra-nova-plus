@@ -36,9 +36,9 @@ One small external tool. Pick your options in a menu, press Enter, and the game 
 
 The game folder is detected automatically (**GOG** registry and **Steam** libraries). If you have both, **G** switches between them. For any other install, start the game yourself and choose **A**: everything works except widescreen, which needs the tool to start DOSBox.
 
-SHA-256 of `TNPlus.exe` v1.0.1: `D49ED4F7ECF3ADF69DD5C0F3A14F199BE185459E0BCE8C6192E13B04E99D0FDC`
+SHA-256 of `TNPlus.exe` v1.0.1: `8DEBF7EA5AE60536A01ED160BD30672B7B42D1D25011FFE0A19D7544C63EE996`
 
-v1.0.1 only adds version info and an icon to the exe (fewer antivirus false alarms). The tool itself is unchanged.
+v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). With **A** (attach), the window now stays open and says it is waiting for the game, and only minimizes once the game is found.
 
 ## Tips
 
