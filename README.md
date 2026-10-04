@@ -4,7 +4,7 @@
 
 ## News
 
-**1.1.0 beta is out**, [grab it here](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.1.0-beta1) and tell me what breaks:
+**1.1.0 beta is out**, [grab it here](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.1.0-beta1) and tell me what breaks. The stereo fix and the demos come from ideas by [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813) on TTLG, thanks!
 
 - the game in **640x400**: the 3D view drawn at twice the width (French GOG exe only for now, English GOG/Steam is next)
 - launch the two **1996 demos** from the menu (GOG and Steam already ship them)
