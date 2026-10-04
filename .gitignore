@@ -4,3 +4,4 @@ pack/
 *.exe
 src/TNPlus.ini
 src/TNPlus_16x9.conf
+src/TNPlus_launch.conf

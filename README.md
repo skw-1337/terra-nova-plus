@@ -8,11 +8,47 @@ One small external tool. Pick your options in a menu, press Enter, and the game 
 |---|---|---|
 | **Mouse freelook** | `Y` | Mouse left/right turns your PBA, up/down looks up/down, the aiming reticle stays centred: you fire where you look. Smooth (~500 updates per second), no screen shake, no reticle trails on the cockpit. |
 | **Noclip** | `U` | Free flight: your usual move keys, `Space` / `Left Ctrl` up/down, `Left Shift` ×4 speed. Great to explore the maps and look at the scenery. |
-| **View distance** | `I` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
+| **View distance** | `J` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
 | **Force 320×400** | — | The engine's best resolution, applied automatically in every mission (the game normally only keeps it in save files). |
 | **Widescreen 16:9** | — | DOSBox stretches the picture to 16:9 and the tool widens the engine's field of view by 33 % to match: correct proportions, more of the battlefield on the sides. |
 
 **No game file is modified**: everything happens in memory while you play, and stops when you quit.
+
+## 1.1.0 beta
+
+![Terra Nova Plus launcher](docs/launcher.png)
+
+This is a big one. I rewrote the launcher and added a bunch of things people asked for on TTLG, thanks to [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813). It's a beta, so tell me what breaks.
+
+### New launcher
+- Colours, and a badge that shows which copy of the game you're launching: **GOG**, **STEAM** or **OTHER**, plus its language. If you have more than one install, `G` switches between them.
+- **Presets** with `P`: ORIGINAL, CLASSIC+ and BEST. Change anything yourself and it shows CUSTOM.
+- Display is now a single choice (Original / 320x400 / HD 640x400), so you can't mix incompatible modes by accident.
+- In-game keys are shown in purple next to each option, menu keys in cyan.
+
+### HD 640x400
+- The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
+- `F12` toggles the 3D smoothing, `F11` a sharper HUD (Scale2x on the cockpit art).
+- For now it only works with the French GOG executable. The English GOG/Steam version and the demos are next.
+
+### Terrain detail
+- More ground detail far away. Steep walls in the distance no longer turn into a saw blade. Costs around 10-20 % fps.
+
+### Sound
+- **Fix reversed stereo** (off by default): under DOSBox the game's Sound Blaster 16 driver swaps left and right, cutscenes included. The tool can start DOSBox with the channels swapped back.
+- `F7` in game swaps the sound effects left/right on the fly, handy to compare.
+- **Music**: Roland / General MIDI by default, or the original Sound Blaster FM, or whatever your config already says. Applied to the game and the demos when you launch them (the original `TN.CFG` is kept as `TN.CFG.tnplus-original`).
+
+### Demos
+
+`L` launches the full game, demo 1 or demo 2. Both demos have missions that aren't in the full game. GOG and Steam already ship them (`TNDEMO1` and `TNDEMO2` next to `TNOVA`), so there's nothing to download. Freelook, noclip, view distance and 320x400 work in them too. HD doesn't yet.
+
+If your install has no `TNDEMO1` / `TNDEMO2` folder (CD version): get the demos from the Internet Archive (Demo 2: [archive.org](https://archive.org/details/TerraNovaStrikeForceCentauriDemo), both are listed in [zjorz's setup guide on TTLG](https://www.ttlg.com/forums/showthread.php?t=149972)), install each one in DOSBox into `C:\TNDEMO1` and `C:\TNDEMO2` where `C:` is your game folder, and run their setup once. The tool looks for `TNDEMO.BAT` and `TN.CFG` in those folders. Demo files are not included here: they belong to the game's rights holders.
+
+Stereo fix and demos need the tool to start DOSBox (Enter). With **A** (attach), add `mixer sb reverse /noshow` at the top of your DOSBox `[autoexec]` instead, or use ripsaw8080's `SB16.DIG` patch (thanks to rfnagel and zjorz for pointing it out).
+
+### Small stuff
+- View distance moved from `I` to `J`: `I` is the game's infrared. Old settings files are updated on their own.
 
 ## Download & use
 
@@ -22,7 +58,7 @@ One small external tool. Pick your options in a menu, press Enter, and the game 
    ```
      1  Mouse freelook (key Y)                            [ON]
      2  Noclip (key U)                                    [ON]
-     3  View distance at start (key I)                    [MAX]
+     3  View distance at start (key J)                    [MAX]
      4  Force 320x400 (the engine's best resolution)      [ON]
      5  Widescreen 16:9 (game launched from here)         [off]
 
@@ -45,7 +81,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 - **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
 - **Noclip**: land before switching it off — switching it off in mid-air means a free fall.
 - **Widescreen** is anamorphic: the engine can only draw 320 pixels across, so the cockpit and the menus are stretched a little. The 3D view itself keeps correct proportions.
-- Keys are **physical key positions**: `Y`, `U`, `I` are the same keys on QWERTY and AZERTY. They can be changed in `TNPlus.ini`.
+- Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. They can be changed in `TNPlus.ini`.
 
 ## Settings (`TNPlus.ini`)
 
@@ -56,7 +92,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `sensitivity_x`, `sensitivity_y` | `12`, `8` | mouse speed (heading / pitch units per mouse count) |
 | `invert_y` | `0` | `1` = inverted vertical look |
 | `noclip_speed` | `15` | game units per second (a walking PBA does about 2.5) |
-| `key_freelook`, `key_noclip`, `key_distance` | `15`, `16`, `17` | **physical key scancodes** (hex): `15` = Y, `16` = U, `17` = I, `29` = key left of 1, `3B`–`44` = F1–F10 |
+| `key_freelook`, `key_noclip`, `key_distance` | `15`, `16`, `24` | **physical key scancodes** (hex): `15` = Y, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
 | `sound` | `1` | `0` = no beeps |
 | `game_dir` | *(auto)* | game folder, if auto-detection does not find it |
 
