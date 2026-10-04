@@ -2,6 +2,21 @@
 
 **An all-in-one quality-of-life pack for *Terra Nova: Strike Force Centauri*** (Looking Glass Technologies, 1996), running in DOSBox — **Steam, GOG or standalone**.
 
+## News
+
+**1.1.0 beta is out**, [grab it here](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.1.0-beta1) and tell me what breaks:
+
+- the game in **640x400**: the 3D view drawn at twice the width (French GOG exe only for now, English GOG/Steam is next)
+- launch the two **1996 demos** from the menu (GOG and Steam already ship them)
+- **reversed stereo fix** for DOSBox, and `F7` in game to compare
+- **Roland / General MIDI** music option, more terrain detail far away
+- new launcher with presets and a GOG / Steam badge
+- view distance key moved from `I` to `J` (`I` is the game's infrared)
+
+![Terra Nova Plus 1.1.0 beta launcher](docs/launcher.png)
+
+Details in the [README of the beta branch](https://github.com/skw-1337/terra-nova-plus/tree/beta). Version 1.0.1 below is still the stable one.
+
 One small external tool. Pick your options in a menu, press Enter, and the game starts with them:
 
 | Option | Key in game | What it does |
