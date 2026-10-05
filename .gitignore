@@ -5,3 +5,6 @@ pack/
 src/TNPlus.ini
 src/TNPlus_16x9.conf
 src/TNPlus_launch.conf
+src/TNPlus_music.conf
+src/TNPlus_awe32.sf2
+*.raw

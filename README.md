@@ -25,6 +25,7 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 - **Presets** with `P`: ORIGINAL, CLASSIC+ and BEST. Change anything yourself and it shows CUSTOM.
 - Display is now a single choice (Original / 320x400 / HD 640x400), so you can't mix incompatible modes by accident.
 - In-game keys are shown in purple next to each option, menu keys in cyan.
+- Since beta 2, a yellow **BETA** badge marks what is new in 1.1.0, and a red **EXPERIMENTAL** one what is still rough.
 
 ### HD 640x400
 - The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
@@ -37,7 +38,19 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 ### Sound
 - **Fix reversed stereo** (off by default): under DOSBox the game's Sound Blaster 16 driver swaps left and right, cutscenes included. The tool can start DOSBox with the channels swapped back.
 - `F7` in game swaps the sound effects left/right on the fly, handy to compare.
-- **Music**: Roland / General MIDI by default, or the original Sound Blaster FM, or whatever your config already says. Applied to the game and the demos when you launch them (the original `TN.CFG` is kept as `TN.CFG.tnplus-original`).
+- **Music**: Roland / General MIDI by default, or the original Sound Blaster FM, or whatever your config already says. Applied to the game and the demos when you launch them (the original `TN.CFG` is kept as `TN.CFG.tnplus-original`). "Roland" is the game's own *General MIDI / Roland SCC-1* setting, played by the Windows MIDI synth.
+
+### AWE32 music (beta 2, experimental)
+
+The game ships its own Sound Blaster AWE32 bank, `SOUND\FF.SBK`, made by its composer Eric Brosius, and the music it plays in General MIDI only uses the instruments of that bank. DOSBox can't emulate an AWE32, so the tool reads the bank, rebuilds it as a soundfont and lets DOSBox Staging play it with its built-in synth. Idea from [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813).
+
+The catch: nine sounds out of ten in that bank live in the ROM chip of the real card. That ROM belongs to Creative, so it is **not included** and the tool doesn't download it. To use the option:
+
+1. Get `awe32.raw` (1 MB), the AWE32 ROM dump used by the 86Box emulator.
+2. Put it in the same folder as `TNPlus.exe` (keep the tool in its own folder, it writes a few files next to itself).
+3. Start the launcher and press `8` until Music says AWE32.
+
+Without the file the choice isn't shown and music stays on Roland. It's experimental: a few instruments are still slightly out of tune, and I have no real card to compare with. The percussion the bank doesn't define is played with the Windows sound set.
 
 ### Demos
 
@@ -134,7 +147,7 @@ build.bat
 or manually:
 
 ```bat
-%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs
+%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs HdPayload.cs AweBank.cs
 ```
 
 ## How it works (short)
@@ -150,4 +163,4 @@ or manually:
 ## Credits
 
 Made by skw-1337. The game is © its respective owners (Looking Glass Technologies / Night Dive Studios); this tool contains no game data.
-Released under the MIT license.
+Released under the MIT license, except `src/AweBank.cs` (AWE32 music), whose SoundFont 1 conversion follows [awesfx](https://github.com/tiwai/awesfx) by Takashi Iwai and is under the GPL v2 or later (`GPL-2.0.txt`). `TNPlus.exe` includes that file, so the program as a whole is distributed under the GPL; the source is in the zip and in this repository.

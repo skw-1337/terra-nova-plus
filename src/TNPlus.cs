@@ -21,7 +21,9 @@
 //
 //  Build (no install needed, uses the C# compiler shipped with Windows):
 //    C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize
-//        /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs HdPayload.cs   (or run build.bat)
+//        /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs HdPayload.cs AweBank.cs   (or run build.bat)
+//
+//  AweBank.cs (AWE32 music) is under the GPL v2 or later, the rest under the MIT license.
 // ============================================================================
 using System;
 using System.Collections.Generic;
@@ -46,17 +48,18 @@ using System.Reflection;
 
 static class TNPlus
 {
-    const string VERSION = "1.1.0-beta1";
+    const string VERSION = "1.1.0-beta2";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
     static bool OptFreelook = true, OptNoclip = true, OptForce400 = true, OptWide = false, OptHD = false;
     static int OptDistance = 2;                     // 0 NORMAL, 1 FAR, 2 MAX
     static bool OptStereoFix = false;                // DOSBox: swap the Sound Blaster stereo (the game's SB16 driver reverses it)
-    static int OptMusic = 0;                        // 0 Roland (General MIDI), 1 FM, 2 the game's own setting
-    static readonly string[] MUSIC_NAMES = { "ROLAND", "FM", "GAME'S OWN" };
-    static readonly string[] MUSIC_INFO = { "Roland / General MIDI music (played by the Windows MIDI synthesizer)",
-        "Sound Blaster FM synthesis, the default of the digital editions", "the game's TN.CFG is left as it is" };
+    static int OptMusic = 0;                        // 0 Roland GS (General MIDI), 1 FM, 2 the game's own setting, 3 AWE32 (needs awe32.raw)
+    static readonly string[] MUSIC_NAMES = { "ROLAND", "FM", "GAME'S OWN", "AWE32" };
+    static readonly string[] MUSIC_INFO = { "Roland GS sounds of the Windows MIDI synthesizer (General MIDI)",
+        "Sound Blaster FM synthesis, the default of the digital editions", "the game's TN.CFG is left as it is",
+        "the game's own AWE32 bank by Eric Brosius (FF.SBK) with the AWE32 ROM samples, played by DOSBox" };
     static int LaunchTarget = 0;                    // 0 game, 1 demo 1, 2 demo 2
     static readonly string[] TARGET_NAMES = { "GAME", "DEMO 1", "DEMO 2" };
     static readonly string[] TARGET_DIRS = { "TNOVA", "TNDEMO1", "TNDEMO2" };
@@ -269,6 +272,11 @@ static class TNPlus
             int preset = CurrentPreset();
             bool demoMissing = LaunchTarget > 0 && !HasDemo(GameDir, LaunchTarget);
             Console.ResetColor();
+            try     // the menu is taller than the classic 30-line console
+            {
+                if (Console.WindowHeight < 36) Console.SetWindowSize(Console.WindowWidth, Math.Min(36, Console.LargestWindowHeight));
+            }
+            catch { }
             Console.Clear();
             // header
             Console.WriteLine();
@@ -292,6 +300,7 @@ static class TNPlus
                 Console.WriteLine();
             }
             C("  LAUNCH  ", ConsoleColor.DarkGray); Key("L"); Choices(TARGET_NAMES, LaunchTarget);
+            C("  ", ConsoleColor.Gray); Tag("BETA"); C(" demos", ConsoleColor.DarkGray);
             if (demoMissing) C("  not found, see README", ConsoleColor.Yellow);
             Console.WriteLine();
             if (LaunchTarget > 0) Note("demos: HD 640x400 does not work with them yet, 320x400 is used");
@@ -302,11 +311,11 @@ static class TNPlus
             Rule('─');
             // picture
             Section("PICTURE");
-            Row("1", "Display"); Choices(DISPLAY_LABELS, EffectiveDisplay()); Console.WriteLine();
+            Row("1", "Display", "BETA", "HD"); Choices(DISPLAY_LABELS, EffectiveDisplay()); Console.WriteLine();
             if (Display == 2 && !hdOkNow) Warn("HD 640x400 " + why + ": 320x400 is used");
             else if (Display == 2) InGame(ScanSmoothing, "3D smoothing", ScanHudFilter, "sharp HUD");
             Row("2", "Widescreen 16:9"); Toggle(OptWide);
-            Row("3", "Terrain detail far away"); Choices(DETAIL_NAMES, OptDetail); Console.WriteLine();
+            Row("3", "Terrain detail far away", "BETA", null); Choices(DETAIL_NAMES, OptDetail); Console.WriteLine();
             Row("4", "View distance at start", ScanDistance); Choices(DIST_NAMES, OptDistance); Console.WriteLine();
             // controls
             Section("CONTROLS");
@@ -314,12 +323,21 @@ static class TNPlus
             Row("6", "Noclip", ScanNoclip); Toggle(OptNoclip);
             // sound
             Section("SOUND");
-            Row("7", "Fix reversed stereo"); Toggle(OptStereoFix);
+            Row("7", "Fix reversed stereo", "BETA", null); Toggle(OptStereoFix);
             InGame(ScanStereo, "swaps the sound effects left/right (to compare)", 0, null);
-            Row("8", "Music"); Choices(MUSIC_NAMES, OptMusic); Console.WriteLine();
-            Note(MUSIC_INFO[OptMusic]);
+            bool awe = AweRom() != null;            // the AWE32 choice only exists with the ROM
+            int music = EffectiveMusic();
+            Row("8", "Music", "BETA", null); Choices(awe ? MUSIC_NAMES : new[] { MUSIC_NAMES[0], MUSIC_NAMES[1], MUSIC_NAMES[2] }, music); Console.WriteLine();
+            Note(MUSIC_INFO[music]);
+            if (awe) { C("        ", ConsoleColor.Gray); Tag("EXPERIMENTAL"); C(" AWE32: barely tested, some instruments may sound off\n", ConsoleColor.DarkGray); }
+            if (!awe)
+            {
+                Note("optional AWE32 music: put the AWE32 ROM file awe32.raw (1 MB, not included) in");
+                Note(Shorten(ExeDir, 68) + "  (see README)");
+            }
             Note("stereo fix and music are not part of the presets");
-            C("        ", ConsoleColor.Gray); Bind("KEY"); C(" = key to press in game\n", ConsoleColor.DarkGray);
+            C("        ", ConsoleColor.Gray); Bind("KEY"); C(" in-game key  ", ConsoleColor.DarkGray);
+            Tag("BETA"); C(" new in 1.1.0  ", ConsoleColor.DarkGray); Tag("EXPERIMENTAL"); C(" unfinished\n", ConsoleColor.DarkGray);
             Rule('─');
             C("  ENTER ", ConsoleColor.Black, ConsoleColor.Green); C(" launch      ", ConsoleColor.Gray);
             Key("A"); C("attach to a running game      ", ConsoleColor.Gray);
@@ -340,7 +358,7 @@ static class TNPlus
                 case '5': OptFreelook = !OptFreelook; break;
                 case '6': OptNoclip = !OptNoclip; break;
                 case '7': OptStereoFix = !OptStereoFix; break;
-                case '8': OptMusic = (OptMusic + 1) % 3; break;
+                case '8': OptMusic = (EffectiveMusic() + 1) % (AweRom() != null ? 4 : 3); break;
                 case 'G':
                     if (installs.Count > 0) GameDir = installs[(installs.IndexOf(GameDir) + 1) % installs.Count];
                     break;
@@ -378,6 +396,20 @@ static class TNPlus
         string b = KeyName(scan);
         Bind(b);
         Console.Write(new string(' ', Math.Max(1, 34 - label.Length - 1 - (b.Length + 2))));
+    }
+    // row with a status badge after the label (and a dim word saying what the badge is about)
+    static void Row(string k, string label, string tag, string about)
+    {
+        Console.Write("   "); Key(k); C(label + " ", ConsoleColor.Gray);
+        Tag(tag);
+        if (about != null) C(" " + about, ConsoleColor.DarkGray);
+        Console.Write(new string(' ', Math.Max(1, 34 - label.Length - 1 - (tag.Length + 2) - (about != null ? about.Length + 1 : 0))));
+    }
+    // status badges: BETA = new in this version (dark yellow), EXPERIMENTAL = unfinished (red)
+    static void Tag(string t)
+    {
+        if (t == "EXPERIMENTAL") C(" " + t + " ", ConsoleColor.White, ConsoleColor.DarkRed);
+        else C(" " + t + " ", ConsoleColor.Black, ConsoleColor.DarkYellow);
     }
     // in-game key: magenta, so it is not confused with the menu keys (cyan)
     static void Bind(string key) { C(" " + key + " ", ConsoleColor.White, ConsoleColor.DarkMagenta); }
@@ -428,16 +460,18 @@ static class TNPlus
         return exeLang;
     }
 
-    // Music: Roland = General MIDI on the MPU-401 (DOSBox plays it with the system synthesizer), FM = the original
-    // Sound Blaster synthesis. Written in the TN.CFG of the game or demo being launched (original kept once).
+    // Music: AWE32 and Roland = General MIDI on the MPU-401 (DOSBox plays it with FluidSynth and the AWE32 bank,
+    // or with the system synthesizer), FM = the original Sound Blaster synthesis. Written in the TN.CFG of the game
+    // or demo being launched (original kept once).
     static void ApplyMusic(string dirName)
     {
-        if (OptMusic == 2) return;
+        int music = EffectiveMusic();
+        if (music == 2) return;
         try
         {
             string cfg = Path.Combine(GameDir, dirName, "TN.CFG");
             if (!File.Exists(cfg)) return;
-            string[][] want = OptMusic == 0
+            string[][] want = music != 1
                 ? new[] { new[] { "midi_num", "12" }, new[] { "midi_io", "816" }, new[] { "midi_extra", "1" } }
                 : new[] { new[] { "midi_num", "3" } };
             List<string> lines = new List<string>(File.ReadAllLines(cfg));
@@ -452,9 +486,43 @@ static class TNPlus
             if (!changed) return;
             if (!File.Exists(cfg + ".tnplus-original")) File.Copy(cfg, cfg + ".tnplus-original");
             File.WriteAllLines(cfg, lines.ToArray());
-            Console.WriteLine("Music set to " + MUSIC_NAMES[OptMusic] + " (" + dirName + "\\TN.CFG, original kept as TN.CFG.tnplus-original).");
+            Console.WriteLine("Music set to " + (music == 1 ? "FM" : "General MIDI") + " (" + dirName + "\\TN.CFG, original kept as TN.CFG.tnplus-original).");
         }
         catch { }
+    }
+
+    // AWE32: the game's FF.SBK and the AWE32 ROM turned into a SoundFont 2 for DOSBox's FluidSynth (see AweBank.cs),
+    // rebuilt at each launch. Without the ROM (awe32.raw next to TNPlus.exe) the choice does not exist.
+    static string AweRom()
+    {
+        string rom = Path.Combine(ExeDir, "awe32.raw");
+        try { return File.Exists(rom) && new FileInfo(rom).Length == AweBank.ROM_SIZE ? rom : null; }
+        catch { return null; }
+    }
+    static int EffectiveMusic() { return OptMusic == 3 && AweRom() == null ? 0 : OptMusic; }
+
+    static string PrepareAwe(string dirName)
+    {
+        try
+        {
+            string sbk = Path.Combine(GameDir, dirName, "SOUND", "FF.SBK");
+            if (!File.Exists(sbk)) sbk = Path.Combine(GameDir, "TNOVA", "SOUND", "FF.SBK");
+            if (!File.Exists(sbk)) { Console.WriteLine("AWE32 music: FF.SBK not found, the Windows MIDI synthesizer is used."); return null; }
+            if (!File.Exists(AweBank.DlsPath())) { Console.WriteLine("AWE32 music: " + AweBank.DlsPath() + " not found, the Windows MIDI synthesizer is used."); return null; }
+            byte[] sf2 = AweBank.Build(sbk, AweBank.DlsPath(), File.ReadAllBytes(AweRom()));
+            string path = Path.Combine(ExeDir, "TNPlus_awe32.sf2");
+            File.WriteAllBytes(path, sf2);
+            string conf = Path.Combine(ExeDir, "TNPlus_music.conf");
+            File.WriteAllText(conf, "# Terra Nova Plus: AWE32 music (the game's FF.SBK bank) played by FluidSynth\r\n" +
+                "[midi]\r\nmididevice = fluidsynth\r\n[fluidsynth]\r\nsoundfont = " + path + "\r\n");
+            Console.WriteLine("Music: AWE32 bank with the AWE32 ROM samples.");
+            return conf;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("AWE32 music unavailable (" + e.Message + "), the Windows MIDI synthesizer is used.");
+            return null;
+        }
     }
 
     static string OnOff(bool b) { return b ? "[ON]" : "[off]"; }
@@ -559,6 +627,11 @@ static class TNPlus
         }
         string db = Path.Combine(GameDir, "_DOSBOX");
         string args = "-conf dosbox_terranova_windows.conf -conf \"" + WriteLaunchConf(db, LaunchTarget) + "\"";
+        if (EffectiveMusic() == 3)
+        {
+            string music = PrepareAwe(TARGET_DIRS[LaunchTarget]);
+            if (music != null) args += " -conf \"" + music + "\"";
+        }
         if (OptWide)
         {
             string overlay = Path.Combine(ExeDir, "TNPlus_16x9.conf");
@@ -1449,7 +1522,8 @@ static class TNPlus
                 "; GAME, SHARP or SHARPER (more terrain detail in the distance)\r\nterrain_detail = " + DETAIL_NAMES[OptDetail] + "\r\n" +
                 "widescreen = " + (OptWide ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
-                "; ROLAND, FM or GAME'S OWN (music of the game and demos, written in their TN.CFG at launch)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +
+                "; ROLAND, FM, GAME'S OWN or AWE32 (music of the game and demos; AWE32 needs awe32.raw, an AWE32 ROM dump,\r\n" +
+                "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +
                 "; HD smoothing at start (toggled in game with key_smoothing)\r\nhd_smoothing = " + (HdSmoothing ? 1 : 0) + "\r\n" +
                 "; HD sharp HUD at start: Scale2x on the cockpit art (toggled in game with key_sharp_hud)\r\nhd_sharp_hud = " + (HdHudFilter ? 1 : 0) + "\r\n" +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
