@@ -46,7 +46,7 @@ The game ships its own Sound Blaster AWE32 bank, `SOUND\FF.SBK`, made by its com
 
 The catch: nine sounds out of ten in that bank live in the ROM chip of the real card. That ROM belongs to Creative, so it is **not included** and the tool doesn't download it. To use the option:
 
-1. Get `awe32.raw` (1 MB), the AWE32 ROM dump used by the 86Box emulator.
+1. Get `awe32.raw` (1 MB), the AWE32 ROM dump used by the 86Box emulator: go to [86Box/roms, sound/creative](https://github.com/86Box/roms/tree/master/sound/creative), click `awe32.raw`, then the download button on the right ("Download raw file").
 2. Put it in the same folder as `TNPlus.exe` (keep the tool in its own folder, it writes a few files next to itself).
 3. Start the launcher and press `8` until Music says AWE32.
 
