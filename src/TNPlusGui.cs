@@ -128,7 +128,7 @@ static partial class TNPlus
         Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(5));
         cbDisplay = Combo(pPic, "Display", 0, DISPLAY_LABELS, "BETA", "HD 640x400: the 3D view drawn at twice the width, GOG and Steam, French and English. " + KeyName(ScanSmoothing) + " toggles the smoothing in game.");
         ckWide = Switch(pPic, "Widescreen 16:9", 1, null, "The camera is corrected for a 16:9 DOSBox window. Needs the game to be launched from here.");
-        cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. Lighter polygons beyond 24 cells. SHARPER costs about 13 % fps.");
+        cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER costs about 25 % fps (the default CPU speed makes up for it).");
         cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), "View distance at mission start. " + KeyName(ScanDistance) + " cycles it in game.");
         cbObj = Combo(pPic, "Object distance", 4, OBJDIST_NAMES, "BETA", "How far bushes, trees, units and buildings are drawn. GAME: scenery 20 cells. FAR: 30, unit ranges x2. MAX: 40, x3. About 4 % fps at MAX.");
         Panel pSnd = Pane(f, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));
@@ -146,7 +146,7 @@ static partial class TNPlus
         cbTarget = Combo(pLaunch, "Run", 0, new[] { "FULL GAME", "DEMO 1", "DEMO 2" }, null, "The two 1996 demos shipped with GOG and Steam have missions the full game hasn't. No HD there yet.");
         cbPreset = Combo(pLaunch, "Preset", 1, new[] { "ORIGINAL", "CLASSIC+", "BEST", "CUSTOM" }, null, "Presets set picture and controls at once. Fixes and music are yours to choose.");
         cbSpeed = Combo(pLaunch, "CPU speed", 2, SPEED_NAMES, "BETA",
-            "DOSBox CPU cycles: the game runs as fast as they allow. HD, SHARPER terrain, mission 12: 500000 ~56 fps, 700000 ~79. Choppy sound = too high for your PC.");
+            "DOSBox CPU cycles: the game runs as fast as they allow. HD, SHARPER terrain, mission 12: 500000 ~47 fps, 700000 ~65. Choppy sound = too high for your PC.");
         guiPreset = Lbl(pLaunch, "", 14, PaneH(3) - 4, TSmall, TDim); guiPreset.AutoSize = false; guiPreset.Size = new Size(pw - 28, 20);
 
         // help and warnings: a readout strip like the cockpit's message line

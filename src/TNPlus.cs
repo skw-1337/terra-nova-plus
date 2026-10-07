@@ -110,8 +110,9 @@ static partial class TNPlus
     // block's first cell stretched over it, lighting per vertex as before). Blocks cut by the screen edge or the
     // outer edge keep their 4 polygons; at the seam with the full ring the big polygon is drawn over the small
     // ones, so no crack. 309 bytes of code in the free end of the HD code area (the exe prepared for HD).
-    // The column renderer also stops drawing columns that lie entirely under the polygons (start distance
-    // 5 -> 16 cells). Mission 12, HD, 500000 cycles, 48 cells: 1806 -> 887 polygons, 46.5 -> 56.5 fps.
+    // Mission 12, HD, 500000 cycles, 48 cells: 1806 -> 887 polygons, 46.5 -> 56 fps. (Starting the columns at
+    // 16 cells instead of 5, under the polygons, was tried and dropped: seen from high up, the first columns
+    // then ran down to the bottom of the screen and the polygons in front were culled as hidden behind them.)
     const int LOD_FROM = 24;
     const uint LOD_CAVE = 0x465E00;
     static readonly string[] LOD_CODE = {
@@ -119,9 +120,11 @@ static partial class TNPlus
         "60B800100000B9404F2C00FFD185C00F841901000089C589C7B90004000031C0F3AB8B35E07D42000FB70DE47D420085C90F84EE00000056510FB746100FB7561283E07F83E27FC1E20709D00FAB450083C6204975E3595E89F7807E1F020F829B0000000FB746100FB7561283E0FE83E2FE89D383E37FC1E3075083E07F09C3580FA35D0073788D5B010FA35D00736F8D5B7F0FA35D0073668D5B010FA35D00735D81EB810000000FAB9D0008000072595156B908000000F3A55E59668947F0668957F266895FF483C00283E07F81E3803F000009C366895FF681C30001000081E3FF3F000066895FF881E3803F00000FB747F083E07F09C366895FFAEB0B5156B908000000F3A55E5983C620490F8546FFFFFF89F82B05E07D4200C1E80566A3E47D420089E8B9E44F2C00FFD1616814182B00C3" };
     static readonly uint[] LOD_HOOK = { 0x29E303, 0x29E313 };     // call triangle setup 0x2B1804 / 0x2B1814
     static readonly uint[] LOD_SETUP = { 0x2B1804, 0x2B1814 };
-    static readonly uint[] LOD_VOXEL = { 0x2B575D, 0x2B576D };    // mov [ebp-0Ch], 5: first column distance
-    static bool OptTerrainLod = true;
+    static readonly uint[] LOD_VOXEL = { 0x2B575D, 0x2B576D };    // mov [ebp-0Ch], 5: first column distance (kept)
+    static bool OptTerrainLod = false;              // off by default: on hills the 2x2 polygons make visible terraces
     static int lodState = 0;                        // 0 to do, 1 on, -1 off or unavailable
+    static bool lodLive = true;                     // F11 in game (beta test key): LOD on / off without restarting
+    const int SCAN_LOD = 0x57;
 
     static void TryLod()
     {
@@ -131,7 +134,7 @@ static partial class TNPlus
             byte[] hookOld = new byte[] { 0xE8, 0, 0, 0, 0 }, hookNew = new byte[] { 0xE8, 0, 0, 0, 0 };
             BitConverter.GetBytes((int)(LOD_SETUP[lang] - (LOD_HOOK[lang] + 5))).CopyTo(hookOld, 1);
             BitConverter.GetBytes((int)(LOD_CAVE - (LOD_HOOK[lang] + 5))).CopyTo(hookNew, 1);
-            byte[] vox = Hex("C745F405000000"), voxNew = Hex("C745F410000000");
+            byte[] vox = Hex("C745F405000000"), voxNew = Hex("C745F410000000");   // 16: an earlier beta 4 build
             byte[] code = Hex(LOD_CODE[lang]);
             byte[] h = Read(LOD_HOOK[lang], 5), v = Read(LOD_VOXEL[lang], 7), c = Read(LOD_CAVE, code.Length);
             bool free = true;
@@ -139,7 +142,7 @@ static partial class TNPlus
             if (!(Same(h, hookOld) || Same(h, hookNew)) || !(Same(v, vox) || Same(v, voxNew)) || !(free || Same(c, code))) continue;
             Write(LOD_CAVE, code);                  // the code first, then the call to it
             Write(LOD_HOOK[lang], hookNew);
-            Write(LOD_VOXEL[lang], voxNew);
+            if (Same(v, voxNew)) Write(LOD_VOXEL[lang], vox);
             lodState = 1;
             return;
         }
@@ -230,13 +233,16 @@ static partial class TNPlus
     const string HD_SHA_READY = "4e2aa4851bf8cd4832e19660bfcd333fcc9735e94e8b4b6c24b73e0223ccd97a";
     const string EN_SHA_READY = "86fd95cc3ab30929cfaac50b96c1462e331089a931bd4239448e9dbb3c81fbbd";   // English, 16 KB more memory
     // ... plus the far smooth terrain (TERRAIN_EXE); beta 3 left the exe in the READY state above, it is upgraded
-    const string HD_SHA_READY2 = "f22a68b97146595fa93ae14aef064654d4b1dd43fc5eac01dd01b85e7380553b";
+    const string HD_SHA_READY2 = "f22a68b97146595fa93ae14aef064654d4b1dd43fc5eac01dd01b85e7380553b";   // first beta 4 builds
     const string EN_SHA_READY2 = "e32cab7c164e1b5334c85e1c2504580856735647e183f9d7b7798794c31e9607";
+    const string HD_SHA_READY3 = "7118722688f6df83bbd49e84bfae7c52f906f540b7e76e007830834216ecdafd";   // + zoom clamp
+    const string EN_SHA_READY3 = "da65ac1bc7542b4819edb48ed52de4cf23d460072ae5dd7bd8a7bd46d9b1a9c6";
     static bool KnownSha(string sha)
     {
-        return sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY || sha == HD_SHA_READY2 || sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2;
+        return sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY || sha == HD_SHA_READY2 || sha == HD_SHA_READY3 ||
+               sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3;
     }
-    static bool EnglishSha(string sha) { return sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2; }
+    static bool EnglishSha(string sha) { return sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3; }
 
     // Far smooth terrain. The polygons of the near ground are joined through a map of shared vertices that the
     // engine indexes with 6 bits per axis (64x64, so 31 cells at most), and its buffers are allocated every
@@ -273,6 +279,10 @@ static partial class TNPlus
         new ExePatch(0x2B0EE5, 0x2B0EF5, "81FB20030000", "81FB40060000"),   // its limit
         new ExePatch(0x2B1012, 0x2B1022, "81FB20030000", "81FB40060000"),   // its limit
         new ExePatch(0x2B1136, 0x2B1146, "81FB20030000", "81FB40060000"),   // its limit
+        // N (end of the polygon ring) read where the builder takes it, clamped to 48: each zoom step multiplies
+        // all the ring distances (x1.29, x1.58, x1.81), 48 became 62-87 and overran the engine's tables at once
+        new ExePatch(0x2A8980, 0x2A8990, "8D14850000000029C28B5C243CC1E20201DA31C0668B425F89453C",
+                                         "6BD00C0354243C0FB7425F83F8307605B83000000089453C909090"),
         new ExePatch(0x2C4F71, 0x2C4EE1, "B800E00400", "B800001000"),   // render pool 312 KB -> 1 MB (malloc)
         new ExePatch(0x2C4F76, 0x2C4EE6, "BA00E00400", "BA00001000"),   // and its recorded size
     };
@@ -1027,8 +1037,8 @@ static partial class TNPlus
 
         int vkFree = (int)MapVirtualKey((uint)ScanFreelook, 1), vkClip = (int)MapVirtualKey((uint)ScanNoclip, 1);
         int vkDist = (int)MapVirtualKey((uint)ScanDistance, 1), vkOptions = (int)MapVirtualKey(0x18, 1);
-        int vkSmooth = (int)MapVirtualKey((uint)ScanSmoothing, 1);
-        bool prevS = false, prevSt = false;
+        int vkSmooth = (int)MapVirtualKey((uint)ScanSmoothing, 1), vkLod = (int)MapVirtualKey((uint)SCAN_LOD, 1);
+        bool prevS = false, prevSt = false, prevL = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
         double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10;
         int[] vkFwd = { (int)MapVirtualKey(0x11, 1) }, vkBack = { (int)MapVirtualKey(0x1F, 1) };
@@ -1095,6 +1105,9 @@ static partial class TNPlus
                     Say("HD smoothing " + (HdSmoothing ? "ON" : "OFF"), HdSmoothing ? 1000 : 600);
                 }
                 prevS = s;
+                bool lk = lodState == 1 && fg && Down(vkLod);
+                if (lk && !prevL) { lodLive = !lodLive; Say("Terrain LOD " + (lodLive ? "ON" : "OFF"), lodLive ? 1000 : 600); }
+                prevL = lk;
                 bool stk = haveStereo && fg && Down(vkStereo);
                 if (stk && !prevSt)
                 {
@@ -1268,20 +1281,22 @@ static partial class TNPlus
         byte[] b = Read(aTerrain, 0xA8);
         if (BitConverter.ToInt16(b, 0x5A) != 6) return;
         int near = smoothState == 1 ? SmoothCells() : -1;
-        bool lod = lodState == 1 && near > LOD_FROM;
+        bool lod = lodState == 1 && lodLive && near > LOD_FROM;
         int[] gameTypes = { 1, 2, 0, 0, 0, 0 }, gameSteps = { 1, 1, 1, 2, 4, 8 };
-        int[] types = lod ? new[] { 1, 2, 2, 0, 0, 0 } : gameTypes, steps = lod ? new[] { 1, 1, 1, 1, 2, 4 } : gameSteps;
+        int[] lodTypes = { 1, 2, 2, 0, 0, 0 }, lodSteps = { 1, 1, 1, 1, 2, 4 };
+        int[] types = lod ? lodTypes : gameTypes, steps = lod ? lodSteps : gameSteps;
         int first0 = lod ? 3 : 2;
-        // the table is the game's own preset (just loaded) or already ours; anything else is left alone
+        // the table is the game's own preset (just loaded) or one of ours; anything else is left alone
         int cur0 = BitConverter.ToInt16(b, 0x58);
-        bool game = cur0 == 2, mine = cur0 == first0;
+        bool game = cur0 == 2, other = cur0 == 3, mine = cur0 == first0;
         for (int k = 0; k < 6; k++)
         {
             int t = b[0x5C + 12 * k], st = BitConverter.ToInt16(b, 0x5C + 12 * k + 5);
             if (t != gameTypes[k] || st != gameSteps[k]) game = false;
+            if (t != lodTypes[k] || st != lodSteps[k]) other = false;
             if (t != types[k] || st != steps[k]) mine = false;
         }
-        if (!game && !mine) return;
+        if (!game && !other && !mine) return;
         if (near < 0) near = BitConverter.ToInt16(b, 0x5C + 12 + 9);
         int[] to = lod ? new[] { BitConverter.ToInt16(b, 0x5C + 9), LOD_FROM, near, d[0], d[1], d[2] }
                        : new[] { BitConverter.ToInt16(b, 0x5C + 9), near, d[0], d[1], d[2], d[3] };
@@ -1379,7 +1394,7 @@ static partial class TNPlus
         if (!File.Exists(exe)) { msg = "TNOVA\\__FF.EXE not found"; return false; }
         byte[] d = File.ReadAllBytes(exe);
         string sha = Sha256(d);
-        if (sha == HD_SHA_READY2 || sha == EN_SHA_READY2) { msg = "ready"; return true; }
+        if (sha == HD_SHA_READY3 || sha == EN_SHA_READY3) { msg = "ready"; return true; }
         if (!KnownSha(sha)) { msg = "unknown __FF.EXE (GOG French, GOG English and Steam are supported)"; return false; }
         bool english = EnglishSha(sha);
         uint size = english ? OBJ3_SIZE_EN : OBJ3_SIZE, hd = english ? OBJ3_HD_EN : OBJ3_HD;
@@ -1397,12 +1412,12 @@ static partial class TNPlus
             int o = (int)((english ? p.En : p.Fr) - EXE_CODE_DELTA);
             byte[] c = new byte[old.Length];
             Array.Copy(d, o, c, 0, c.Length);
-            if (!Same(c, old)) { msg = "unexpected bytes in __FF.EXE"; return false; }
+            if (!Same(c, old) && !Same(c, nw)) { msg = "unexpected bytes in __FF.EXE"; return false; }   // new: earlier beta 4
             nw.CopyTo(d, o);
             old.CopyTo(orig, o);
         }
         if (Sha256(orig) != (english ? EN_SHA : HD_SHA_ORIGINAL)) { msg = "unexpected __FF.EXE content"; return false; }
-        if (Sha256(d) != (english ? EN_SHA_READY2 : HD_SHA_READY2)) { msg = "__FF.EXE update failed"; return false; }
+        if (Sha256(d) != (english ? EN_SHA_READY3 : HD_SHA_READY3)) { msg = "__FF.EXE update failed"; return false; }
         string backup = exe + ".tnplus-original";
         try
         {
@@ -1410,7 +1425,7 @@ static partial class TNPlus
             File.WriteAllBytes(exe, d);
         }
         catch (Exception e) { msg = "cannot update __FF.EXE (" + e.Message + ")"; return false; }
-        if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY2 : HD_SHA_READY2)) { msg = "__FF.EXE update failed"; return false; }
+        if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY3 : HD_SHA_READY3)) { msg = "__FF.EXE update failed"; return false; }
         msg = "prepared (HD memory, far smooth terrain; original kept as __FF.EXE.tnplus-original)";
         return true;
     }
@@ -1972,13 +1987,13 @@ static partial class TNPlus
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
-                "; 1 = lighter polygons beyond 24 cells with SHARP and SHARPER (about +20 % fps at SHARPER)\r\nterrain_lod = " + (OptTerrainLod ? 1 : 0) + "\r\n" +
+                "; 1 = lighter polygons beyond 24 cells with SHARP and SHARPER (about +20 % fps, but terraces on hills; F11 toggles it in game)\r\nterrain_lod = " + (OptTerrainLod ? 1 : 0) + "\r\n" +
                 (OptSmoothCells > 0 ? "; tests: forced end of the smooth terrain (cells)\r\nsmooth_cells = " + OptSmoothCells + "\r\n" : "") +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
-                "; HD, SHARPER terrain, mission 12: 500000 = ~56 fps, 700000 = ~79. Too high for your PC = choppy sound\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 3\r\n" +
+                "; HD, SHARPER terrain, mission 12: 500000 = ~47 fps, 700000 = ~65. Too high for your PC = choppy sound\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 3\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (41 = F7), 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +

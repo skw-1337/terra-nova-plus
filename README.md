@@ -37,8 +37,8 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 - More ground detail far away. Steep walls in the distance no longer turn into a saw blade. Costs around 10-20 % fps.
 - Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 32 cells and SHARPER to 48.
 - The engine could not go past 31 cells: its vertex grid is 64x64 and its polygon buffers are small. TNPlus patches `TNOVA\__FF.EXE` once (128x128 grid, bigger buffers, 1 MB render memory) and keeps the untouched file as `__FF.EXE.tnplus-original`.
-- Beyond 24 cells the ground uses one polygon per 2x2 cells (the full ones stay up near you, no cracks at the join). Each polygon costs the same however small it is on screen, so this halves the count: 1806 to 887 at 48 cells. The columns hidden under the polygons are no longer drawn either. `terrain_lod = 0` in `TNPlus.ini` turns it off.
-- Mission 12 in HD, 48 cells: 46.5 fps without that at 500000 cycles, 56.4 with it, 79 at 700000. The game is limited by the CPU cycles, not by your PC, so the tool now starts at 700000.
+- Mission 12 in HD, 48 cells: 46.5 fps at 500000 cycles, 65 at 700000. The game is limited by the CPU cycles, not by your PC, so the tool now starts at 700000.
+- Optional, off by default: `terrain_lod = 1` in `TNPlus.ini` draws one polygon per 2x2 cells beyond 24 cells (about +20 % fps), but hills then show terraces. `F11` toggles it in game.
 
 ### Sound
 - **Fix reversed stereo** (off by default): under DOSBox the game's Sound Blaster 16 driver swaps left and right, cutscenes included. The tool can start DOSBox with the channels swapped back.
@@ -73,7 +73,7 @@ Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, ad
 - **Object distance** (beta 4, GAME / FAR / MAX, MAX by default). Bushes, trees and rocks were only drawn within 20 terrain cells whatever the detail setting, and units and buildings within a range per type (20 cells for PBAs). FAR draws scenery up to 30 cells and doubles the ranges, MAX goes to 40 cells and triples them (120 cells at most). The engine's fixed-size object list and the limits of its entity walk are raised first so the extra objects fit. The game has no model LOD to improve: objects are always drawn with the same model. Measured on mission 12 in HD: 24 to 65 objects drawn per frame, 84 to 82 fps.
 
 ### Small stuff
-- The tool starts DOSBox with 700000 CPU cycles since beta 4 (**CPU speed** in the launcher, `cpu_cycles` in `TNPlus.ini`, 0 to keep the edition's setting). The Steam and GOG configs ship with 115000, which makes the game crawl. Measured in HD with SHARPER terrain on mission 12: 56 fps at 500000, 79 at 700000. DOSBox used 0.6 CPU core at 700000. If the sound gets choppy, your PC can't keep up: pick a lower value. Higher speeds are safe for the gameplay thanks to the two fixes above.
+- The tool starts DOSBox with 700000 CPU cycles since beta 4 (**CPU speed** in the launcher, `cpu_cycles` in `TNPlus.ini`, 0 to keep the edition's setting). The Steam and GOG configs ship with 115000, which makes the game crawl. Measured in HD with SHARPER terrain on mission 12: 47 fps at 500000, 65 at 700000. DOSBox used 0.6 CPU core at 700000. If the sound gets choppy, your PC can't keep up: pick a lower value. Higher speeds are safe for the gameplay thanks to the two fixes above.
 - View distance moved from `I` to `J`: `I` is the game's infrared. Old settings files are updated on their own.
 
 ## Download & use
@@ -111,7 +111,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `key_freelook`, `key_noclip`, `key_distance` | `15`, `16`, `24` | **physical key scancodes** (hex): `15` = Y, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
 | `hit_fix` | `1` | `0` = leave the game's projectile hit test as it is (misses above ~30 fps) |
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps) |
-| `terrain_lod` | `1` | `0` = full polygons up to 48 cells (slower, see Terrain detail) |
+| `terrain_lod` | `0` | `1` = lighter polygons beyond 24 cells, faster but terraces on hills (`F11` in game) |
 | `object_distance` | `MAX` | `GAME`, `FAR` or `MAX`: how far scenery, units and buildings are drawn |
 | `cpu_cycles` | `700000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting (an old default, 300000 or 500000, is moved to 700000 once) |
 | `sound` | `1` | `0` = no beeps |
