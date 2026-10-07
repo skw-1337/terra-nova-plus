@@ -924,7 +924,10 @@ static partial class TNPlus
     // fix inserted before the game starts (an [autoexec] in a later -conf would only run after EXIT).
     // The editions ship DOSBox with few CPU cycles (Steam: 115000) and the game is CPU bound in the emulator, HD
     // even more (measured on the same mission in HD: 14.5 fps at 115000 cycles, 36.5 at 300000). The launch
-    // conf imposes cpu_cycles unless the setting is 0.
+    // conf imposes cpu_cycles unless the setting is 0, with cpu_throttle: some views cost the host far more per
+    // emulated cycle (infrared: 0.55 -> 0.70 core at 700000 in the same scene, the game then runs code it
+    // generates in memory), and when the host cannot keep up DOSBox lowers the cycles for a moment instead of
+    // falling behind (lag and choppy sound). The game copes with a varying frame rate (hit and physics fixes).
     static string CpuSection(string db)
     {
         if (CpuCycles <= 0) return "";
@@ -936,7 +939,7 @@ static partial class TNPlus
         }
         catch { }
         if (cur != CpuCycles.ToString()) Console.WriteLine("DOSBox CPU cycles: " + CpuCycles + " (the game's own config says " + cur + "; cpu_cycles in TNPlus.ini, 0 = leave it)");
-        return "[cpu]\r\ncpu_cycles = " + CpuCycles + "\r\n";
+        return "[cpu]\r\ncpu_cycles = " + CpuCycles + "\r\ncpu_throttle = true\r\n";
     }
 
     static string WriteLaunchConf(string db, int target)
@@ -1993,7 +1996,7 @@ static partial class TNPlus
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
-                "; HD, SHARPER terrain, mission 12: 500000 = ~47 fps, 700000 = ~65. Too high for your PC = choppy sound\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 3\r\n" +
+                "; HD, SHARPER terrain, mission 12: 500000 = ~47 fps, 700000 = ~65. DOSBox lowers them when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 3\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (41 = F7), 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
