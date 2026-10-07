@@ -60,6 +60,8 @@ static partial class TNPlus
     static bool OptPhysFix = true;                  // physics clock fixed for high frame rates (see PHYSFIX_AT)
     static int OptObjDist = 2;                      // object draw distance: 0 GAME, 1 FAR, 2 MAX (see OBJ_*)
     static readonly string[] OBJDIST_NAMES = { "GAME", "FAR", "MAX" };
+    static int OptFov = 0;                          // field of view of the main 3D view: index in FOV_NAMES (see FOV_*)
+    static readonly string[] FOV_NAMES = { "GAME", "90", "100", "110" };
     static int OptMusic = 0;                        // 0 Roland GS (General MIDI), 1 FM, 2 the game's own setting, 3 AWE32 (needs awe32.raw)
     static readonly string[] MUSIC_NAMES = { "ROLAND", "FM", "GAME'S OWN", "AWE32" };
     static readonly string[] MUSIC_INFO = { "Roland GS sounds of the Windows MIDI synthesizer (General MIDI)",
@@ -102,6 +104,97 @@ static partial class TNPlus
     static readonly byte[][] SMOOTH_OLD = { new byte[] { 0xC0, 0x3E, 0, 0 }, new byte[] { 0, 0x7D, 0, 0 }, new byte[] { 0x42, 0x72, 0, 0 } };
     static readonly byte[][] SMOOTH_NEW = { new byte[] { 0x40, 0x60, 0, 0 }, new byte[] { 0, 0xC0, 0, 0 }, new byte[] { 0x58, 0x98, 0, 0 } };
     static int smoothState = 0;                     // 0 to do, 1 buffers enlarged, -1 unavailable
+
+    // Field of view of the main 3D view (cockpit, full view, every zoom level); the small cockpit cameras keep
+    // theirs. 0x29E820 sets a camera up from its zoom whenever the canvas or the zoom changes: everything follows
+    // from that zoom (focal lengths, culling half-angles, view matrix, the 3D library's projection), and the stock
+    // view is 2 atan(1 / (1.1 zoom)) = 84.5 deg wide. The hook gives the main camera (0x38FBD4 / 0x38FB24) an
+    // effective zoom = zoom x K, K = 1 / (1.1 tan(FOV / 2)); the ring distances keep the raw zoom. Code in the
+    // free end of the HD code area, written at the main menu like the other code patches.
+    const uint FOV_CAVE = 0x465E00;                 // data: K, then 12 bytes, code at +0x10
+    static readonly string[] FOV_CODE = {
+        "51B80000010029C8BA40AF2F00FFD2BF0000020029C7598B1E81FED4FB3800752689C8F72D005E46000FACD0108944240485DB741289D889C2C1FA10C1E010F73D005E460089C385DB7506BD00000100C3B80000010029D8BA40AF2F00FFD2BD0000020029C5C3F72D045E46000FACD01089C2894604C3B8A5C62E00FFD05052A176233600F72D085E46000FACD010A3762336005A58C3",
+        "51B80000010029C8BAB0AC2F00FFD2BF0000020029C7598B1E81FE24FB3800752689C8F72D005E46000FACD0108944240485DB741289D889C2C1FA10C1E010F73D005E460089C385DB7506BD00000100C3B80000010029D8BAB0AC2F00FFD2BD0000020029C5C3F72D045E46000FACD01089C2894604C3B8C5C42E00FFD05052A1CE223600F72D085E46000FACD010A3CE2236005A58C3" };
+    static readonly uint[] FOV_HOOK = { 0x29E833, 0x29E843 };
+    static readonly byte[][] FOV_HOOK_NEW = { new byte[] { 0xE8, 0xD8, 0x75, 0x1C, 0x00, 0xEB, 0x2C }, new byte[] { 0xE8, 0xC8, 0x75, 0x1C, 0x00, 0xEB, 0x2C } };
+    static readonly byte[] FOV_HOOK_OLD = { 0xB8, 0x00, 0x00, 0x01, 0x00, 0x29, 0xC8 };
+    // 16:9 (the picture is stretched x4/3 by DOSBox): every camera's vertical scale (camera+4, 0x29EA61) x4/3 and
+    // the 3D library's pixel ratio x3/4 right after the renderer loads it (call at 0x29E751): proportions stay right
+    // on screen in every view, small cockpit cameras included. The main camera's wider view then comes from its
+    // effective zoom like any field of view, so the terrain's culling angles follow it (with the old global pixel
+    // ratio the polygon terrain stopped at 45 deg, short of the screen edges).
+    static readonly uint[] WIDE_HOOK_B = { 0x29EA61, 0x29EA71 }, WIDE_HOOK_C = { 0x29E751, 0x29E761 };
+    static readonly byte[] WIDE_B_OLD = { 0x89, 0xC2, 0x89, 0x46, 0x04 };
+    static readonly byte[][] WIDE_B_NEW = { new byte[] { 0xE8, 0x11, 0x74, 0x1C, 0x00 }, new byte[] { 0xE8, 0x01, 0x74, 0x1C, 0x00 } };
+    static readonly byte[][] WIDE_C_OLD = { new byte[] { 0xE8, 0x4F, 0xDF, 0x04, 0x00 }, new byte[] { 0xE8, 0x5F, 0xDD, 0x04, 0x00 } };
+    static readonly byte[][] WIDE_C_NEW = { new byte[] { 0xE8, 0x31, 0x77, 0x1C, 0x00 }, new byte[] { 0xE8, 0x21, 0x77, 0x1C, 0x00 } };
+    static bool wideHooks = false;                  // 16:9 done by the hooks (else the old pixel ratio way)
+    static int fovState = 0;                        // 0 to do, 1 on, -1 off or unavailable
+
+    // The polygon terrain is built in 3 sectors of 45 deg around the heading (a 135 deg window that moves by 45 deg
+    // steps), from the culling half-angle at camera+0x18. A wider view facing a diagonal needs a 4th sector: the
+    // builder then gave up after a few rows (about 350 polygons, voxel walls on screen). The hook on its call
+    // (0x2AA3B2 / 0x2AA3C2) lowers the half-angle it sees to what the window covers at that heading, then puts it
+    // back; the strip left at one screen edge near a diagonal (8 deg at most at 100 deg) is drawn by the voxel.
+    const uint WEDGE_CAVE = 0x465F00;
+    static readonly string[] WEDGE_CODE = {
+        "5051560FB74818510FB7720CB900F0000081FE00E000007753B90010000081FE002000007646B90030000081FE004000007239B90050000081FE00600000762CB90070000081FE00800000721FB90090000081FE00A000007612B900B0000081FE00C000007205B900D0000029CE0FBFF685F67D02F7DEF7DE81C600300000393424760466897018B968892A00FFD1598B74240866894E185E5983C404C3",
+        "5051560FB74818510FB7720CB900F0000081FE00E000007753B90010000081FE002000007646B90030000081FE004000007239B90050000081FE00600000762CB90070000081FE00800000721FB90090000081FE00A000007612B900B0000081FE00C000007205B900D0000029CE0FBFF685F67D02F7DEF7DE81C600300000393424760466897018B978892A00FFD1598B74240866894E185E5983C404C3" };
+    static readonly uint[] WEDGE_HOOK = { 0x2AA3B2, 0x2AA3C2 };
+    static readonly byte[] WEDGE_OLD = { 0xE8, 0xB1, 0xE5, 0xFF, 0xFF };
+    static readonly byte[][] WEDGE_NEW = { new byte[] { 0xE8, 0x49, 0xBB, 0x1B, 0x00 }, new byte[] { 0xE8, 0x39, 0xBB, 0x1B, 0x00 } };
+
+    static int FovDegrees() { int d; return OptFov > 0 && int.TryParse(FOV_NAMES[OptFov], out d) ? d : 0; }
+
+    static void TryFov()
+    {
+        fovState = -1; wideHooks = false;
+        int deg = FovDegrees();
+        bool wide = WideActive();
+        if (deg == 0 && !wide) return;
+        // GAME in 16:9 = the view widened x4/3 as before (100.9 deg)
+        double k = deg > 0 ? 1 / (1.1 * Math.Tan(deg * Math.PI / 360)) : 0.75;
+        for (int lang = 0; lang < 2; lang++)
+        {
+            byte[] code = Hex(FOV_CODE[lang]);
+            byte[] h = Read(FOV_HOOK[lang], 7), c = Read(FOV_CAVE + 0x10, code.Length);
+            bool free = true;
+            foreach (byte x in c) if (x != 0) { free = false; break; }
+            if (!(Same(h, FOV_HOOK_OLD) || Same(h, FOV_HOOK_NEW[lang])) || !(free || Same(c, code))) continue;
+            byte[] hb = Read(WIDE_HOOK_B[lang], 5), hc = Read(WIDE_HOOK_C[lang], 5);
+            bool wideOk = wide && (Same(hb, WIDE_B_OLD) || Same(hb, WIDE_B_NEW[lang])) && (Same(hc, WIDE_C_OLD[lang]) || Same(hc, WIDE_C_NEW[lang]));
+            if (wide && !wideOk) { if (deg == 0) return; k /= 0.75; }   // 16:9 left to the old way: plain field of view
+            byte[] data = new byte[16];
+            BitConverter.GetBytes((int)Math.Round(65536 * (wideOk ? k : (deg > 0 ? k : 1)))).CopyTo(data, 0);
+            BitConverter.GetBytes(wideOk ? 0x15555 : 0x10000).CopyTo(data, 4);
+            BitConverter.GetBytes(wideOk ? 0xC000 : 0x10000).CopyTo(data, 8);
+            Write(FOV_CAVE, data);
+            Write(FOV_CAVE + 0x10, code);           // the code first, then the call to it
+            Write(FOV_HOOK[lang], FOV_HOOK_NEW[lang]);
+            if (wideOk) { Write(WIDE_HOOK_B[lang], WIDE_B_NEW[lang]); Write(WIDE_HOOK_C[lang], WIDE_C_NEW[lang]); wideHooks = true; }
+            if (wideOk)
+            {   // the old way may already have changed the global pixel ratio: back to stock, the hooks do it now
+                uint rp = ReadUInt(aRatioRef);
+                foreach (uint ra in (rp > 0x1000 && rp + 4 < regStart + regSize - guestBase) ? new[] { aRatio, rp } : new[] { aRatio })
+                {
+                    int v = ReadInt(ra);
+                    for (int r = 0; r < 2; r++) if (v == (int)(RATIO_STOCK[r] * WIDE)) WriteInt(ra, RATIO_STOCK[r]);
+                }
+            }
+            byte[] wc = Hex(WEDGE_CODE[lang]), w = Read(WEDGE_HOOK[lang], 5), wcur = Read(WEDGE_CAVE, wc.Length);
+            bool wfree = true;
+            foreach (byte x in wcur) if (x != 0) { wfree = false; break; }
+            if ((Same(w, WEDGE_OLD) || Same(w, WEDGE_NEW[lang])) && (wfree || Same(wcur, wc)))
+            {
+                Write(WEDGE_CAVE, wc);
+                Write(WEDGE_HOOK[lang], WEDGE_NEW[lang]);
+            }
+            fovState = 1;
+            Say("Field of view " + (deg > 0 ? deg + " degrees" : "100.9 degrees (16:9)") + (wideHooks ? ", 16:9 camera" : "") + " (the game: 84.5)", 0);
+            return;
+        }
+        Say("Field of view unavailable: unsupported game version", 300, 300);
+    }
 
     static int SmoothCells()
     {
@@ -405,6 +498,13 @@ static partial class TNPlus
     static bool haveFog, have400, haveWide, haveDetail, haveStereo;
     static uint aStereo;
     static bool launchedWide = false;               // DOSBox started by us with the 16:9 overlay
+    static bool OptWideAttach = false;              // ini only (tests): 16:9 camera also on a game we attached to
+
+    // the 16:9 camera correction is running on this game
+    static bool WideActive()
+    {
+        return OptWide && haveWide && ((launchedWide && launched != null && gamePid == launched.Id) || OptWideAttach);
+    }
     static bool launchedDemo = false;               // DOSBox started by us on one of the 1996 demos
     static Process launched = null;                 // the DOSBox process started from the menu
     static bool frozen = false, clipped = false;
@@ -551,6 +651,7 @@ static partial class TNPlus
             left.Add(Opt("3", "Terrain detail", Val(DETAIL_NAMES[OptDetail]), "BETA", 0));
             left.Add(Opt("4", "View distance", Val(DIST_NAMES[OptDistance]), null, ScanDistance));
             left.Add(Opt("O", "Object distance", Val(OBJDIST_NAMES[OptObjDist]), "BETA", 0));
+            left.Add(Opt("V", "Field of view", Val(FOV_NAMES[OptFov]), "BETA", 0));
             left.Add(Sec("CONTROLS"));
             left.Add(Opt("5", "Mouse freelook", Sw(OptFreelook), null, ScanFreelook));
             left.Add(Opt("6", "Noclip", Sw(OptNoclip), null, ScanNoclip));
@@ -621,6 +722,7 @@ static partial class TNPlus
                 case '3': OptDetail = (OptDetail + 1) % 3; break;
                 case '4': OptDistance = (OptDistance + 1) % 3; break;
                 case 'O': OptObjDist = (OptObjDist + 1) % 3; break;
+                case 'V': OptFov = (OptFov + 1) % FOV_NAMES.Length; break;
                 case '5': OptFreelook = !OptFreelook; break;
                 case '6': OptNoclip = !OptNoclip; break;
                 case '7': OptStereoFix = !OptStereoFix; break;
@@ -1037,7 +1139,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null; smoothState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
@@ -1051,6 +1153,7 @@ static partial class TNPlus
                 if (OptPhysFix && physFixState == 0 && now - lastPhys > 0.5) { lastPhys = now; TryPhysFix(); }
                 if (OptObjDist > 0 && objState == 0 && now - lastPhys > 0.5) TryObjDist();
                 if (OptDetail > 0 && smoothState == 0 && now - lastPhys > 0.5) TrySmooth();
+                if ((OptFov > 0 || WideActive()) && fovState == 0 && now - lastPhys > 0.5) TryFov();
                 if (objState == 1 && now - lastObj > 0.5) { lastObj = now; ObjDistTable(); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
@@ -1293,7 +1396,7 @@ static partial class TNPlus
         }
         // widescreen: pixel ratio x0.75 (the 3D library rescales the view every frame, before clipping),
         // and the terrain engine's two cached values realigned (otherwise objects slide on the ground)
-        if (OptWide && launchedWide && haveWide && launched != null && gamePid == launched.Id)
+        if (WideActive() && !wideHooks)
         {
             uint rp = ReadUInt(aRatioRef);
             foreach (uint a in (rp > 0x1000 && rp + 4 < regStart + regSize - guestBase) ? new[] { aRatio, rp } : new[] { aRatio })
@@ -1429,7 +1532,12 @@ static partial class TNPlus
         else
         {
             byte[] zone = Read(HdPayload.Zone, (int)(HdPayload.End - HdPayload.Zone));
-            foreach (byte b in zone) if (b != 0) { why = "its memory area is not free"; break; }
+            for (int i = 0; i < zone.Length; i++)
+            {
+                uint a = HdPayload.Zone + (uint)i;
+                if (a >= FOV_CAVE && a < WEDGE_CAVE + WEDGE_CODE[0].Length / 2) continue;   // field of view hooks
+                if (zone[i] != 0) { why = "its memory area is not free"; break; }
+            }
         }
         if (why != null) { hdState = -1; Say("HD 640x400 unavailable: " + why, 300, 300); return; }
         Write(HdPayload.Data, HdPayload.DataInit);
@@ -1872,6 +1980,8 @@ static partial class TNPlus
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
+                    case "wide_attach": OptWideAttach = v != "0"; break;
+                    case "field_of_view": OptFov = Math.Max(0, Array.IndexOf(FOV_NAMES, v.ToUpperInvariant())); break;
                     case "object_distance": OptObjDist = Math.Max(0, Array.IndexOf(OBJDIST_NAMES, v.ToUpperInvariant())); break;
                     case "key_smoothing": ScanSmoothing = Convert.ToInt32(v, 16); break;
                     case "key_stereo": ScanStereo = Convert.ToInt32(v, 16); break;
@@ -1916,7 +2026,9 @@ static partial class TNPlus
                 "; HD smoothing at start (toggled in game with key_smoothing)\r\nhd_smoothing = " + (HdSmoothing ? 1 : 0) + "\r\n" +
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
+                "; GAME, 90, 100 or 110: horizontal field of view of the 3D view in degrees (the game: 84.5)\r\nfield_of_view = " + FOV_NAMES[OptFov] + "\r\n" +
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
+                (OptWideAttach ? "wide_attach = 1\r\n" : "") +
                 (OptSmoothCells > 0 ? "; tests: forced end of the smooth terrain (cells)\r\nsmooth_cells = " + OptSmoothCells + "\r\n" : "") +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +

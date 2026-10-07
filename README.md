@@ -11,8 +11,9 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **View distance** | `J` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
 | **Force 320×400** | — | The engine's best resolution, applied automatically in every mission (the game normally only keeps it in save files). |
 | **Widescreen 16:9** | — | DOSBox stretches the picture to 16:9 and the tool widens the engine's field of view by 33 % to match: correct proportions, more of the battlefield on the sides. |
+| **Field of view** | — | `GAME` / `90` / `100` / `110` degrees for the 3D view, cockpit and full view, at every zoom level (the game: 84.5). The small cockpit cameras keep theirs. Works in 4:3 and in 16:9. |
 
-**No game file is modified**: everything happens in memory while you play, and stops when you quit.
+Everything happens in memory while you play, except one thing: for HD and terrain detail TNPlus patches `TNOVA\__FF.EXE` once, and keeps the untouched file as `__FF.EXE.tnplus-original`.
 
 ## 1.1.0 beta
 
@@ -110,6 +111,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `key_freelook`, `key_noclip`, `key_distance` | `15`, `16`, `24` | **physical key scancodes** (hex): `15` = Y, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
 | `hit_fix` | `1` | `0` = leave the game's projectile hit test as it is (misses above ~30 fps) |
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps) |
+| `field_of_view` | `GAME` | `GAME`, `90`, `100` or `110`: horizontal field of view in degrees (GAME = 84.5, or 100.9 in 16:9) |
 | `object_distance` | `MAX` | `GAME`, `FAR` or `MAX`: how far scenery, units and buildings are drawn |
 | `cpu_cycles` | `700000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting (an old default, 300000 or 500000, is moved to 700000 once) |
 | `sound` | `1` | `0` = no beeps |
@@ -164,7 +166,8 @@ or manually:
 | Noclip | finds the player's physics state (position ×6 in 16.16 fixed point, matched against the object table without writing anything) and drives it directly |
 | View distance | rewrites the 1024-entry fog table and its check copy in one go (the game compares them) with a larger fog radius |
 | 320×400 | goes through the same path as the options screen's "Accept" button; the game applies it on the next mission frame |
-| Widescreen | the 3D library recomputes its horizontal view scale every frame from the pixel ratio, before clipping: ratio ×0.75 = a 33 % wider view with no empty borders. The terrain engine keeps two values of its own computed once from that scale; the tool realigns them, otherwise objects would "slide" on the ground when you turn. DOSBox is started with `aspect = stretch`. |
+| Field of view | every camera is set up by one routine from its zoom (focal lengths, culling angles, view matrix, the 3D library's projection); the stock view is 2·atan(1 / 1.1·zoom) = 84.5°. A hook gives the main camera an effective zoom = zoom × 1 / (1.1·tan(FOV/2)), so every zoom level follows; the terrain rings keep the raw zoom. The polygon terrain is built in 3 sectors of 45° around the heading: a second hook lowers the angle that builder sees to what its window covers, otherwise views wider than 90° facing a diagonal lost most of the ground. |
+| Widescreen | DOSBox is started with `aspect = stretch`. Every camera's vertical scale ×4/3 and the 3D library's pixel ratio ×3/4 (hooks in the camera setup and the renderer): correct proportions in every view, small cockpit cameras included. The main view gets 33 % more width through its effective zoom, so the terrain culling follows the screen edges (the old way, a global pixel ratio, left the polygon terrain short of the edges; it is kept as a fallback). |
 
 ## Credits
 
