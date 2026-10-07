@@ -2,7 +2,7 @@
 
 **An all-in-one quality-of-life pack for *Terra Nova: Strike Force Centauri*** (Looking Glass Technologies, 1996), running in DOSBox — **Steam, GOG or standalone**.
 
-One small external tool. Pick your options in a menu, press Enter, and the game starts with them:
+One small external tool. Pick your options in its window, click Launch, and the game starts with them:
 
 | Option | Key in game | What it does |
 |---|---|---|
@@ -21,11 +21,12 @@ One small external tool. Pick your options in a menu, press Enter, and the game 
 This is a big one. I rewrote the launcher and added a bunch of things people asked for on TTLG, thanks to [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813). It's a beta, so tell me what breaks.
 
 ### New launcher
-- Colours, and a badge that shows which copy of the game you're launching: **GOG**, **STEAM** or **OTHER**, plus its language. If you have more than one install, `G` switches between them.
-- **Presets** with `P`: ORIGINAL, CLASSIC+ and BEST. Change anything yourself and it shows CUSTOM.
-- Display is now a single choice (Original / 320x400 / HD 640x400), so you can't mix incompatible modes by accident.
-- In-game keys are shown in purple next to each option, menu keys in cyan.
-- Since beta 2, a yellow **BETA** badge marks what is new in 1.1.0, and a red **EXPERIMENTAL** one what is still rough.
+- Since beta 3 it's a real window, in the colours of the game's cockpit. Hover a setting to read what it does at the bottom. `TNPlus.exe --console` keeps the old text menu.
+- A badge shows which copy of the game you're launching: **GOG**, **STEAM** or **OTHER**, plus its language. If you have more than one install, **Switch** goes to the next one.
+- **Presets**: ORIGINAL, CLASSIC+ and BEST. Change anything yourself and it shows CUSTOM.
+- Display is a single choice (Original / Sharp 320x400 / HD 640x400), so you can't mix incompatible modes by accident. Click a selector to cycle its choices, right-click to go back.
+- Settings are grouped: Picture, Sound, Controls, Fixes (things that are only needed if you have the problem), Cheats and Launch. In-game keys are shown in purple next to each option.
+- A yellow **BETA** badge marks what is new in 1.1.0, and a red **EXPERIMENTAL** one what is still rough.
 
 ### HD 640x400
 - The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
@@ -48,17 +49,17 @@ The catch: nine sounds out of ten in that bank live in the ROM chip of the real 
 
 1. Get `awe32.raw` (1 MB), the AWE32 ROM dump used by the 86Box emulator: go to [86Box/roms, sound/creative](https://github.com/86Box/roms/tree/master/sound/creative), click `awe32.raw`, then the download button on the right ("Download raw file").
 2. Put it in the same folder as `TNPlus.exe` (keep the tool in its own folder, it writes a few files next to itself).
-3. Start the launcher and press `8` until Music says AWE32.
+3. Start the launcher: AWE32 appears in the Music choices.
 
 Without the file the choice isn't shown and music stays on Roland. It's experimental: a few instruments are still slightly out of tune, and I have no real card to compare with. The percussion the bank doesn't define is played with the Windows sound set.
 
 ### Demos
 
-`L` launches the full game, demo 1 or demo 2. Both demos have missions that aren't in the full game. GOG and Steam already ship them (`TNDEMO1` and `TNDEMO2` next to `TNOVA`), so there's nothing to download. Freelook, noclip, view distance and 320x400 work in them too. HD doesn't yet.
+**Run** picks the full game, demo 1 or demo 2. Both demos have missions that aren't in the full game. GOG and Steam already ship them (`TNDEMO1` and `TNDEMO2` next to `TNOVA`), so there's nothing to download. Freelook, noclip, view distance and 320x400 work in them too. HD doesn't yet.
 
 If your install has no `TNDEMO1` / `TNDEMO2` folder (CD version): get the demos from the Internet Archive (Demo 2: [archive.org](https://archive.org/details/TerraNovaStrikeForceCentauriDemo), both are listed in [zjorz's setup guide on TTLG](https://www.ttlg.com/forums/showthread.php?t=149972)), install each one in DOSBox into `C:\TNDEMO1` and `C:\TNDEMO2` where `C:` is your game folder, and run their setup once. The tool looks for `TNDEMO.BAT` and `TN.CFG` in those folders. Demo files are not included here: they belong to the game's rights holders.
 
-Stereo fix and demos need the tool to start DOSBox (Enter). With **A** (attach), add `mixer sb reverse /noshow` at the top of your DOSBox `[autoexec]` instead, or use ripsaw8080's `SB16.DIG` patch (thanks to rfnagel and zjorz for pointing it out).
+Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, add `mixer sb reverse /noshow` at the top of your DOSBox `[autoexec]` instead, or use ripsaw8080's `SB16.DIG` patch (thanks to rfnagel and zjorz for pointing it out).
 
 ### Gameplay (beta 3)
 - **Projectile hit fix** (on by default). Known bug since the 90s: with fast CPU cycles the multipulsar can't hit moving targets and drones become nearly immortal. Nightdive even dropped the Steam config to 115000 cycles because of it. Cause found in the game code: every frame a projectile checks the distance it just travelled against the entity grid, in steps of a fixed size, and the number of steps is rounded *down*. Above ~30 fps a pulsar bolt travels less than one step per frame, so the count is 0 and the bolt tests nothing: it can only hit the ground. The fix rounds the count up, and projectiles hit at any frame rate, yours and the enemies' alike (yes, the game gets a bit harder: that's how it was meant to play). Needed if you use the 300000 cycles the tool sets.
@@ -69,25 +70,15 @@ Stereo fix and demos need the tool to start DOSBox (Enter). With **A** (attach),
 
 ## Download & use
 
-1. Download `TerraNovaPlus_v1.0.1.zip` from the [Releases](../../releases) page and unzip it anywhere.
-2. Run **`TNPlus.exe`**. A menu appears:
+1. Download `TerraNovaPlus_v1.1.0-beta3.zip` from the [Releases](../../releases) page and unzip it anywhere.
+2. Run **`TNPlus.exe`**. A window opens:
 
-   ```
-     1  Mouse freelook (key Y)                            [ON]
-     2  Noclip (key U)                                    [ON]
-     3  View distance at start (key J)                    [MAX]
-     4  Force 320x400 (the engine's best resolution)      [ON]
-     5  Widescreen 16:9 (game launched from here)         [off]
+   ![Terra Nova Plus launcher](docs/launcher_beta3.png)
 
-     G  Game: C:\...\Terra Nova Strike Force Centauri
+   Pick a preset or set things one by one, then click **Launch**. Your choices are saved in `TNPlus.ini`.
+3. The window closes and a small console stays minimized in the taskbar. Play! When the game closes, the window comes back.
 
-     ENTER  launch the game      A  attach to a game started elsewhere      Q  quit
-   ```
-
-   Press the numbers to switch options, **Enter** to launch the game. Your choices are saved in `TNPlus.ini`.
-3. The tool minimizes itself and waits in the taskbar. Play! When the game closes, the menu comes back.
-
-The game folder is detected automatically (**GOG** registry and **Steam** libraries). If you have both, **G** switches between them. For any other install, start the game yourself and choose **A**: everything works except widescreen, which needs the tool to start DOSBox.
+The game folder is detected automatically (**GOG** registry and **Steam** libraries). If you have both, **Switch** goes from one to the other. For any other install, start the game yourself and click **Attach**: everything works except widescreen, stereo fix and music, which need the tool to start DOSBox.
 
 SHA-256 of `TNPlus.exe` v1.0.1: `8DEBF7EA5AE60536A01ED160BD30672B7B42D1D25011FFE0A19D7544C63EE996`
 
