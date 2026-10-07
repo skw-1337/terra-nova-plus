@@ -21,6 +21,7 @@ static partial class TNPlus
     static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono;
 
     static Label guiHelp, guiWarn, guiPreset;
+    static readonly string[] SPEED_NAMES = { "400000", "500000", "600000", "700000", "800000", "GAME'S OWN" };
     static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed, cbObj;
     const int ROW0 = 46, ROWH = 32, CTL_H = 26, COL_CTL = 156, COL_W = 140, COL_BADGE = 306;
     static int PaneH(int rows) { return ROW0 + rows * ROWH - (ROWH - CTL_H) + 14; }
@@ -144,8 +145,8 @@ static partial class TNPlus
         Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);
         cbTarget = Combo(pLaunch, "Run", 0, new[] { "FULL GAME", "DEMO 1", "DEMO 2" }, null, "The two 1996 demos shipped with GOG and Steam have missions the full game hasn't. No HD there yet.");
         cbPreset = Combo(pLaunch, "Preset", 1, new[] { "ORIGINAL", "CLASSIC+", "BEST", "CUSTOM" }, null, "Presets set picture and controls at once. Fixes and music are yours to choose.");
-        cbSpeed = Combo(pLaunch, "CPU speed", 2, new[] { "300000", "400000", "500000", "600000", "GAME'S OWN" }, "BETA",
-            "DOSBox CPU cycles. HD on a mid-range PC: 300000 ~37 fps, 400000 ~50, 500000 ~62, 600000 ~76. Choppy sound = too high for your PC.");
+        cbSpeed = Combo(pLaunch, "CPU speed", 2, SPEED_NAMES, "BETA",
+            "DOSBox CPU cycles: the game runs as fast as they allow. HD with SHARPER terrain: 500000 ~47 fps, 600000 ~56, 700000 ~65, 800000 ~75. Choppy sound = too high for your PC.");
         guiPreset = Lbl(pLaunch, "", 14, PaneH(3) - 4, TSmall, TDim); guiPreset.AutoSize = false; guiPreset.Size = new Size(pw - 28, 20);
 
         // help and warnings: a readout strip like the cockpit's message line
@@ -210,8 +211,8 @@ static partial class TNPlus
             music == 3 ? ". Experimental: barely tested, some instruments may sound off." : ".");
         ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; cbTarget.Set(LaunchTarget);
         int sp = Array.IndexOf(CYCLE_CHOICES, CpuCycles);
-        if (sp < 0) { cbSpeed.Items = new[] { "300000", "400000", "500000", "600000", "GAME'S OWN", CpuCycles.ToString() }; sp = 5; }
-        cbSpeed.CycleMax = 4; cbSpeed.Set(sp);
+        if (sp < 0) { var it = new List<string>(SPEED_NAMES); it.Add(CpuCycles.ToString()); cbSpeed.Items = it.ToArray(); sp = SPEED_NAMES.Length; }
+        cbSpeed.CycleMax = SPEED_NAMES.Length - 1; cbSpeed.Set(sp);
         foreach (CheckBox c in new[] { ckWide, ckFree, ckClip, ckStereo, ckHit, ckPhys }) Led(c);
         int p = CurrentPreset(); cbPreset.Set(p < 0 ? 3 : p);
         guiPreset.Text = p < 0 ? "Your own settings. A preset starts again from a known mix." : PRESET_INFO[p];

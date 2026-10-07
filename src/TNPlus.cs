@@ -75,8 +75,8 @@ static partial class TNPlus
     static int ScanSmoothing = 0x58;                // F12: HD smoothing on / off
     static int ScanStereo = 0x41;                   // F7: swap the stereo of the sound effects in game
     static double NoclipSpeed = 15.0;               // game units per second (a walking PBA ~2.5)
-    static int CpuCycles = 500000;                  // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
-    static readonly int[] CYCLE_CHOICES = { 300000, 400000, 500000, 600000, 0 };
+    static int CpuCycles = 700000;                  // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
+    static readonly int[] CYCLE_CHOICES = { 400000, 500000, 600000, 700000, 800000, 0 };
     static string GameDir = "";
 
     static readonly string[] DIST_NAMES = { "NORMAL", "FAR", "MAX" };
@@ -1835,7 +1835,8 @@ static partial class TNPlus
     static void LoadSettings()
     {
         if (!File.Exists(IniPath)) { SaveSettings(); return; }
-        bool haveDisplay = false, oldForce = false, oldHd = false, haveSpeed = false;
+        bool haveDisplay = false, oldForce = false, oldHd = false;
+        int speedVer = 0;
         foreach (string line in File.ReadAllLines(IniPath))
         {
             string l = line.Trim();
@@ -1868,8 +1869,8 @@ static partial class TNPlus
                     case "sensitivity_y": SensY = int.Parse(v); break;
                     case "invert_y": InvertY = v == "1"; break;
                     case "noclip_speed": NoclipSpeed = double.Parse(v, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "cpu_cycles": CpuCycles = int.Parse(v); if (CpuCycles == 300000 && !haveSpeed) CpuCycles = 500000; break;   // old default
-                    case "speed_version": haveSpeed = true; break;
+                    case "cpu_cycles": CpuCycles = int.Parse(v); break;
+                    case "speed_version": int.TryParse(v, out speedVer); break;
                     case "key_freelook": ScanFreelook = Convert.ToInt32(v, 16); break;
                     case "key_noclip": ScanNoclip = Convert.ToInt32(v, 16); break;
                     case "key_distance": ScanDistance = Convert.ToInt32(v, 16); if (ScanDistance == 0x17) ScanDistance = 0x24; break;   // old default I = infrared
@@ -1880,6 +1881,9 @@ static partial class TNPlus
             catch { Console.WriteLine("Ignored bad setting: " + l); }
         }
         if (!haveDisplay) Display = oldHd ? 2 : oldForce ? 1 : 0;   // ini of v1.0.x
+        // old defaults (300000 before beta 3, 500000 before the 48-cell terrain): the game is limited by the
+        // cycles, not by the PC (DOSBox used 0.6 core at 700000 in HD on the test PC)
+        if (speedVer < 3 && (CpuCycles == 300000 || CpuCycles == 500000)) CpuCycles = 700000;
         ApplyDisplay();
     }
 
@@ -1908,7 +1912,7 @@ static partial class TNPlus
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
-                "; HD on a mid-range PC: 300000 = ~37 fps, 400000 = ~50, 500000 = ~62, 600000 = ~76. Too high for your PC = choppy sound\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 2\r\n" +
+                "; HD with SHARPER terrain on a mid-range PC: 500000 = ~47 fps, 600000 = ~56, 700000 = ~65, 800000 = ~75. Too high for your PC = choppy sound\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 3\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (41 = F7), 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
