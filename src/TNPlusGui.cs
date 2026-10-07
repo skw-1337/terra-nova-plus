@@ -21,7 +21,7 @@ static partial class TNPlus
     static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono;
 
     static Label guiHelp, guiWarn, guiPreset;
-    static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed;
+    static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed, cbObj;
     const int ROW0 = 46, ROWH = 32, CTL_H = 26, COL_CTL = 156, COL_W = 140, COL_BADGE = 306;
     static int PaneH(int rows) { return ROW0 + rows * ROWH - (ROWH - CTL_H) + 14; }
 
@@ -124,11 +124,12 @@ static partial class TNPlus
 
         // panels: picture / sound / controls on the left, fixes / cheats / launch on the right
         int y0 = 124, lx = 20, rx = 400, pw = 360;
-        Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(4));
+        Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(5));
         cbDisplay = Combo(pPic, "Display", 0, DISPLAY_LABELS, "BETA", "HD 640x400: the 3D view drawn at twice the width, GOG and Steam, French and English. " + KeyName(ScanSmoothing) + " toggles the smoothing in game.");
         ckWide = Switch(pPic, "Widescreen 16:9", 1, null, "The camera is corrected for a 16:9 DOSBox window. Needs the game to be launched from here.");
         cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "More ground detail far away: steep walls stop looking like a saw. Costs 10-20 % fps.");
         cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), "View distance at mission start. " + KeyName(ScanDistance) + " cycles it in game.");
+        cbObj = Combo(pPic, "Object distance", 4, OBJDIST_NAMES, "BETA", "How far bushes, trees, units and buildings are drawn. GAME: scenery 20 cells. FAR: 30, unit ranges x2. MAX: 40, x3. About 4 % fps at MAX.");
         Panel pSnd = Pane(f, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));
         bool awe = AweRom() != null;
         cbMusic = Combo(pSnd, "Music", 0, awe ? MUSIC_NAMES : new[] { MUSIC_NAMES[0], MUSIC_NAMES[1], MUSIC_NAMES[2] }, "BETA", "");
@@ -178,6 +179,7 @@ static partial class TNPlus
         ckWide.CheckedChanged += delegate { if (!guiBusy) { OptWide = ckWide.Checked; GuiRefresh(); } };
         cbDetail.Changed += delegate { if (!guiBusy) { OptDetail = cbDetail.Index; GuiRefresh(); } };
         cbDist.Changed += delegate { if (!guiBusy) { OptDistance = cbDist.Index; GuiRefresh(); } };
+        cbObj.Changed += delegate { if (!guiBusy) { OptObjDist = cbObj.Index; GuiRefresh(); } };
         ckFree.CheckedChanged += delegate { if (!guiBusy) { OptFreelook = ckFree.Checked; GuiRefresh(); } };
         ckClip.CheckedChanged += delegate { if (!guiBusy) { OptNoclip = ckClip.Checked; GuiRefresh(); } };
         ckStereo.CheckedChanged += delegate { if (!guiBusy) { OptStereoFix = ckStereo.Checked; GuiRefresh(); } };
@@ -201,7 +203,7 @@ static partial class TNPlus
         guiBusy = true;
         if (guiRedrawGame != null) guiRedrawGame();
         string why; bool hdOk = HdAvailable(out why);
-        cbDisplay.Set(Display); ckWide.Checked = OptWide; cbDetail.Set(OptDetail); cbDist.Set(OptDistance);
+        cbDisplay.Set(Display); ckWide.Checked = OptWide; cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist);
         ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix;
         int music = EffectiveMusic(); cbMusic.Set(music);
         cbMusic.Tag = MUSIC_INFO[music] + (AweRom() == null ? ". Optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README." :

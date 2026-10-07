@@ -57,6 +57,8 @@ static partial class TNPlus
     static bool OptStereoFix = false;                // DOSBox: swap the Sound Blaster stereo (the game's SB16 driver reverses it)
     static bool OptHitFix = true;                   // projectile hit test fixed for high frame rates (see TryHitFix)
     static bool OptPhysFix = true;                  // physics clock fixed for high frame rates (see PHYSFIX_AT)
+    static int OptObjDist = 2;                      // object draw distance: 0 GAME, 1 FAR, 2 MAX (see OBJ_*)
+    static readonly string[] OBJDIST_NAMES = { "GAME", "FAR", "MAX" };
     static int OptMusic = 0;                        // 0 Roland GS (General MIDI), 1 FM, 2 the game's own setting, 3 AWE32 (needs awe32.raw)
     static readonly string[] MUSIC_NAMES = { "ROLAND", "FM", "GAME'S OWN", "AWE32" };
     static readonly string[] MUSIC_INFO = { "Roland GS sounds of the Windows MIDI synthesizer (General MIDI)",
@@ -153,6 +155,11 @@ static partial class TNPlus
     //   into the "mov [remainder], ebp" that follows. Measured with the fix: 1.9 units/s at 37 and at 76 fps.
     static readonly uint[] PHYSFIX_AT = { 0x3121F7, 0x311F77 };
     static readonly byte[] PHYSFIX_OLD = { 0xEB, 0x06, 0x89, 0x2D }, PHYSFIX_NEW = { 0x31, 0xED, 0x89, 0x2D };
+    // Second part: the engine skipped the physics of any frame shorter than 10 ms (carried to the next one), and
+    // above ~80 fps DOSBox gives 8 ms frames: 1 frame in 6 without movement = stutter when walking. Every frame's
+    // remainder is now simulated: cmp ebp,0x28F becomes cmp ebp,0 (0x3121DA French / 0x311F5A English).
+    static readonly uint[] PHYSFIX2_AT = { 0x3121DA, 0x311F5A };
+    static readonly byte[] PHYSFIX2_OLD = { 0x81, 0xFD, 0x8F, 0x02, 0x00, 0x00 }, PHYSFIX2_NEW = { 0x81, 0xFD, 0x00, 0x00, 0x00, 0x00 };
     static int physFixState = 0;
 
     // Black screen at the end of a mission: the game frees the cockpit's click zones but keeps testing the
@@ -163,6 +170,78 @@ static partial class TNPlus
     static readonly byte[] UIFIX_OLD = { 0x55, 0x89, 0xE5, 0x83, 0xEC, 0x04, 0x89, 0x5D, 0xFC, 0x8B, 0x5D, 0xFE, 0x66, 0x85, 0xDB, 0x7C, 0x2F, 0x66, 0x39, 0xDA, 0x7E, 0x2A, 0x8B, 0x55, 0xFC, 0xC1, 0xFA, 0x10, 0x8B, 0x00, 0xC1, 0xE2, 0x03, 0x01, 0xD0, 0x74, 0x1B, 0x8B, 0x55, 0xFC, 0x66, 0x3B, 0x10, 0x7C, 0x0C, 0x66, 0x3B, 0x50, 0x02, 0x7F, 0x06, 0xB0, 0x01, 0x89, 0xEC, 0x5D, 0xC3, 0x8B, 0x40, 0x04, 0x85, 0xC0, 0x75, 0xE8, 0x30, 0xC0, 0x89, 0xEC, 0x5D, 0xC3, 0x8B, 0xC0 };
     static readonly byte[] UIFIX_NEW = { 0x55, 0x89, 0xE5, 0x83, 0xEC, 0x04, 0x89, 0x5D, 0xFC, 0x8B, 0x5D, 0xFE, 0x66, 0x85, 0xDB, 0x7C, 0x33, 0x66, 0x39, 0xDA, 0x7E, 0x2E, 0x8B, 0x55, 0xFC, 0xC1, 0xFA, 0x10, 0x8B, 0x00, 0xC1, 0xE2, 0x03, 0x01, 0xD0, 0x74, 0x1F, 0x8B, 0x55, 0xFC, 0xB3, 0xFF, 0x66, 0x3B, 0x10, 0x7C, 0x0A, 0x66, 0x3B, 0x50, 0x02, 0x7F, 0x04, 0xB0, 0x01, 0xEB, 0x0D, 0x8B, 0x40, 0x04, 0x85, 0xC0, 0x74, 0x04, 0xFE, 0xCB, 0x75, 0xE6, 0x30, 0xC0, 0xC9, 0xC3 };
     static int uiFixState = 0;
+
+    // Object draw distance. The engine has no model LOD: objects simply pop in and out. Scenery (bushes, trees,
+    // rocks) is only collected within 20 terrain cells, whatever the game's detail setting, and units and
+    // buildings have a range per type loaded with each mission (20 cells for PBAs and units, up to 90 for some
+    // buildings). Before raising them, the fixed limits that more objects would hit are lifted: the per-frame
+    // object list (400 -> 1200 entries, two of its writers have no overflow check), the side buckets of the
+    // entity walk (emptied up to 128 instead of the 3rd terrain ring) and the 120-row cap of that walk.
+    // Ranges are kept at 120 cells at most (the side buckets hold 128). FAR: scenery 30, ranges x2; MAX: 40, x3.
+    // Measured (HD, 500000 cycles): 17 -> 48 objects drawn on the same view, 66 -> 63.5 fps.
+    struct CodePatch { public uint Fr, En; public string Old, OldEn, New; }
+    static readonly CodePatch[] OBJ_PATCHES = {
+        new CodePatch { Fr = 0x2A0F1C, En = 0x2A0F2C, Old = "B8C0120000", OldEn = "B8C0120000", New = "B840380000" },
+        new CodePatch { Fr = 0x2A14E2, En = 0x2A14F2, Old = "663D9001", OldEn = "663D9001", New = "663DB004" },
+        new CodePatch { Fr = 0x2A16CC, En = 0x2A16DC, Old = "6681F99001", OldEn = "6681F99001", New = "6681F9B004" },
+        new CodePatch { Fr = 0x2B3B16, En = 0x2B3B26, Old = "3B0570CB4300", OldEn = "3B05C0CA4300", New = "3D8000000090" },
+        new CodePatch { Fr = 0x2B584C, En = 0x2B585C, Old = "83F978", OldEn = "83F978", New = "83F97F" },
+        new CodePatch { Fr = 0x2B55F7, En = 0x2B5607, Old = "66A138CC4300", OldEn = "66A188CB4300", New = "" },   // scenery radius
+    };
+    static readonly uint[] OBJ_TABLE = { 0x41ED70, 0x41ECC0 };   // ranges, 9 classes x 128 types, French / English
+    static int objState = 0, objLang = -1;          // 0 to do, 1 applied, -1 unavailable
+    static byte[] objWritten = null;
+
+    static byte[] Hex(string h)
+    {
+        byte[] b = new byte[h.Length / 2];
+        for (int i = 0; i < b.Length; i++) b[i] = Convert.ToByte(h.Substring(2 * i, 2), 16);
+        return b;
+    }
+
+    // code part, at the main menu (like the other fixes)
+    static void TryObjDist()
+    {
+        int radius = OptObjDist == 1 ? 30 : 40;
+        for (int lang = 0; lang < 2; lang++)
+        {
+            bool all = true, done = true;
+            foreach (CodePatch p in OBJ_PATCHES)
+            {
+                byte[] old = Hex(lang == 0 ? p.Old : p.OldEn);
+                byte[] nw = p.New != "" ? Hex(p.New) : new byte[] { 0xB8, (byte)radius, 0, 0, 0, 0x90 };
+                byte[] cur = Read(lang == 0 ? p.Fr : p.En, old.Length);
+                if (!Same(cur, nw)) done = false;
+                if (!Same(cur, old) && !Same(cur, nw)) all = false;
+            }
+            if (!all) continue;
+            objLang = lang;
+            if (!done)
+                foreach (CodePatch p in OBJ_PATCHES)
+                    Write(lang == 0 ? p.Fr : p.En, p.New != "" ? Hex(p.New) : new byte[] { 0xB8, (byte)radius, 0, 0, 0, 0x90 });
+            objState = 1; objWritten = null;
+            Say("Object distance " + OBJDIST_NAMES[OptObjDist] + ": scenery up to " + radius + " cells, unit and building ranges x" + (OptObjDist + 1), 1000);
+            return;
+        }
+        objState = -1;
+        Say("Object distance unavailable: unsupported game version", 300, 300);
+    }
+
+    // data part: each mission loads its own range table; it is scaled once, when it shows up
+    static void ObjDistTable()
+    {
+        uint at = OBJ_TABLE[objLang];
+        byte[] cur = Read(at, 9 * 128);
+        if (objWritten != null && Same(cur, objWritten)) return;
+        bool any = false;
+        foreach (byte b in cur) if (b != 0) { any = true; break; }
+        if (!any) return;                           // no mission loaded yet
+        int f = OptObjDist + 1;
+        byte[] nw = new byte[cur.Length];
+        for (int i = 0; i < cur.Length; i++) nw[i] = (byte)Math.Min(120, cur[i] * f);
+        Write(at, nw);
+        objWritten = nw;
+    }
     static bool hdExeReady = false;
 
     // ------------------------------------------------------------------ Win32
@@ -359,6 +438,7 @@ static partial class TNPlus
             left.Add(Opt("2", "Widescreen 16:9", Sw(OptWide), null, 0));
             left.Add(Opt("3", "Terrain detail", Val(DETAIL_NAMES[OptDetail]), "BETA", 0));
             left.Add(Opt("4", "View distance", Val(DIST_NAMES[OptDistance]), null, ScanDistance));
+            left.Add(Opt("O", "Object distance", Val(OBJDIST_NAMES[OptObjDist]), "BETA", 0));
             left.Add(Sec("CONTROLS"));
             left.Add(Opt("5", "Mouse freelook", Sw(OptFreelook), null, ScanFreelook));
             left.Add(Opt("6", "Noclip", Sw(OptNoclip), null, ScanNoclip));
@@ -428,6 +508,7 @@ static partial class TNPlus
                 case '2': OptWide = !OptWide; break;
                 case '3': OptDetail = (OptDetail + 1) % 3; break;
                 case '4': OptDistance = (OptDistance + 1) % 3; break;
+                case 'O': OptObjDist = (OptObjDist + 1) % 3; break;
                 case '5': OptFreelook = !OptFreelook; break;
                 case '6': OptNoclip = !OptNoclip; break;
                 case '7': OptStereoFix = !OptStereoFix; break;
@@ -801,7 +882,7 @@ static partial class TNPlus
         int vkSmooth = (int)MapVirtualKey((uint)ScanSmoothing, 1);
         bool prevS = false, prevSt = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
-        double lastHd = -10, lastHit = -10, lastPhys = -10;
+        double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10;
         int[] vkFwd = { (int)MapVirtualKey(0x11, 1) }, vkBack = { (int)MapVirtualKey(0x1F, 1) };
         int[] vkLeft = { (int)MapVirtualKey(0x1E, 1) }, vkRight = { (int)MapVirtualKey(0x20, 1) };
         const int VK_ESCAPE = 0x1B, VK_SPACE = 0x20, VK_LCONTROL = 0xA2, VK_LSHIFT = 0xA0;
@@ -841,7 +922,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
@@ -853,6 +934,8 @@ static partial class TNPlus
                 if (OptHD && hdState == 0 && now - lastHd > 0.5) { lastHd = now; TryHdInject(); }
                 if (OptHitFix && hitFixState == 0 && now - lastHit > 0.5) { lastHit = now; TryHitFix(); }
                 if (OptPhysFix && physFixState == 0 && now - lastPhys > 0.5) { lastPhys = now; TryPhysFix(); }
+                if (OptObjDist > 0 && objState == 0 && now - lastPhys > 0.5) TryObjDist();
+                if (objState == 1 && now - lastObj > 0.5) { lastObj = now; ObjDistTable(); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 bool s = hdState == 1 && fg && Down(vkSmooth);
@@ -1166,6 +1249,7 @@ static partial class TNPlus
     static void TryPhysFix()
     {
         physFixState = TryFix(PHYSFIX_AT, PHYSFIX_OLD, PHYSFIX_NEW, "Physics speed fix", "walking speed no longer depends on the frame rate");
+        if (physFixState == 1) TryFix(PHYSFIX2_AT, PHYSFIX2_OLD, PHYSFIX2_NEW, "Physics smoothing", "movement on every frame");
     }
 
     static int TryFix(uint[] ats, byte[] old, byte[] nw, string name, string what)
@@ -1653,6 +1737,7 @@ static partial class TNPlus
                     case "hd_smoothing": HdSmoothing = v != "0"; break;
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
+                    case "object_distance": OptObjDist = Math.Max(0, Array.IndexOf(OBJDIST_NAMES, v.ToUpperInvariant())); break;
                     case "key_smoothing": ScanSmoothing = Convert.ToInt32(v, 16); break;
                     case "key_stereo": ScanStereo = Convert.ToInt32(v, 16); break;
                     case "sensitivity_x": SensX = int.Parse(v); break;
@@ -1693,6 +1778,7 @@ static partial class TNPlus
                 "; HD smoothing at start (toggled in game with key_smoothing)\r\nhd_smoothing = " + (HdSmoothing ? 1 : 0) + "\r\n" +
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
+                "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
