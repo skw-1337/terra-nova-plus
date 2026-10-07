@@ -35,6 +35,7 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 
 ### Terrain detail
 - More ground detail far away. Steep walls in the distance no longer turn into a saw blade. Costs around 10-20 % fps.
+- Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 18 cells and SHARPER to 24, after enlarging the engine's fixed polygon buffers (a longer polygon ring overflowed them and crashed). Measured on mission 12 in HD: 82 to 72 fps standing, 65 moving.
 
 ### Sound
 - **Fix reversed stereo** (off by default): under DOSBox the game's Sound Blaster 16 driver swaps left and right, cutscenes included. The tool can start DOSBox with the channels swapped back.

@@ -83,6 +83,37 @@ static partial class TNPlus
     // terrain rings (full mesh, 1 point in 2, in 4, in 8) up to these distances; the game's MEDIUM is 30/64/100/240.
     // ULTRA (60/120/240/480) froze the game after a few minutes: the far ring stays close to the original.
     static readonly int[][] DETAIL_RINGS = { null, new[] { 48, 96, 140, 240 }, new[] { 64, 128, 180, 280 } };
+    // Smooth terrain: near the camera the game draws the ground as textured polygons (up to 12 cells), farther
+    // as columns that turn slopes and cliff edges into stair steps. Its polygon buffers are allocated every
+    // frame with fixed sizes (500 quads, 500 quad pairs of triangles, 750 vertices) that a longer polygon ring
+    // overflows (crash), so they are enlarged to 768 quads / 1000 vertices first (+35 KB of the render pool,
+    // which has 53 KB free at its peak). SHARP: polygons up to 18 cells, SHARPER: 24 (about -10 % fps; the
+    // 64x64 vertex map of the engine caps it at 31). Measured turning on mission 12: 484 quads at 24 cells.
+    static readonly int[] SMOOTH_TO = { 0, 18, 24 };
+    static readonly uint[][] SMOOTH_AT = { new uint[] { 0x2AB0C5, 0x2ADF0F, 0x2ADF00 }, new uint[] { 0x2AB0D5, 0x2ADF1F, 0x2ADF10 } };
+    static readonly byte[][] SMOOTH_OLD = { new byte[] { 0xC0, 0x3E, 0, 0 }, new byte[] { 0, 0x7D, 0, 0 }, new byte[] { 0x42, 0x72, 0, 0 } };
+    static readonly byte[][] SMOOTH_NEW = { new byte[] { 0x40, 0x60, 0, 0 }, new byte[] { 0, 0xC0, 0, 0 }, new byte[] { 0x58, 0x98, 0, 0 } };
+    static int smoothState = 0;                     // 0 to do, 1 buffers enlarged, -1 unavailable
+
+    static void TrySmooth()
+    {
+        for (int lang = 0; lang < 2; lang++)
+        {
+            bool ok = true;
+            for (int i = 0; i < 3 && ok; i++)
+            {
+                byte[] cur = Read(SMOOTH_AT[lang][i], 4);
+                ok = Same(cur, SMOOTH_OLD[i]) || Same(cur, SMOOTH_NEW[i]);
+            }
+            if (!ok) continue;
+            for (int i = 0; i < 3; i++) Write(SMOOTH_AT[lang][i], SMOOTH_NEW[i]);
+            smoothState = 1;
+            Say("Smooth terrain up to " + SMOOTH_TO[OptDetail] + " cells (the game: 12)", 0);
+            return;
+        }
+        smoothState = -1;
+        Say("Smooth terrain unavailable: unsupported game version", 300, 300);
+    }
     static readonly int[] DIST_R = { 0, 180, 600 }; // fog radius (0 = the game's own weather value)
 
     // ------------------------------------------------------------------ game constants
@@ -220,7 +251,7 @@ static partial class TNPlus
                 foreach (CodePatch p in OBJ_PATCHES)
                     Write(lang == 0 ? p.Fr : p.En, p.New != "" ? Hex(p.New) : new byte[] { 0xB8, (byte)radius, 0, 0, 0, 0x90 });
             objState = 1; objWritten = null;
-            Say("Object distance " + OBJDIST_NAMES[OptObjDist] + ": scenery up to " + radius + " cells, unit and building ranges x" + (OptObjDist + 1), 1000);
+            Say("Object distance " + OBJDIST_NAMES[OptObjDist] + ": scenery up to " + radius + " cells, unit and building ranges x" + (OptObjDist + 1), 0);
             return;
         }
         objState = -1;
@@ -922,7 +953,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null; smoothState = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
@@ -935,6 +966,7 @@ static partial class TNPlus
                 if (OptHitFix && hitFixState == 0 && now - lastHit > 0.5) { lastHit = now; TryHitFix(); }
                 if (OptPhysFix && physFixState == 0 && now - lastPhys > 0.5) { lastPhys = now; TryPhysFix(); }
                 if (OptObjDist > 0 && objState == 0 && now - lastPhys > 0.5) TryObjDist();
+                if (OptDetail > 0 && smoothState == 0 && now - lastPhys > 0.5) TrySmooth();
                 if (objState == 1 && now - lastObj > 0.5) { lastObj = now; ObjDistTable(); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
@@ -1119,9 +1151,10 @@ static partial class TNPlus
         int[] types = { 1, 2, 0, 0, 0, 0 }, steps = { 1, 1, 1, 2, 4, 8 };
         for (int k = 0; k < 6; k++)
             if (b[0x5C + 12 * k] != types[k] || BitConverter.ToInt16(b, 0x5C + 12 * k + 5) != steps[k]) return;
-        int[] to = { BitConverter.ToInt16(b, 0x5C + 9), BitConverter.ToInt16(b, 0x5C + 12 + 9), d[0], d[1], d[2], d[3] };
+        int near = smoothState == 1 ? SMOOTH_TO[OptDetail] : BitConverter.ToInt16(b, 0x5C + 12 + 9);
+        int[] to = { BitConverter.ToInt16(b, 0x5C + 9), near, d[0], d[1], d[2], d[3] };
         bool same = true;
-        for (int k = 2; k < 6 && same; k++) same = BitConverter.ToInt16(b, 0x5C + 12 * k + 9) == to[k];
+        for (int k = 1; k < 6 && same; k++) same = BitConverter.ToInt16(b, 0x5C + 12 * k + 9) == to[k];
         if (same) return;
         byte[] r = new byte[72];
         int from = 0;
@@ -1261,7 +1294,7 @@ static partial class TNPlus
             if (!Same(cur, old)) continue;
             Write(at, nw);
             if (!Same(Read(at, nw.Length), nw)) break;
-            Say(name + " ON: " + what, 1000);
+            Say(name + " ON: " + what, 0);              // silent: one beep for the whole start-up is enough (HD)
             return 1;
         }
         Say(name + " unavailable: unsupported game version", 300, 300);
