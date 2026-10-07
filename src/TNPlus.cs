@@ -154,6 +154,15 @@ static partial class TNPlus
     static readonly uint[] PHYSFIX_AT = { 0x3121F7, 0x311F77 };
     static readonly byte[] PHYSFIX_OLD = { 0xEB, 0x06, 0x89, 0x2D }, PHYSFIX_NEW = { 0x31, 0xED, 0x89, 0x2D };
     static int physFixState = 0;
+
+    // Black screen at the end of a mission: the game frees the cockpit's click zones but keeps testing the
+    // mouse against them for a moment; the routine that walks a zone's shape (a list of spans per row) then
+    // follows freed memory and can loop forever. The routine is rewritten in place, same size, to stop after
+    // 255 spans of one row (a real shape has 1 to 3). Same bytes and same place in the French and English exe.
+    static readonly uint[] UIFIX_AT = { 0x2F268C, 0x2F249C };
+    static readonly byte[] UIFIX_OLD = { 0x55, 0x89, 0xE5, 0x83, 0xEC, 0x04, 0x89, 0x5D, 0xFC, 0x8B, 0x5D, 0xFE, 0x66, 0x85, 0xDB, 0x7C, 0x2F, 0x66, 0x39, 0xDA, 0x7E, 0x2A, 0x8B, 0x55, 0xFC, 0xC1, 0xFA, 0x10, 0x8B, 0x00, 0xC1, 0xE2, 0x03, 0x01, 0xD0, 0x74, 0x1B, 0x8B, 0x55, 0xFC, 0x66, 0x3B, 0x10, 0x7C, 0x0C, 0x66, 0x3B, 0x50, 0x02, 0x7F, 0x06, 0xB0, 0x01, 0x89, 0xEC, 0x5D, 0xC3, 0x8B, 0x40, 0x04, 0x85, 0xC0, 0x75, 0xE8, 0x30, 0xC0, 0x89, 0xEC, 0x5D, 0xC3, 0x8B, 0xC0 };
+    static readonly byte[] UIFIX_NEW = { 0x55, 0x89, 0xE5, 0x83, 0xEC, 0x04, 0x89, 0x5D, 0xFC, 0x8B, 0x5D, 0xFE, 0x66, 0x85, 0xDB, 0x7C, 0x33, 0x66, 0x39, 0xDA, 0x7E, 0x2E, 0x8B, 0x55, 0xFC, 0xC1, 0xFA, 0x10, 0x8B, 0x00, 0xC1, 0xE2, 0x03, 0x01, 0xD0, 0x74, 0x1F, 0x8B, 0x55, 0xFC, 0xB3, 0xFF, 0x66, 0x3B, 0x10, 0x7C, 0x0A, 0x66, 0x3B, 0x50, 0x02, 0x7F, 0x04, 0xB0, 0x01, 0xEB, 0x0D, 0x8B, 0x40, 0x04, 0x85, 0xC0, 0x74, 0x04, 0xFE, 0xCB, 0x75, 0xE6, 0x30, 0xC0, 0xC9, 0xC3 };
+    static int uiFixState = 0;
     static bool hdExeReady = false;
 
     // ------------------------------------------------------------------ Win32
@@ -194,6 +203,12 @@ static partial class TNPlus
     static int gamePid = 0;
     static long guestBase, regStart, regSize;       // host address of guest 0, guest RAM region
     static uint aHazeText, aPlayerId, aMaster, aCamHeading, aPitch, aWarp, aCursor, aDraw, aFrame, aFreeze;
+    // The game's clock in ms (advances once per mission frame, stops at the end of the mission and in menus).
+    // Freelook only writes the cursor once per new game frame: when a mission ends the game frees the cockpit's
+    // click zones, and a cursor pushed after that (warp) made the game test a mouse event against freed memory
+    // and loop forever (black screen at the end of a mission). Known for the GOG / Steam executables only.
+    static uint aClock = 0;
+    static int lastClock = int.MinValue;
     static uint aFogTable, aWeather, aResFlags, aResMode, aResCallback, aResButton;
     static uint aRatio, aRatioRef, aScaleX, aTerrain, aG3Width;
     static bool haveFog, have400, haveWide, haveDetail, haveStereo;
@@ -826,7 +841,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
@@ -838,6 +853,8 @@ static partial class TNPlus
                 if (OptHD && hdState == 0 && now - lastHd > 0.5) { lastHd = now; TryHdInject(); }
                 if (OptHitFix && hitFixState == 0 && now - lastHit > 0.5) { lastHit = now; TryHitFix(); }
                 if (OptPhysFix && physFixState == 0 && now - lastPhys > 0.5) { lastPhys = now; TryPhysFix(); }
+                if (uiFixState == 0 && now - lastPhys > 0.5)
+                    uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 bool s = hdState == 1 && fg && Down(vkSmooth);
                 if (s && !prevS)
                 {
@@ -929,6 +946,13 @@ static partial class TNPlus
 
                 // --- freelook
                 int mdx, mdy; mouse.Take(out mdx, out mdy);
+                bool newFrame = true;                       // a game frame went by since the last cursor write
+                if (aClock != 0)
+                {
+                    int clk = ReadInt(aClock);
+                    newFrame = clk != lastClock;
+                    if (newFrame) lastClock = clk;
+                }
                 if (freelook && fg)
                 {
                     if (mdx != 0)
@@ -944,7 +968,7 @@ static partial class TNPlus
                     }
                     byte[] fr = Read(aFrame, 4);
                     int w = BitConverter.ToInt16(fr, 0), h = BitConverter.ToInt16(fr, 2);
-                    if (w >= 200 && w <= 640 && h >= 200 && h <= 480)
+                    if (newFrame && w >= 200 && w <= 640 && h >= 200 && h <= 480)
                     {
                         byte[] c = new byte[4];
                         BitConverter.GetBytes((short)(w / 2)).CopyTo(c, 0);
@@ -953,7 +977,7 @@ static partial class TNPlus
                         Write(aDraw, c);                        // where the reticle is drawn
                         Write(aWarp, new byte[] { 1 });         // mouse lib: push cursor to driver, skip reading
                     }
-                    Write(aFreeze, new byte[] { 1 }); frozen = true;   // no reticle trails on the cockpit
+                    if (newFrame) { Write(aFreeze, new byte[] { 1 }); frozen = true; }   // no reticle trails on the cockpit
                     Clip();                                     // keep the Windows pointer in the game window
                 }
                 else
@@ -1335,6 +1359,9 @@ static partial class TNPlus
             hProc = h; gamePid = p.Id;
             if (Scan())
             {
+                string lang = ExeLanguage(GameDir);
+                aClock = lang == "French" ? 0x446B98u : lang == "English" ? 0x446AE8u : 0;
+                lastClock = int.MinValue;
                 Say("Game found in " + p.ProcessName + " (pid " + p.Id + ")" +
                     (haveFog ? "" : " - view distance unavailable") +
                     (have400 ? "" : " - 320x400 unavailable") +
