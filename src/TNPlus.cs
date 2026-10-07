@@ -14,14 +14,14 @@
 //
 //  Every address is found through CODE SIGNATURES (no hard-coded addresses): English /
 //  French executables, Steam, GOG and CD versions, any DOSBox memory size. Exception: the
-//  HD mode (HdPayload.cs, generated from the reverse-engineering scripts) only supports the
-//  GOG French executable, and it is the only option that touches a game file: one header
-//  field of TNOVA\__FF.EXE (16 KB more memory for its code), original kept as
-//  __FF.EXE.tnplus-original.
+//  HD mode (HdPayloadFr.cs / HdPayloadEn.cs, generated from the reverse-engineering scripts)
+//  carries the addresses of the French (GOG) and English (GOG, Steam) executables, and it is
+//  the only option that touches a game file: one header field of TNOVA\__FF.EXE (16 KB more
+//  memory for its code), original kept as __FF.EXE.tnplus-original.
 //
 //  Build (no install needed, uses the C# compiler shipped with Windows):
 //    C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize
-//        /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs HdPayload.cs AweBank.cs   (or run build.bat)
+//        /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs HdPayload.cs HdPayloadFr.cs HdPayloadEn.cs AweBank.cs   (or run build.bat)
 //
 //  AweBank.cs (AWE32 music) is under the GPL v2 or later, the rest under the MIT license.
 // ============================================================================
@@ -46,15 +46,16 @@ using System.Reflection;
 [assembly: AssemblyInformationalVersion("1.0.1")]
 [assembly: ComVisible(false)]
 
-static class TNPlus
+static partial class TNPlus
 {
-    const string VERSION = "1.1.0-beta2";
+    const string VERSION = "1.1.0-beta3";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
     static bool OptFreelook = true, OptNoclip = true, OptForce400 = true, OptWide = false, OptHD = false;
     static int OptDistance = 2;                     // 0 NORMAL, 1 FAR, 2 MAX
     static bool OptStereoFix = false;                // DOSBox: swap the Sound Blaster stereo (the game's SB16 driver reverses it)
+    static bool OptHitFix = true;                   // projectile hit test fixed for high frame rates (see TryHitFix)
     static int OptMusic = 0;                        // 0 Roland GS (General MIDI), 1 FM, 2 the game's own setting, 3 AWE32 (needs awe32.raw)
     static readonly string[] MUSIC_NAMES = { "ROLAND", "FM", "GAME'S OWN", "AWE32" };
     static readonly string[] MUSIC_INFO = { "Roland GS sounds of the Windows MIDI synthesizer (General MIDI)",
@@ -65,12 +66,12 @@ static class TNPlus
     static readonly string[] TARGET_DIRS = { "TNOVA", "TNDEMO1", "TNDEMO2" };
     static int OptDetail = 2;                       // terrain detail: 0 GAME, 1 SHARP, 2 SHARPER
     static int SensX = 12, SensY = 8;               // heading / pitch units per mouse count
-    static bool InvertY = false, Sound = true, HdSmoothing = true, HdHudFilter = true;
+    static bool InvertY = false, Sound = true, HdSmoothing = true;
     static int ScanFreelook = 0x15, ScanNoclip = 0x16, ScanDistance = 0x24;   // Y U J (physical keys; I is the game's infrared)
     static int ScanSmoothing = 0x58;                // F12: HD smoothing on / off
     static int ScanStereo = 0x41;                   // F7: swap the stereo of the sound effects in game
-    static int ScanHudFilter = 0x57;                // F11: HD sharp HUD (Scale2x) on / off
     static double NoclipSpeed = 15.0;               // game units per second (a walking PBA ~2.5)
+    static int CpuCycles = 300000;                  // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
     static string GameDir = "";
 
     static readonly string[] DIST_NAMES = { "NORMAL", "FAR", "MAX" };
@@ -120,12 +121,27 @@ static class TNPlus
     };
     static readonly byte[] HAZE_TEXT = Encoding.ASCII.GetBytes("Memory trash: hazeRadius");
 
-    // HD mode: GOG French __FF.EXE, original and with object 3 enlarged by 16 KB (room for the HD code)
+    // HD mode: __FF.EXE French (GOG) and English (GOG / Steam), original and with object 3 enlarged by 16 KB (room for the HD code)
     const string HD_SHA_ORIGINAL = "5fec09ddcb5803f587b048e9d62ae1f948e69d7137612459a9660ac31e0f82b3";
     const string EN_SHA = "b762c54509f1716282c4d357a72013b8d84ba25f17b0483b733678ff81e63dd1";   // English v1.09, GOG and Steam
     const string HD_SHA_READY = "4e2aa4851bf8cd4832e19660bfcd333fcc9735e94e8b4b6c24b73e0223ccd97a";
-    const uint OBJ3_SIZE = 0x10F9B0, OBJ3_HD = 0x10F9B0 + 0x4000;
+    const string EN_SHA_READY = "86fd95cc3ab30929cfaac50b96c1462e331089a931bd4239448e9dbb3c81fbbd";   // English, 16 KB more memory
+    const uint OBJ3_SIZE = 0x10F9B0, OBJ3_HD = 0x10F9B0 + 0x4000;             // French: object 3 virtual size
+    const uint OBJ3_SIZE_EN = 0x10F900, OBJ3_HD_EN = 0x10F900 + 0x4000;       // English
     static int hdState = 0;                         // 0 waiting, 1 active, -1 unavailable (reason said)
+
+    // Projectile hits above ~30 fps. Every frame the game casts a ray from each projectile over the distance it
+    // travels in that frame, walked in steps of 2.0 (engine units) through the entity grid, and the number of
+    // steps is TRUNCATED: distance / 2.0. The pulsar travels less than 2.0 per frame above ~30 fps, so the
+    // count is 0, no grid cell is looked at and nothing can be hit - the "multipulsar / drones cannot be hit
+    // at high CPU cycles" bug (the game only hits the ground, which uses another test). Rounding the step
+    // count UP instead ((distance + step - 1) / step) restores the hits at any frame rate.
+    //   __FF.EXE 0x3117D3 (French) / 0x311553 (English): mov edx,eax / sar edx,16 / shl eax,16 / idiv ebx / sar eax,16
+    //   becomes                                             lea eax,[eax+ebx-1] / cdq / idiv ebx / nop x6
+    static readonly uint[] HITFIX_AT = { 0x3117D3, 0x311553 };
+    static readonly byte[] HITFIX_OLD = { 0x89, 0xC2, 0xC1, 0xFA, 0x10, 0xC1, 0xE0, 0x10, 0xF7, 0xFB, 0xC1, 0xF8, 0x10 };
+    static readonly byte[] HITFIX_NEW = { 0x8D, 0x44, 0x18, 0xFF, 0x99, 0xF7, 0xFB, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+    static int hitFixState = 0;                     // 0 to do, 1 applied, -1 unavailable (said once)
     static bool hdExeReady = false;
 
     // ------------------------------------------------------------------ Win32
@@ -180,13 +196,16 @@ static class TNPlus
     static string IniPath { get { return Path.Combine(ExeDir, "TNPlus.ini"); } }
 
     // ================================================================== entry point
+    [STAThread]
     static void Main(string[] args)
     {
         Console.Title = TITLE + " " + VERSION;
+        HdPayload.Use(false);
         LoadSettings();
         onClose = ev => { Release(); return false; };
         SetConsoleCtrlHandler(onClose, true);
-        while (Menu()) Run();                        // back to the menu when a game started from it closes
+        bool consoleMenu = Array.IndexOf(args, "--console") >= 0;   // the old text menu
+        while (consoleMenu ? Menu() : GuiMenu()) Run();   // back to the menu when a game started from it closes
     }
 
     // ------------------------------------------------------------------ pre-launch menu
@@ -204,7 +223,7 @@ static class TNPlus
     static string hdCheckedDir = null, hdWhy = "";
     static bool hdOk = false;
 
-    // HD needs the full game's French GOG executable (the demos and other editions are not supported yet)
+    // HD needs the full game's GOG or Steam executable, French or English (the demos are not supported yet)
     static bool HdAvailable(out string why)
     {
         if (LaunchTarget > 0) { why = "not available for the demos yet"; return false; }
@@ -218,8 +237,8 @@ static class TNPlus
                 if (File.Exists(exe))
                 {
                     string sha = Sha256(File.ReadAllBytes(exe));
-                    hdOk = sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY;
-                    hdWhy = hdOk ? "" : "only for the GOG version for now";
+                    hdOk = sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY || sha == EN_SHA || sha == EN_SHA_READY;
+                    hdWhy = hdOk ? "" : "not available for this version of the game";
                 }
             }
             catch { hdWhy = "cannot read __FF.EXE"; }
@@ -274,7 +293,9 @@ static class TNPlus
             Console.ResetColor();
             try     // the menu is taller than the classic 30-line console
             {
-                if (Console.WindowHeight < 36) Console.SetWindowSize(Console.WindowWidth, Math.Min(36, Console.LargestWindowHeight));
+                if (Console.BufferWidth < 92) Console.SetBufferSize(92, Console.BufferHeight);
+                if (Console.WindowWidth < 92 || Console.WindowHeight < 30)
+                    Console.SetWindowSize(Math.Min(Math.Max(Console.WindowWidth, 92), Console.LargestWindowWidth), Math.Min(Math.Max(Console.WindowHeight, 30), Console.LargestWindowHeight));
             }
             catch { }
             Console.Clear();
@@ -286,8 +307,8 @@ static class TNPlus
             C("  made by ", ConsoleColor.DarkGray); C("skw-1337", ConsoleColor.White);
             C("  ·  github.com/skw-1337/terra-nova-plus\n", ConsoleColor.DarkGray);
             Rule('═');
-            // game, launch, preset
-            C("  GAME     ", ConsoleColor.DarkGray);
+            // game line
+            C("  GAME  ", ConsoleColor.DarkGray);
             if (GameDir == "") C("not found: start the game yourself and press A\n", ConsoleColor.Yellow);
             else
             {
@@ -295,49 +316,72 @@ static class TNPlus
                 ConsoleColor bg = kind == "STEAM" ? ConsoleColor.DarkBlue : kind == "GOG" ? ConsoleColor.DarkMagenta : ConsoleColor.DarkGray;
                 C(" " + kind + " ", ConsoleColor.White, bg);
                 if (lang != "") C(" " + lang, ConsoleColor.Gray);
-                C("  " + Shorten(GameDir, 44), ConsoleColor.Gray);
+                C("  " + Shorten(GameDir, 50), ConsoleColor.Gray);
                 if (installs.Count > 1) { C("   G ", ConsoleColor.Cyan); C("switch (" + installs.Count + ")", ConsoleColor.DarkGray); }
                 Console.WriteLine();
             }
-            C("  LAUNCH  ", ConsoleColor.DarkGray); Key("L"); Choices(TARGET_NAMES, LaunchTarget);
-            C("  ", ConsoleColor.Gray); Tag("BETA"); C(" demos", ConsoleColor.DarkGray);
-            if (demoMissing) C("  not found, see README", ConsoleColor.Yellow);
-            Console.WriteLine();
-            if (LaunchTarget > 0) Note("demos: HD 640x400 does not work with them yet, 320x400 is used");
-            C("  PRESET  ", ConsoleColor.DarkGray); Key("P"); Choices(PRESET_NAMES, preset);
-            if (preset < 0) C("  CUSTOM", ConsoleColor.Yellow);
-            Console.WriteLine();
-            Note(preset < 0 ? "your own settings (P picks a preset again)" : PRESET_INFO[preset]);
             Rule('─');
-            // picture
-            Section("PICTURE");
-            Row("1", "Display", "BETA", "HD"); Choices(DISPLAY_LABELS, EffectiveDisplay()); Console.WriteLine();
-            if (Display == 2 && !hdOkNow) Warn("HD 640x400 " + why + ": 320x400 is used");
-            else if (Display == 2) InGame(ScanSmoothing, "3D smoothing", ScanHudFilter, "sharp HUD");
-            Row("2", "Widescreen 16:9"); Toggle(OptWide);
-            Row("3", "Terrain detail far away", "BETA", null); Choices(DETAIL_NAMES, OptDetail); Console.WriteLine();
-            Row("4", "View distance at start", ScanDistance); Choices(DIST_NAMES, OptDistance); Console.WriteLine();
-            // controls
-            Section("CONTROLS");
-            Row("5", "Mouse freelook", ScanFreelook); Toggle(OptFreelook);
-            Row("6", "Noclip", ScanNoclip); Toggle(OptNoclip);
-            // sound
-            Section("SOUND");
-            Row("7", "Fix reversed stereo", "BETA", null); Toggle(OptStereoFix);
-            InGame(ScanStereo, "swaps the sound effects left/right (to compare)", 0, null);
-            bool awe = AweRom() != null;            // the AWE32 choice only exists with the ROM
+            // two columns: the settings on the left (one line each, the chosen value only), what will be
+            // launched and the in-game keys on the right; the help of an option is shown under the table
+            // for the key pressed last
+            bool awe = AweRom() != null;
             int music = EffectiveMusic();
-            Row("8", "Music", "BETA", null); Choices(awe ? MUSIC_NAMES : new[] { MUSIC_NAMES[0], MUSIC_NAMES[1], MUSIC_NAMES[2] }, music); Console.WriteLine();
-            Note(MUSIC_INFO[music]);
-            if (awe) { C("        ", ConsoleColor.Gray); Tag("EXPERIMENTAL"); C(" AWE32: barely tested, some instruments may sound off\n", ConsoleColor.DarkGray); }
-            if (!awe)
+            List<List<Seg>> left = new List<List<Seg>>(), right = new List<List<Seg>>();
+            left.Add(Sec("PICTURE"));
+            left.Add(Opt("1", "Display", Val(DISPLAY_LABELS[EffectiveDisplay()]), "BETA", 0));
+            left.Add(Opt("2", "Widescreen 16:9", Sw(OptWide), null, 0));
+            left.Add(Opt("3", "Terrain detail", Val(DETAIL_NAMES[OptDetail]), "BETA", 0));
+            left.Add(Opt("4", "View distance", Val(DIST_NAMES[OptDistance]), null, ScanDistance));
+            left.Add(Sec("CONTROLS"));
+            left.Add(Opt("5", "Mouse freelook", Sw(OptFreelook), null, ScanFreelook));
+            left.Add(Opt("6", "Noclip", Sw(OptNoclip), null, ScanNoclip));
+            left.Add(Sec("SOUND"));
+            left.Add(Opt("7", "Stereo fix", Sw(OptStereoFix), "BETA", ScanStereo));
+            left.Add(Opt("8", "Music", Val(MUSIC_NAMES[music]), music == 3 ? "EXPERIMENTAL" : "BETA", 0));
+            left.Add(Sec("GAMEPLAY"));
+            left.Add(Opt("9", "Projectile hit fix", Sw(OptHitFix), "BETA", 0));
+            right.Add(Sec("LAUNCH"));
+            right.Add(Line(S("  "), S(" L ", ConsoleColor.Black, ConsoleColor.Cyan), S(" "), S(" " + TARGET_NAMES[LaunchTarget] + " ", ConsoleColor.Black, ConsoleColor.Yellow),
+                S(LaunchTarget > 0 ? "  320x400, no HD" : "  the full game", ConsoleColor.DarkGray)));
+            right.Add(Line(S("  "), S(" P ", ConsoleColor.Black, ConsoleColor.Cyan), S(" "),
+                preset < 0 ? S(" CUSTOM ", ConsoleColor.Black, ConsoleColor.Yellow) : S(" " + PRESET_NAMES[preset] + " ", ConsoleColor.Black, ConsoleColor.Yellow),
+                S(preset < 0 ? "  your own settings" : "  preset", ConsoleColor.DarkGray)));
+            foreach (string w in Wrap(preset < 0 ? "P picks a preset again" : PRESET_INFO[preset], 36)) right.Add(Line(S("     " + w, ConsoleColor.DarkGray)));
+            right.Add(Line());
+            right.Add(Sec("IN GAME"));
+            right.Add(Line(S("  "), B(ScanFreelook), S(" freelook  ", ConsoleColor.DarkGray), B(ScanNoclip), S(" noclip  ", ConsoleColor.DarkGray), B(ScanDistance), S(" view", ConsoleColor.DarkGray)));
+            right.Add(Line(S("  "), B(ScanStereo), S(" stereo swap  ", ConsoleColor.DarkGray), B(ScanSmoothing), S(" HD smoothing", ConsoleColor.DarkGray)));
+            right.Add(Line());
+            right.Add(Line(S("  "), S(" BETA ", ConsoleColor.Black, ConsoleColor.DarkYellow), S(" new in 1.1.0  ", ConsoleColor.DarkGray), S(" EXPERIMENTAL ", ConsoleColor.White, ConsoleColor.DarkRed), S(" unfinished", ConsoleColor.DarkGray)));
+            for (int i = 0; i < Math.Max(left.Count, right.Count); i++)
             {
-                Note("optional AWE32 music: put the AWE32 ROM file awe32.raw (1 MB, not included) in");
-                Note(Shorten(ExeDir, 68) + "  (see README)");
+                int n = i < left.Count ? Put(left[i]) : 0;
+                Console.Write(new string(' ', Math.Max(0, 42 - n)));
+                if (i < right.Count) Put(right[i]);
+                Console.WriteLine();
             }
-            Note("stereo fix and music are not part of the presets");
-            C("        ", ConsoleColor.Gray); Bind("KEY"); C(" in-game key  ", ConsoleColor.DarkGray);
-            Tag("BETA"); C(" new in 1.1.0  ", ConsoleColor.DarkGray); Tag("EXPERIMENTAL"); C(" unfinished\n", ConsoleColor.DarkGray);
+            Rule('─');
+            // help for the key pressed last, and the warnings that matter
+            if (Display == 2 && !hdOkNow) Warn("HD 640x400 " + why + ": 320x400 is used");
+            if (demoMissing) Warn("demo " + LaunchTarget + " not found in the game folder (see README)");
+            switch (lastKey)
+            {
+                case '1': Note("HD 640x400: the 3D view drawn at twice the width, GOG and Steam, French and English; " + KeyName(ScanSmoothing) + " toggles the smoothing"); break;
+                case '2': Note("widescreen: the camera is corrected for a 16:9 DOSBox window (needs launching from here)"); break;
+                case '3': Note("more ground detail far away (steep walls stop looking like a saw); costs 10-20 % fps"); break;
+                case '4': Note("view distance at mission start; " + KeyName(ScanDistance) + " cycles it in game"); break;
+                case '5': Note("mouse freelook: " + KeyName(ScanFreelook) + " in game; sensitivity and inverted look in TNPlus.ini"); break;
+                case '6': Note("noclip: " + KeyName(ScanNoclip) + " in game, fly through everything; speed in TNPlus.ini"); break;
+                case '7': Note("DOSBox and the game's SB16 driver swap left and right; " + KeyName(ScanStereo) + " swaps the effects to compare"); break;
+                case '8':
+                    Note(MUSIC_INFO[music]);
+                    if (!awe) Note("optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README");
+                    else if (music == 3) Note("AWE32: barely tested, some instruments may sound off");
+                    break;
+                case '9': Note("above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed"); break;
+                case 'L': Note("the two 1996 demos shipped with GOG and Steam have missions the full game hasn't; no HD there yet"); break;
+                default: Note("presets set 1 to 6 at once; stereo fix, music and the hit fix are yours to choose"); break;
+            }
             Rule('─');
             C("  ENTER ", ConsoleColor.Black, ConsoleColor.Green); C(" launch      ", ConsoleColor.Gray);
             Key("A"); C("attach to a running game      ", ConsoleColor.Gray);
@@ -347,7 +391,8 @@ static class TNPlus
             C("  programs, but QUIT IT (Q) before playing online games protected by an anti-cheat.\n", ConsoleColor.DarkGray);
             Console.ResetColor();
             ConsoleKeyInfo k = Console.ReadKey(true);
-            switch (char.ToUpperInvariant(k.KeyChar))
+            lastKey = char.ToUpperInvariant(k.KeyChar);
+            switch (lastKey)
             {
                 case 'P': ApplyPreset(preset < 0 ? 2 : (preset + 1) % 3); break;
                 case 'L': LaunchTarget = (LaunchTarget + 1) % 3; break;
@@ -359,6 +404,7 @@ static class TNPlus
                 case '6': OptNoclip = !OptNoclip; break;
                 case '7': OptStereoFix = !OptStereoFix; break;
                 case '8': OptMusic = (EffectiveMusic() + 1) % (AweRom() != null ? 4 : 3); break;
+                case '9': OptHitFix = !OptHitFix; break;
                 case 'G':
                     if (installs.Count > 0) GameDir = installs[(installs.IndexOf(GameDir) + 1) % installs.Count];
                     break;
@@ -381,12 +427,47 @@ static class TNPlus
     }
 
     // ---- menu drawing helpers
+    static char lastKey = 'P';                      // the help line under the table follows the last key
+    struct Seg { public string T; public ConsoleColor Fg, Bg; public bool HasBg; }
+    static Seg S(string t) { return new Seg { T = t, Fg = ConsoleColor.Gray }; }
+    static Seg S(string t, ConsoleColor fg) { return new Seg { T = t, Fg = fg }; }
+    static Seg S(string t, ConsoleColor fg, ConsoleColor bg) { return new Seg { T = t, Fg = fg, Bg = bg, HasBg = true }; }
+    static Seg B(int scan) { return S(" " + KeyName(scan) + " ", ConsoleColor.White, ConsoleColor.DarkMagenta); }
+    static Seg Val(string v) { return S(" " + v + " ", ConsoleColor.Black, ConsoleColor.Yellow); }
+    static Seg Sw(bool on) { return on ? S(" ON ", ConsoleColor.Black, ConsoleColor.Green) : S(" off ", ConsoleColor.DarkGray); }
+    static List<Seg> Line(params Seg[] segs) { return new List<Seg>(segs); }
+    static List<Seg> Sec(string name) { return Line(S("  " + name, ConsoleColor.DarkCyan)); }
+    // one setting: key, label, value, optional badge and in-game key
+    static List<Seg> Opt(string key, string label, Seg value, string tag, int scan)
+    {
+        List<Seg> l = Line(S("   "), S(" " + key + " ", ConsoleColor.Black, ConsoleColor.Cyan), S(" " + label.PadRight(19)), value);
+        if (tag != null) { l.Add(S(" ")); l.Add(tag == "EXPERIMENTAL" ? S(" " + tag + " ", ConsoleColor.White, ConsoleColor.DarkRed) : S(" " + tag + " ", ConsoleColor.Black, ConsoleColor.DarkYellow)); }
+        if (scan != 0) { l.Add(S(" ")); l.Add(B(scan)); }
+        return l;
+    }
+    static int Put(List<Seg> l)
+    {
+        int n = 0;
+        foreach (Seg g in l) { if (g.HasBg) C(g.T, g.Fg, g.Bg); else C(g.T, g.Fg); n += g.T.Length; }
+        return n;
+    }
+    static List<string> Wrap(string s, int width)
+    {
+        List<string> o = new List<string>(); string cur = "";
+        foreach (string w in s.Split(' '))
+        {
+            if (cur.Length + w.Length + 1 > width && cur != "") { o.Add(cur); cur = ""; }
+            cur = cur == "" ? w : cur + " " + w;
+        }
+        if (cur != "") o.Add(cur);
+        return o;
+    }
     static void C(string s, ConsoleColor fg) { Console.ForegroundColor = fg; Console.Write(s); Console.ResetColor(); }
     static void C(string s, ConsoleColor fg, ConsoleColor bg)
     {
         Console.ForegroundColor = fg; Console.BackgroundColor = bg; Console.Write(s); Console.ResetColor();
     }
-    static void Rule(char c) { C("  " + new string(c, 76) + "\n", ConsoleColor.DarkCyan); }
+    static void Rule(char c) { C("  " + new string(c, 88) + "\n", ConsoleColor.DarkCyan); }
     static void Section(string name) { C("  " + name + "\n", ConsoleColor.DarkCyan); }
     static void Key(string k) { C(" " + k + " ", ConsoleColor.Black, ConsoleColor.Cyan); Console.Write(" "); }
     static void Row(string k, string label) { Console.Write("   "); Key(k); C(label.PadRight(34), ConsoleColor.Gray); }
@@ -454,7 +535,7 @@ static class TNPlus
         {
             string sha = Sha256(File.ReadAllBytes(Path.Combine(dir, "TNOVA", "__FF.EXE")));
             if (sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY) exeLang = "French";
-            else if (sha == EN_SHA) exeLang = "English";
+            else if (sha == EN_SHA || sha == EN_SHA_READY) exeLang = "English";
         }
         catch { }
         return exeLang;
@@ -574,6 +655,23 @@ static class TNPlus
 
     // DOSBox [autoexec] for the chosen target: the game keeps the edition's own launch file, with the stereo
     // fix inserted before the game starts (an [autoexec] in a later -conf would only run after EXIT).
+    // The editions ship DOSBox with few CPU cycles (Steam: 115000) and the game is CPU bound in the emulator, HD
+    // even more (measured on the same mission in HD: 14.5 fps at 115000 cycles, 36.5 at 300000). The launch
+    // conf imposes cpu_cycles unless the setting is 0.
+    static string CpuSection(string db)
+    {
+        if (CpuCycles <= 0) return "";
+        string cur = "?";
+        try
+        {
+            Match m = Regex.Match(File.ReadAllText(Path.Combine(db, "dosbox_terranova_windows.conf")), @"(?m)^\s*cpu_cycles\s*=\s*(\S+)");
+            if (m.Success) cur = m.Groups[1].Value;
+        }
+        catch { }
+        if (cur != CpuCycles.ToString()) Console.WriteLine("DOSBox CPU cycles: " + CpuCycles + " (the game's own config says " + cur + "; cpu_cycles in TNPlus.ini, 0 = leave it)");
+        return "[cpu]\r\ncpu_cycles = " + CpuCycles + "\r\n";
+    }
+
     static string WriteLaunchConf(string db, int target)
     {
         string mixer = OptStereoFix ? "mixer sb reverse /noshow\r\n" : "";
@@ -593,7 +691,7 @@ static class TNPlus
             text = "# Terra Nova Plus: " + TARGET_NAMES[target] + "\r\n[autoexec]\r\n" + mixer +
                 "mount C \"..\"\r\nC:\r\nCD \\" + TARGET_DIRS[target] + "\r\nCLS\r\nCALL TNDEMO.BAT\r\nEXIT\r\n";
         string path = Path.Combine(ExeDir, "TNPlus_launch.conf");
-        File.WriteAllText(path, text);
+        File.WriteAllText(path, CpuSection(db) + text);
         return path;
     }
 
@@ -660,8 +758,7 @@ static class TNPlus
             (OptNoclip ? KeyName(ScanNoclip) + " noclip   " : "") + KeyName(ScanDistance) + " view distance");
         if (OptFreelook) Console.WriteLine("Freelook switches off in menus (O / Esc) and when the mission ends.");
         if (OptNoclip) Console.WriteLine("Noclip: move keys, Space / Left Ctrl up / down, Left Shift x4. Land before switching it off!");
-        if (OptHD) Console.WriteLine("HD 640x400: missions in 320x400 are shown in HD, " + KeyName(ScanSmoothing) + " toggles the 3D smoothing, " +
-            KeyName(ScanHudFilter) + " the sharp HUD.");
+        if (OptHD) Console.WriteLine("HD 640x400: missions in 320x400 are shown in HD, " + KeyName(ScanSmoothing) + " toggles the 3D smoothing.");
         Console.WriteLine("When you are done playing, close this window (anti-cheat note: see README).");
         Console.WriteLine();
         attached = false;
@@ -672,10 +769,10 @@ static class TNPlus
 
         int vkFree = (int)MapVirtualKey((uint)ScanFreelook, 1), vkClip = (int)MapVirtualKey((uint)ScanNoclip, 1);
         int vkDist = (int)MapVirtualKey((uint)ScanDistance, 1), vkOptions = (int)MapVirtualKey(0x18, 1);
-        int vkSmooth = (int)MapVirtualKey((uint)ScanSmoothing, 1), vkHud = (int)MapVirtualKey((uint)ScanHudFilter, 1);
-        bool prevS = false, prevH = false, prevSt = false;
+        int vkSmooth = (int)MapVirtualKey((uint)ScanSmoothing, 1);
+        bool prevS = false, prevSt = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
-        double lastHd = -10;
+        double lastHd = -10, lastHit = -10;
         int[] vkFwd = { (int)MapVirtualKey(0x11, 1) }, vkBack = { (int)MapVirtualKey(0x1F, 1) };
         int[] vkLeft = { (int)MapVirtualKey(0x1E, 1) }, vkRight = { (int)MapVirtualKey(0x20, 1) };
         const int VK_ESCAPE = 0x1B, VK_SPACE = 0x20, VK_LCONTROL = 0xA2, VK_LSHIFT = 0xA0;
@@ -715,6 +812,7 @@ static class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
+                    hitFixState = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
@@ -724,6 +822,7 @@ static class TNPlus
 
                 // --- HD: injected as soon as the game is loaded, before its first mission
                 if (OptHD && hdState == 0 && now - lastHd > 0.5) { lastHd = now; TryHdInject(); }
+                if (OptHitFix && hitFixState == 0 && now - lastHit > 0.5) { lastHit = now; TryHitFix(); }
                 bool s = hdState == 1 && fg && Down(vkSmooth);
                 if (s && !prevS)
                 {
@@ -732,14 +831,6 @@ static class TNPlus
                     Say("HD smoothing " + (HdSmoothing ? "ON" : "OFF"), HdSmoothing ? 1000 : 600);
                 }
                 prevS = s;
-                bool hk = hdState == 1 && fg && Down(vkHud);
-                if (hk && !prevH)
-                {
-                    HdHudFilter = ReadInt(HdPayload.HudFilter) == 0;
-                    WriteInt(HdPayload.HudFilter, HdHudFilter ? 1 : 0);
-                    Say("HD sharp HUD " + (HdHudFilter ? "ON" : "OFF"), HdHudFilter ? 1000 : 600);
-                }
-                prevH = hk;
                 bool stk = haveStereo && fg && Down(vkStereo);
                 if (stk && !prevSt)
                 {
@@ -1000,20 +1091,22 @@ static class TNPlus
         if (!File.Exists(exe)) { msg = "TNOVA\\__FF.EXE not found"; return false; }
         byte[] d = File.ReadAllBytes(exe);
         string sha = Sha256(d);
-        if (sha == HD_SHA_READY) { msg = "ready"; return true; }
-        if (sha != HD_SHA_ORIGINAL) { msg = "it needs the GOG version of the game (unknown __FF.EXE)"; return false; }
+        if (sha == HD_SHA_READY || sha == EN_SHA_READY) { msg = "ready"; return true; }
+        bool english = sha == EN_SHA;
+        if (sha != HD_SHA_ORIGINAL && !english) { msg = "unknown __FF.EXE (GOG French, GOG English and Steam are supported)"; return false; }
+        uint size = english ? OBJ3_SIZE_EN : OBJ3_SIZE, hd = english ? OBJ3_HD_EN : OBJ3_HD;
         int le = IndexOf(d, new byte[] { (byte)'L', (byte)'E', 0, 0 }, 0);
         int at = le + BitConverter.ToInt32(d, le + 0x40) + 24 * 2;        // object table, object 3: virtual size
-        if (le < 0 || BitConverter.ToUInt32(d, at) != OBJ3_SIZE) { msg = "unexpected executable layout"; return false; }
+        if (le < 0 || BitConverter.ToUInt32(d, at) != size) { msg = "unexpected executable layout"; return false; }
         string backup = exe + ".tnplus-original";
         try
         {
             if (!File.Exists(backup)) File.Copy(exe, backup);
-            BitConverter.GetBytes(OBJ3_HD).CopyTo(d, at);
+            BitConverter.GetBytes(hd).CopyTo(d, at);
             File.WriteAllBytes(exe, d);
         }
         catch (Exception e) { msg = "cannot update __FF.EXE (" + e.Message + ")"; return false; }
-        if (Sha256(File.ReadAllBytes(exe)) != HD_SHA_READY) { msg = "__FF.EXE update failed"; return false; }
+        if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY : HD_SHA_READY)) { msg = "__FF.EXE update failed"; return false; }
         msg = "__FF.EXE prepared (16 KB more memory; original kept as __FF.EXE.tnplus-original)";
         return true;
     }
@@ -1024,10 +1117,30 @@ static class TNPlus
             return BitConverter.ToString(h.ComputeHash(d)).Replace("-", "").ToLowerInvariant();
     }
 
+    // as early as possible too (same DOSBox code cache remark as the HD below); the French and the English
+    // executables are told apart by the bytes found at the two addresses
+    static void TryHitFix()
+    {
+        foreach (uint at in HITFIX_AT)
+        {
+            byte[] cur = Read(at, HITFIX_OLD.Length);
+            if (Same(cur, HITFIX_NEW)) { hitFixState = 1; return; }
+            if (!Same(cur, HITFIX_OLD)) continue;
+            Write(at, HITFIX_NEW);
+            if (!Same(Read(at, HITFIX_NEW.Length), HITFIX_NEW)) break;
+            hitFixState = 1;
+            Say("Projectile hit fix ON: weapons hit at any frame rate", 1000);
+            return;
+        }
+        hitFixState = -1;
+        Say("Projectile hit fix unavailable: unsupported game version", 300, 300);
+    }
+
     // the HD code must be in place before the first mission runs: DOSBox caches the game code it has
     // translated, later writes to that code would be ignored (the temporary pool is still unused until then)
     static void TryHdInject()
     {
+        HdPayload.Use(ExeLanguage(GameDir) == "English");   // the code and its addresses depend on the executable
         int n = HdPayload.PatchAt.Length;
         bool allNew = true, allOld = true;
         for (int i = 0; i < n; i++)
@@ -1041,9 +1154,9 @@ static class TNPlus
             hdState = 1; Say("HD 640x400 already active in this game", 0); return;
         }
         string why = null;
-        uint pool = allOld ? ReadUInt(0x43e360) : 0;
+        uint pool = allOld ? ReadUInt(HdPayload.PoolVar) : 0;
         if (allOld && pool == 0) return;               // the game has not allocated its pool yet: wait
-        if (!allOld) why = "unsupported game version (GOG only)";
+        if (!allOld) why = "unsupported game version";
         else if (pool != HdPayload.PoolBase)
             why = "__FF.EXE not prepared (start the game from this tool with option 6 on)";
         else if (ReadUInt(HdPayload.PoolMax) != 0)
@@ -1058,10 +1171,10 @@ static class TNPlus
         Write(HdPayload.Code, HdPayload.CodeBytes);
         for (int i = 0; i < n; i++) Write(HdPayload.PatchAt[i], HdPayload.PatchNew[i]);
         WriteInt(HdPayload.Smoothing, HdSmoothing ? 1 : 0);
-        WriteInt(HdPayload.HudFilter, HdHudFilter ? 1 : 0);
+        WriteInt(HdPayload.HudFilter, 0);              // Scale2x HUD: left in the payload, no longer offered
         hdState = 1;
         Say("HD 640x400 ready: missions in 320x400 will be in HD (" + KeyName(ScanSmoothing) + " smoothing " +
-            (HdSmoothing ? "ON" : "OFF") + ", " + KeyName(ScanHudFilter) + " sharp HUD " + (HdHudFilter ? "ON" : "OFF") + ")", 1000);
+            (HdSmoothing ? "ON" : "OFF") + ")", 1000);
     }
 
     static bool Same(byte[] a, byte[] b)
@@ -1487,14 +1600,14 @@ static class TNPlus
                     case "music": OptMusic = Math.Max(0, Array.IndexOf(MUSIC_NAMES, v.ToUpperInvariant())); break;
                     case "hd": oldHd = v != "0"; break;
                     case "hd_smoothing": HdSmoothing = v != "0"; break;
+                    case "hit_fix": OptHitFix = v != "0"; break;
                     case "key_smoothing": ScanSmoothing = Convert.ToInt32(v, 16); break;
-                    case "hd_sharp_hud": HdHudFilter = v != "0"; break;
-                    case "key_sharp_hud": ScanHudFilter = Convert.ToInt32(v, 16); break;
                     case "key_stereo": ScanStereo = Convert.ToInt32(v, 16); break;
                     case "sensitivity_x": SensX = int.Parse(v); break;
                     case "sensitivity_y": SensY = int.Parse(v); break;
                     case "invert_y": InvertY = v == "1"; break;
                     case "noclip_speed": NoclipSpeed = double.Parse(v, System.Globalization.CultureInfo.InvariantCulture); break;
+                    case "cpu_cycles": CpuCycles = int.Parse(v); break;
                     case "key_freelook": ScanFreelook = Convert.ToInt32(v, 16); break;
                     case "key_noclip": ScanNoclip = Convert.ToInt32(v, 16); break;
                     case "key_distance": ScanDistance = Convert.ToInt32(v, 16); if (ScanDistance == 0x17) ScanDistance = 0x24; break;   // old default I = infrared
@@ -1525,15 +1638,16 @@ static class TNPlus
                 "; ROLAND, FM, GAME'S OWN or AWE32 (music of the game and demos; AWE32 needs awe32.raw, an AWE32 ROM dump,\r\n" +
                 "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +
                 "; HD smoothing at start (toggled in game with key_smoothing)\r\nhd_smoothing = " + (HdSmoothing ? 1 : 0) + "\r\n" +
-                "; HD sharp HUD at start: Scale2x on the cockpit art (toggled in game with key_sharp_hud)\r\nhd_sharp_hud = " + (HdHudFilter ? 1 : 0) + "\r\n" +
+                "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
+                "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting\r\ncpu_cycles = " + CpuCycles + "\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
-                "; 29 = key left of 1, 3B..44 = F1..F10 (41 = F7), 57/58 = F11/F12\r\n" +
+                "; 29 = key left of 1, 3B..44 = F1..F10 (41 = F7), 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
                 "key_distance = " + ScanDistance.ToString("X2") + "\r\nkey_smoothing = " + ScanSmoothing.ToString("X2") + "\r\n" +
-                "key_sharp_hud = " + ScanHudFilter.ToString("X2") + "\r\nkey_stereo = " + ScanStereo.ToString("X2") + "\r\n" +
+                "key_stereo = " + ScanStereo.ToString("X2") + "\r\n" +
                 "; 0 = no beeps\r\nsound = " + (Sound ? 1 : 0) + "\r\n" +
                 "; game folder (empty = auto-detect GOG / Steam)\r\ngame_dir = " + GameDir + "\r\n");
         }

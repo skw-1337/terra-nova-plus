@@ -29,8 +29,8 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 
 ### HD 640x400
 - The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
-- `F12` toggles the 3D smoothing, `F11` a sharper HUD (Scale2x on the cockpit art).
-- For now it only works with the French GOG executable. The English GOG/Steam version and the demos are next.
+- `F12` toggles the 3D smoothing.
+- Works with the GOG and Steam games, French and English (beta 3; before that it was French GOG only). The demos are next.
 
 ### Terrain detail
 - More ground detail far away. Steep walls in the distance no longer turn into a saw blade. Costs around 10-20 % fps.
@@ -60,7 +60,11 @@ If your install has no `TNDEMO1` / `TNDEMO2` folder (CD version): get the demos 
 
 Stereo fix and demos need the tool to start DOSBox (Enter). With **A** (attach), add `mixer sb reverse /noshow` at the top of your DOSBox `[autoexec]` instead, or use ripsaw8080's `SB16.DIG` patch (thanks to rfnagel and zjorz for pointing it out).
 
+### Gameplay (beta 3)
+- **Projectile hit fix** (on by default). Known bug since the 90s: with fast CPU cycles the multipulsar can't hit moving targets and drones become nearly immortal. Nightdive even dropped the Steam config to 115000 cycles because of it. Cause found in the game code: every frame a projectile checks the distance it just travelled against the entity grid, in steps of a fixed size, and the number of steps is rounded *down*. Above ~30 fps a pulsar bolt travels less than one step per frame, so the count is 0 and the bolt tests nothing: it can only hit the ground. The fix rounds the count up, and projectiles hit at any frame rate, yours and the enemies' alike (yes, the game gets a bit harder: that's how it was meant to play). Needed if you use the 300000 cycles the tool sets.
+
 ### Small stuff
+- The tool starts DOSBox with 300000 CPU cycles (`cpu_cycles` in `TNPlus.ini`, 0 to keep the edition's setting). The Steam and GOG configs ship with 115000, which makes the game crawl, especially in HD (14.5 fps instead of 36 on the same mission).
 - View distance moved from `I` to `J`: `I` is the game's infrared. Old settings files are updated on their own.
 
 ## Download & use
@@ -106,6 +110,8 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `invert_y` | `0` | `1` = inverted vertical look |
 | `noclip_speed` | `15` | game units per second (a walking PBA does about 2.5) |
 | `key_freelook`, `key_noclip`, `key_distance` | `15`, `16`, `24` | **physical key scancodes** (hex): `15` = Y, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
+| `hit_fix` | `1` | `0` = leave the game's projectile hit test as it is (misses above ~30 fps) |
+| `cpu_cycles` | `300000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting |
 | `sound` | `1` | `0` = no beeps |
 | `game_dir` | *(auto)* | game folder, if auto-detection does not find it |
 
@@ -147,7 +153,7 @@ build.bat
 or manually:
 
 ```bat
-%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs HdPayload.cs AweBank.cs
+%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /r:System.Windows.Forms.dll /r:System.Drawing.dll /out:TNPlus.exe TNPlus.cs TNPlusGui.cs HdPayload.cs HdPayloadFr.cs HdPayloadEn.cs AweBank.cs
 ```
 
 ## How it works (short)
