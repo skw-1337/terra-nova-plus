@@ -35,7 +35,9 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 
 ### Terrain detail
 - More ground detail far away. Steep walls in the distance no longer turn into a saw blade. Costs around 10-20 % fps.
-- Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 18 cells and SHARPER to 24, after enlarging the engine's fixed polygon buffers (a longer polygon ring overflowed them and crashed). Measured on mission 12 in HD: 82 to 72 fps standing, 65 moving.
+- Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 32 cells and SHARPER to 48.
+- The engine could not go past 31 cells: its vertex grid is 64x64 and its polygon buffers are small. TNPlus patches `TNOVA\__FF.EXE` once (128x128 grid, bigger buffers, 1 MB render memory) and keeps the untouched file as `__FF.EXE.tnplus-original`.
+- Measured on mission 12 in HD at 500000 cycles, same view: 64.7 fps at 24 cells, 59.6 at 32, 49.1 at 48. If SHARPER is too heavy, use SHARP or raise the CPU speed.
 
 ### Sound
 - **Fix reversed stereo** (off by default): under DOSBox the game's Sound Blaster 16 driver swaps left and right, cutscenes included. The tool can start DOSBox with the channels swapped back.

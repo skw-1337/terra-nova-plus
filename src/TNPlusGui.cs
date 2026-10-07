@@ -127,7 +127,7 @@ static partial class TNPlus
         Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(5));
         cbDisplay = Combo(pPic, "Display", 0, DISPLAY_LABELS, "BETA", "HD 640x400: the 3D view drawn at twice the width, GOG and Steam, French and English. " + KeyName(ScanSmoothing) + " toggles the smoothing in game.");
         ckWide = Switch(pPic, "Widescreen 16:9", 1, null, "The camera is corrected for a 16:9 DOSBox window. Needs the game to be launched from here.");
-        cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 18 (SHARP) or 24 cells (SHARPER, the game: 12), and more detail far away. Costs 10-20 % fps.");
+        cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARP costs about 8 % fps, SHARPER about 25 %.");
         cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), "View distance at mission start. " + KeyName(ScanDistance) + " cycles it in game.");
         cbObj = Combo(pPic, "Object distance", 4, OBJDIST_NAMES, "BETA", "How far bushes, trees, units and buildings are drawn. GAME: scenery 20 cells. FAR: 30, unit ranges x2. MAX: 40, x3. About 4 % fps at MAX.");
         Panel pSnd = Pane(f, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));

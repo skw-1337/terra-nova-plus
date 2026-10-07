@@ -15,9 +15,10 @@
 //  Every address is found through CODE SIGNATURES (no hard-coded addresses): English /
 //  French executables, Steam, GOG and CD versions, any DOSBox memory size. Exception: the
 //  HD mode (HdPayloadFr.cs / HdPayloadEn.cs, generated from the reverse-engineering scripts)
-//  carries the addresses of the French (GOG) and English (GOG, Steam) executables, and it is
-//  the only option that touches a game file: one header field of TNOVA\__FF.EXE (16 KB more
-//  memory for its code), original kept as __FF.EXE.tnplus-original.
+//  carries the addresses of the French (GOG) and English (GOG, Steam) executables. HD and the
+//  terrain detail are the only options that touch a game file: TNOVA\__FF.EXE gets 16 KB more
+//  memory for the HD code and the far smooth terrain patches (TERRAIN_EXE), original kept as
+//  __FF.EXE.tnplus-original.
 //
 //  Build (no install needed, uses the C# compiler shipped with Windows):
 //    C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize
@@ -89,14 +90,38 @@ static partial class TNPlus
     // overflows (crash), so they are enlarged to 768 quads / 1000 vertices first (+35 KB of the render pool,
     // which has 53 KB free at its peak). SHARP: polygons up to 18 cells, SHARPER: 24 (about -10 % fps; the
     // 64x64 vertex map of the engine caps it at 31). Measured turning on mission 12: 484 quads at 24 cells.
+    // This in-memory way is the fallback when __FF.EXE could not be prepared.
     static readonly int[] SMOOTH_TO = { 0, 18, 24 };
+    // With __FF.EXE prepared (see TERRAIN_EXE) the vertex map is 128x128 and the buffers hold 48 cells (the
+    // engine's outline table stops at 49). Mission 12, HD, 500000 cycles, same view: 24 cells 64.7 fps,
+    // 32: 59.6, 40: 54.2, 48: 49.1; at most 1870 quads turning at 48 cells, 16:9 included.
+    static readonly int[] SMOOTH_FAR = { 0, 32, 48 };
+    static int OptSmoothCells = 0;                  // ini only (tests): forced end of the smooth ring, 0 = per detail
+    static bool farTerrain = false;
     static readonly uint[][] SMOOTH_AT = { new uint[] { 0x2AB0C5, 0x2ADF0F, 0x2ADF00 }, new uint[] { 0x2AB0D5, 0x2ADF1F, 0x2ADF10 } };
     static readonly byte[][] SMOOTH_OLD = { new byte[] { 0xC0, 0x3E, 0, 0 }, new byte[] { 0, 0x7D, 0, 0 }, new byte[] { 0x42, 0x72, 0, 0 } };
     static readonly byte[][] SMOOTH_NEW = { new byte[] { 0x40, 0x60, 0, 0 }, new byte[] { 0, 0xC0, 0, 0 }, new byte[] { 0x58, 0x98, 0, 0 } };
     static int smoothState = 0;                     // 0 to do, 1 buffers enlarged, -1 unavailable
 
+    static int SmoothCells()
+    {
+        int n = farTerrain ? SMOOTH_FAR[OptDetail] : SMOOTH_TO[OptDetail];
+        if (OptSmoothCells > 0) n = Math.Min(OptSmoothCells, farTerrain ? 48 : 24);
+        return n;
+    }
+
     static void TrySmooth()
     {
+        // prepared exe: map shift "shl ebx,7" at the first key of the quad builder
+        farTerrain = false;
+        for (int lang = 0; lang < 2; lang++)
+            if (Same(Read(TERRAIN_SHIFT[lang], 3), new byte[] { 0xC1, 0xE3, 0x07 })) farTerrain = true;
+        if (farTerrain)
+        {
+            smoothState = 1;
+            Say("Smooth terrain up to " + SmoothCells() + " cells (the game: 12)", 0);
+            return;
+        }
         for (int lang = 0; lang < 2; lang++)
         {
             bool ok = true;
@@ -108,7 +133,7 @@ static partial class TNPlus
             if (!ok) continue;
             for (int i = 0; i < 3; i++) Write(SMOOTH_AT[lang][i], SMOOTH_NEW[i]);
             smoothState = 1;
-            Say("Smooth terrain up to " + SMOOTH_TO[OptDetail] + " cells (the game: 12)", 0);
+            Say("Smooth terrain up to " + SmoothCells() + " cells (the game: 12)", 0);
             return;
         }
         smoothState = -1;
@@ -161,6 +186,55 @@ static partial class TNPlus
     const string EN_SHA = "b762c54509f1716282c4d357a72013b8d84ba25f17b0483b733678ff81e63dd1";   // English v1.09, GOG and Steam
     const string HD_SHA_READY = "4e2aa4851bf8cd4832e19660bfcd333fcc9735e94e8b4b6c24b73e0223ccd97a";
     const string EN_SHA_READY = "86fd95cc3ab30929cfaac50b96c1462e331089a931bd4239448e9dbb3c81fbbd";   // English, 16 KB more memory
+    // ... plus the far smooth terrain (TERRAIN_EXE); beta 3 left the exe in the READY state above, it is upgraded
+    const string HD_SHA_READY2 = "f22a68b97146595fa93ae14aef064654d4b1dd43fc5eac01dd01b85e7380553b";
+    const string EN_SHA_READY2 = "e32cab7c164e1b5334c85e1c2504580856735647e183f9d7b7798794c31e9607";
+    static bool KnownSha(string sha)
+    {
+        return sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY || sha == HD_SHA_READY2 || sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2;
+    }
+    static bool EnglishSha(string sha) { return sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2; }
+
+    // Far smooth terrain. The polygons of the near ground are joined through a map of shared vertices that the
+    // engine indexes with 6 bits per axis (64x64, so 31 cells at most), and its buffers are allocated every
+    // frame from a 312 KB render pool. In the exe: the map goes to 7 bits per axis (128x128: masks 0x3F -> 0x7F,
+    // shifts 6 -> 7, at all its writers and the quad builder; the rasterizer reads it unmasked), the buffers
+    // are sized for 48 cells with a 2x margin (4096 quads, 4608 vertices, 1600 clipping points) and the pool to 1 MB (the game
+    // runs with 30 MB). The pool has to be set before the game allocates it at start-up, hence the file.
+    // Addresses are the game's (file offset = address - 0x1AAB5C), French then English.
+    struct ExePatch
+    {
+        public uint Fr, En; public string Old, New;
+        public ExePatch(uint fr, uint en, string o, string n) { Fr = fr; En = en; Old = o; New = n; }
+    }
+    static readonly ExePatch[] TERRAIN_EXE = {
+        new ExePatch(0x2AA2EB, 0x2AA2FB, "80E33F", "80E37F"), new ExePatch(0x2AA2EE, 0x2AA2FE, "80E13F", "80E17F"), new ExePatch(0x2AA2F5, 0x2AA305, "C1E306", "C1E307"),
+        new ExePatch(0x2AA308, 0x2AA318, "80E13F", "80E17F"), new ExePatch(0x2AA30E, 0x2AA31E, "C1E106", "C1E107"), new ExePatch(0x2AA311, 0x2AA321, "80E33F", "80E37F"),
+        new ExePatch(0x2AA327, 0x2AA337, "80E33F", "80E37F"), new ExePatch(0x2AA32A, 0x2AA33A, "80E13F", "80E17F"), new ExePatch(0x2AA331, 0x2AA341, "C1E106", "C1E107"),
+        new ExePatch(0x2AA346, 0x2AA356, "80E13F", "80E17F"), new ExePatch(0x2AA349, 0x2AA359, "80E33F", "80E37F"), new ExePatch(0x2AA350, 0x2AA360, "C1E106", "C1E107"),
+        new ExePatch(0x2AE676, 0x2AE686, "83E23F", "83E27F"), new ExePatch(0x2AE679, 0x2AE689, "83E03F", "83E07F"), new ExePatch(0x2AE67C, 0x2AE68C, "C1E206", "C1E207"),
+        new ExePatch(0x2AE788, 0x2AE798, "83E53F", "83E57F"), new ExePatch(0x2AE78B, 0x2AE79B, "83E23F", "83E27F"), new ExePatch(0x2AE792, 0x2AE7A2, "C1E206", "C1E207"),
+        new ExePatch(0x2AE9B6, 0x2AE9C6, "83E23F", "83E27F"), new ExePatch(0x2AE9B9, 0x2AE9C9, "83E03F", "83E07F"), new ExePatch(0x2AE9BC, 0x2AE9CC, "C1E206", "C1E207"),
+        new ExePatch(0x2AEB7E, 0x2AEB8E, "83E73F", "83E77F"), new ExePatch(0x2AEB83, 0x2AEB93, "C1E706", "C1E707"), new ExePatch(0x2AEB86, 0x2AEB96, "83E03F", "83E07F"),
+        new ExePatch(0x2AED99, 0x2AEDA9, "83E03F", "83E07F"), new ExePatch(0x2AED9C, 0x2AEDAC, "C1E006", "C1E007"), new ExePatch(0x2AEDB6, 0x2AEDC6, "83E03F", "83E07F"),
+        new ExePatch(0x2AF058, 0x2AF068, "83E03F", "83E07F"), new ExePatch(0x2AF05B, 0x2AF06B, "83E23F", "83E27F"), new ExePatch(0x2AF05E, 0x2AF06E, "C1E006", "C1E007"),
+        new ExePatch(0x2AF1A2, 0x2AF1B2, "83E73F", "83E77F"), new ExePatch(0x2AF1AE, 0x2AF1BE, "C1E706", "C1E707"), new ExePatch(0x2AF1B1, 0x2AF1C1, "83E03F", "83E07F"),
+        new ExePatch(0x2AF38F, 0x2AF39F, "83E73F", "83E77F"), new ExePatch(0x2AF394, 0x2AF3A4, "C1E706", "C1E707"), new ExePatch(0x2AF397, 0x2AF3A7, "83E03F", "83E07F"),
+        new ExePatch(0x2ADEF0, 0x2ADF00, "B800400000", "B800000100"),   // vertex map 16 KB -> 64 KB
+        new ExePatch(0x2AB0C4, 0x2AB0D4, "B8C03E0000", "B840000200"),   // quads 500 -> 4096
+        new ExePatch(0x2ADEFF, 0x2ADF0F, "B842720000", "B800BE0200"),   // vertices 750 -> 4608
+        new ExePatch(0x2ADF0E, 0x2ADF1E, "B8007D0000", "B800000400"),   // triangles 1000 -> 8192
+        new ExePatch(0x2B0511, 0x2B0521, "B8E0790000", "B8C0F30000"),   // clipping points 800 -> 1600
+        new ExePatch(0x2B0C7C, 0x2B0C8C, "81FB20030000", "81FB40060000"),   // its limit
+        new ExePatch(0x2B0DC1, 0x2B0DD1, "81FB20030000", "81FB40060000"),   // its limit
+        new ExePatch(0x2B0EE5, 0x2B0EF5, "81FB20030000", "81FB40060000"),   // its limit
+        new ExePatch(0x2B1012, 0x2B1022, "81FB20030000", "81FB40060000"),   // its limit
+        new ExePatch(0x2B1136, 0x2B1146, "81FB20030000", "81FB40060000"),   // its limit
+        new ExePatch(0x2C4F71, 0x2C4EE1, "B800E00400", "B800001000"),   // render pool 312 KB -> 1 MB (malloc)
+        new ExePatch(0x2C4F76, 0x2C4EE6, "BA00E00400", "BA00001000"),   // and its recorded size
+    };
+    static readonly uint[] TERRAIN_SHIFT = { 0x2AA2F5, 0x2AA305 };   // its first "shl ebx,6", French / English
+    const uint EXE_CODE_DELTA = 0x1AAB5C;
     const uint OBJ3_SIZE = 0x10F9B0, OBJ3_HD = 0x10F9B0 + 0x4000;             // French: object 3 virtual size
     const uint OBJ3_SIZE_EN = 0x10F900, OBJ3_HD_EN = 0x10F900 + 0x4000;       // English
     static int hdState = 0;                         // 0 waiting, 1 active, -1 unavailable (reason said)
@@ -374,7 +448,7 @@ static partial class TNPlus
                 if (File.Exists(exe))
                 {
                     string sha = Sha256(File.ReadAllBytes(exe));
-                    hdOk = sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY || sha == EN_SHA || sha == EN_SHA_READY;
+                    hdOk = KnownSha(sha);
                     hdWhy = hdOk ? "" : "not available for this version of the game";
                 }
             }
@@ -675,8 +749,7 @@ static partial class TNPlus
         try
         {
             string sha = Sha256(File.ReadAllBytes(Path.Combine(dir, "TNOVA", "__FF.EXE")));
-            if (sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY) exeLang = "French";
-            else if (sha == EN_SHA || sha == EN_SHA_READY) exeLang = "English";
+            if (KnownSha(sha)) exeLang = EnglishSha(sha) ? "English" : "French";
         }
         catch { }
         return exeLang;
@@ -858,11 +931,12 @@ static partial class TNPlus
         ApplyMusic(TARGET_DIRS[LaunchTarget]);
         hdState = demo ? -1 : 0;                    // HD only knows the full game's executable
         hdExeReady = false;
-        if (OptHD && !demo)
+        if ((OptHD || OptDetail > 0) && !demo)
         {
             string why;
             hdExeReady = PrepareExeForHd(out why);
-            Console.WriteLine(hdExeReady ? "HD 640x400: " + why : "HD 640x400 unavailable: " + why);
+            Console.WriteLine(hdExeReady ? "__FF.EXE: " + why : "HD 640x400 and far smooth terrain unavailable: " + why);
+            if (!OptHD) hdExeReady = false;
         }
         string db = Path.Combine(GameDir, "_DOSBOX");
         string args = "-conf dosbox_terranova_windows.conf -conf \"" + WriteLaunchConf(db, LaunchTarget) + "\"";
@@ -1151,7 +1225,7 @@ static partial class TNPlus
         int[] types = { 1, 2, 0, 0, 0, 0 }, steps = { 1, 1, 1, 2, 4, 8 };
         for (int k = 0; k < 6; k++)
             if (b[0x5C + 12 * k] != types[k] || BitConverter.ToInt16(b, 0x5C + 12 * k + 5) != steps[k]) return;
-        int near = smoothState == 1 ? SMOOTH_TO[OptDetail] : BitConverter.ToInt16(b, 0x5C + 12 + 9);
+        int near = smoothState == 1 ? SmoothCells() : BitConverter.ToInt16(b, 0x5C + 12 + 9);
         int[] to = { BitConverter.ToInt16(b, 0x5C + 9), near, d[0], d[1], d[2], d[3] };
         bool same = true;
         for (int k = 1; k < 6 && same; k++) same = BitConverter.ToInt16(b, 0x5C + 12 * k + 9) == to[k];
@@ -1246,23 +1320,39 @@ static partial class TNPlus
         if (!File.Exists(exe)) { msg = "TNOVA\\__FF.EXE not found"; return false; }
         byte[] d = File.ReadAllBytes(exe);
         string sha = Sha256(d);
-        if (sha == HD_SHA_READY || sha == EN_SHA_READY) { msg = "ready"; return true; }
-        bool english = sha == EN_SHA;
-        if (sha != HD_SHA_ORIGINAL && !english) { msg = "unknown __FF.EXE (GOG French, GOG English and Steam are supported)"; return false; }
+        if (sha == HD_SHA_READY2 || sha == EN_SHA_READY2) { msg = "ready"; return true; }
+        if (!KnownSha(sha)) { msg = "unknown __FF.EXE (GOG French, GOG English and Steam are supported)"; return false; }
+        bool english = EnglishSha(sha);
         uint size = english ? OBJ3_SIZE_EN : OBJ3_SIZE, hd = english ? OBJ3_HD_EN : OBJ3_HD;
         int le = IndexOf(d, new byte[] { (byte)'L', (byte)'E', 0, 0 }, 0);
         int at = le + BitConverter.ToInt32(d, le + 0x40) + 24 * 2;        // object table, object 3: virtual size
-        if (le < 0 || BitConverter.ToUInt32(d, at) != size) { msg = "unexpected executable layout"; return false; }
+        uint cur = le < 0 ? 0 : BitConverter.ToUInt32(d, at);
+        if (cur != size && cur != hd) { msg = "unexpected executable layout"; return false; }
+        // the backup is always the untouched exe (a beta 3 READY exe without backup is turned back first)
+        byte[] orig = (byte[])d.Clone();
+        BitConverter.GetBytes(size).CopyTo(orig, at);
+        BitConverter.GetBytes(hd).CopyTo(d, at);
+        foreach (ExePatch p in TERRAIN_EXE)
+        {
+            byte[] old = Hex(p.Old), nw = Hex(p.New);
+            int o = (int)((english ? p.En : p.Fr) - EXE_CODE_DELTA);
+            byte[] c = new byte[old.Length];
+            Array.Copy(d, o, c, 0, c.Length);
+            if (!Same(c, old)) { msg = "unexpected bytes in __FF.EXE"; return false; }
+            nw.CopyTo(d, o);
+            old.CopyTo(orig, o);
+        }
+        if (Sha256(orig) != (english ? EN_SHA : HD_SHA_ORIGINAL)) { msg = "unexpected __FF.EXE content"; return false; }
+        if (Sha256(d) != (english ? EN_SHA_READY2 : HD_SHA_READY2)) { msg = "__FF.EXE update failed"; return false; }
         string backup = exe + ".tnplus-original";
         try
         {
-            if (!File.Exists(backup)) File.Copy(exe, backup);
-            BitConverter.GetBytes(hd).CopyTo(d, at);
+            if (!File.Exists(backup)) File.WriteAllBytes(backup, orig);
             File.WriteAllBytes(exe, d);
         }
         catch (Exception e) { msg = "cannot update __FF.EXE (" + e.Message + ")"; return false; }
-        if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY : HD_SHA_READY)) { msg = "__FF.EXE update failed"; return false; }
-        msg = "__FF.EXE prepared (16 KB more memory; original kept as __FF.EXE.tnplus-original)";
+        if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY2 : HD_SHA_READY2)) { msg = "__FF.EXE update failed"; return false; }
+        msg = "prepared (HD memory, far smooth terrain; original kept as __FF.EXE.tnplus-original)";
         return true;
     }
 
@@ -1770,6 +1860,7 @@ static partial class TNPlus
                     case "hd_smoothing": HdSmoothing = v != "0"; break;
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
+                    case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
                     case "object_distance": OptObjDist = Math.Max(0, Array.IndexOf(OBJDIST_NAMES, v.ToUpperInvariant())); break;
                     case "key_smoothing": ScanSmoothing = Convert.ToInt32(v, 16); break;
                     case "key_stereo": ScanStereo = Convert.ToInt32(v, 16); break;
@@ -1812,6 +1903,7 @@ static partial class TNPlus
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
+                (OptSmoothCells > 0 ? "; tests: forced end of the smooth terrain (cells)\r\nsmooth_cells = " + OptSmoothCells + "\r\n" : "") +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
