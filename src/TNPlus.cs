@@ -48,7 +48,7 @@ using System.Reflection;
 
 static partial class TNPlus
 {
-    const string VERSION = "1.1.0-beta3";
+    const string VERSION = "1.1.0-beta4";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
@@ -56,6 +56,7 @@ static partial class TNPlus
     static int OptDistance = 2;                     // 0 NORMAL, 1 FAR, 2 MAX
     static bool OptStereoFix = false;                // DOSBox: swap the Sound Blaster stereo (the game's SB16 driver reverses it)
     static bool OptHitFix = true;                   // projectile hit test fixed for high frame rates (see TryHitFix)
+    static bool OptPhysFix = true;                  // physics clock fixed for high frame rates (see PHYSFIX_AT)
     static int OptMusic = 0;                        // 0 Roland GS (General MIDI), 1 FM, 2 the game's own setting, 3 AWE32 (needs awe32.raw)
     static readonly string[] MUSIC_NAMES = { "ROLAND", "FM", "GAME'S OWN", "AWE32" };
     static readonly string[] MUSIC_INFO = { "Roland GS sounds of the Windows MIDI synthesizer (General MIDI)",
@@ -71,7 +72,8 @@ static partial class TNPlus
     static int ScanSmoothing = 0x58;                // F12: HD smoothing on / off
     static int ScanStereo = 0x41;                   // F7: swap the stereo of the sound effects in game
     static double NoclipSpeed = 15.0;               // game units per second (a walking PBA ~2.5)
-    static int CpuCycles = 300000;                  // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
+    static int CpuCycles = 500000;                  // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
+    static readonly int[] CYCLE_CHOICES = { 300000, 400000, 500000, 600000, 0 };
     static string GameDir = "";
 
     static readonly string[] DIST_NAMES = { "NORMAL", "FAR", "MAX" };
@@ -142,6 +144,16 @@ static partial class TNPlus
     static readonly byte[] HITFIX_OLD = { 0x89, 0xC2, 0xC1, 0xFA, 0x10, 0xC1, 0xE0, 0x10, 0xF7, 0xFB, 0xC1, 0xF8, 0x10 };
     static readonly byte[] HITFIX_NEW = { 0x8D, 0x44, 0x18, 0xFF, 0x99, 0xF7, 0xFB, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
     static int hitFixState = 0;                     // 0 to do, 1 applied, -1 unavailable (said once)
+
+    // Walking and every physics body ran faster at high frame rates (measured: 2.0 game units per second at
+    // 37 fps, 3.3 at 76 fps). The rigid-body engine steps in 30 ms slices and keeps the remainder of each
+    // frame below 10 ms for the next one, but after a frame where that remainder was simulated anyway it never
+    // cleared it: from then on every frame simulated its own time PLUS the old remainder. The fix clears it.
+    //   __FF.EXE 0x3121F7 (French) / 0x311F77 (English): jmp +6 (EB 06) becomes xor ebp,ebp (31 ED), which falls
+    //   into the "mov [remainder], ebp" that follows. Measured with the fix: 1.9 units/s at 37 and at 76 fps.
+    static readonly uint[] PHYSFIX_AT = { 0x3121F7, 0x311F77 };
+    static readonly byte[] PHYSFIX_OLD = { 0xEB, 0x06, 0x89, 0x2D }, PHYSFIX_NEW = { 0x31, 0xED, 0x89, 0x2D };
+    static int physFixState = 0;
     static bool hdExeReady = false;
 
     // ------------------------------------------------------------------ Win32
@@ -340,6 +352,7 @@ static partial class TNPlus
             left.Add(Opt("8", "Music", Val(MUSIC_NAMES[music]), music == 3 ? "EXPERIMENTAL" : "BETA", 0));
             left.Add(Sec("GAMEPLAY"));
             left.Add(Opt("9", "Projectile hit fix", Sw(OptHitFix), "BETA", 0));
+            left.Add(Opt("0", "Physics speed fix", Sw(OptPhysFix), "BETA", 0));
             right.Add(Sec("LAUNCH"));
             right.Add(Line(S("  "), S(" L ", ConsoleColor.Black, ConsoleColor.Cyan), S(" "), S(" " + TARGET_NAMES[LaunchTarget] + " ", ConsoleColor.Black, ConsoleColor.Yellow),
                 S(LaunchTarget > 0 ? "  320x400, no HD" : "  the full game", ConsoleColor.DarkGray)));
@@ -405,6 +418,7 @@ static partial class TNPlus
                 case '7': OptStereoFix = !OptStereoFix; break;
                 case '8': OptMusic = (EffectiveMusic() + 1) % (AweRom() != null ? 4 : 3); break;
                 case '9': OptHitFix = !OptHitFix; break;
+                case '0': OptPhysFix = !OptPhysFix; break;
                 case 'G':
                     if (installs.Count > 0) GameDir = installs[(installs.IndexOf(GameDir) + 1) % installs.Count];
                     break;
@@ -772,7 +786,7 @@ static partial class TNPlus
         int vkSmooth = (int)MapVirtualKey((uint)ScanSmoothing, 1);
         bool prevS = false, prevSt = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
-        double lastHd = -10, lastHit = -10;
+        double lastHd = -10, lastHit = -10, lastPhys = -10;
         int[] vkFwd = { (int)MapVirtualKey(0x11, 1) }, vkBack = { (int)MapVirtualKey(0x1F, 1) };
         int[] vkLeft = { (int)MapVirtualKey(0x1E, 1) }, vkRight = { (int)MapVirtualKey(0x20, 1) };
         const int VK_ESCAPE = 0x1B, VK_SPACE = 0x20, VK_LCONTROL = 0xA2, VK_LSHIFT = 0xA0;
@@ -812,7 +826,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0;
+                    hitFixState = 0; physFixState = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
@@ -823,6 +837,7 @@ static partial class TNPlus
                 // --- HD: injected as soon as the game is loaded, before its first mission
                 if (OptHD && hdState == 0 && now - lastHd > 0.5) { lastHd = now; TryHdInject(); }
                 if (OptHitFix && hitFixState == 0 && now - lastHit > 0.5) { lastHit = now; TryHitFix(); }
+                if (OptPhysFix && physFixState == 0 && now - lastPhys > 0.5) { lastPhys = now; TryPhysFix(); }
                 bool s = hdState == 1 && fg && Down(vkSmooth);
                 if (s && !prevS)
                 {
@@ -1121,19 +1136,28 @@ static partial class TNPlus
     // executables are told apart by the bytes found at the two addresses
     static void TryHitFix()
     {
-        foreach (uint at in HITFIX_AT)
+        hitFixState = TryFix(HITFIX_AT, HITFIX_OLD, HITFIX_NEW, "Projectile hit fix", "weapons hit at any frame rate");
+    }
+
+    static void TryPhysFix()
+    {
+        physFixState = TryFix(PHYSFIX_AT, PHYSFIX_OLD, PHYSFIX_NEW, "Physics speed fix", "walking speed no longer depends on the frame rate");
+    }
+
+    static int TryFix(uint[] ats, byte[] old, byte[] nw, string name, string what)
+    {
+        foreach (uint at in ats)
         {
-            byte[] cur = Read(at, HITFIX_OLD.Length);
-            if (Same(cur, HITFIX_NEW)) { hitFixState = 1; return; }
-            if (!Same(cur, HITFIX_OLD)) continue;
-            Write(at, HITFIX_NEW);
-            if (!Same(Read(at, HITFIX_NEW.Length), HITFIX_NEW)) break;
-            hitFixState = 1;
-            Say("Projectile hit fix ON: weapons hit at any frame rate", 1000);
-            return;
+            byte[] cur = Read(at, old.Length);
+            if (Same(cur, nw)) return 1;
+            if (!Same(cur, old)) continue;
+            Write(at, nw);
+            if (!Same(Read(at, nw.Length), nw)) break;
+            Say(name + " ON: " + what, 1000);
+            return 1;
         }
-        hitFixState = -1;
-        Say("Projectile hit fix unavailable: unsupported game version", 300, 300);
+        Say(name + " unavailable: unsupported game version", 300, 300);
+        return -1;
     }
 
     // the HD code must be in place before the first mission runs: DOSBox caches the game code it has
@@ -1577,7 +1601,7 @@ static partial class TNPlus
     static void LoadSettings()
     {
         if (!File.Exists(IniPath)) { SaveSettings(); return; }
-        bool haveDisplay = false, oldForce = false, oldHd = false;
+        bool haveDisplay = false, oldForce = false, oldHd = false, haveSpeed = false;
         foreach (string line in File.ReadAllLines(IniPath))
         {
             string l = line.Trim();
@@ -1601,13 +1625,15 @@ static partial class TNPlus
                     case "hd": oldHd = v != "0"; break;
                     case "hd_smoothing": HdSmoothing = v != "0"; break;
                     case "hit_fix": OptHitFix = v != "0"; break;
+                    case "phys_fix": OptPhysFix = v != "0"; break;
                     case "key_smoothing": ScanSmoothing = Convert.ToInt32(v, 16); break;
                     case "key_stereo": ScanStereo = Convert.ToInt32(v, 16); break;
                     case "sensitivity_x": SensX = int.Parse(v); break;
                     case "sensitivity_y": SensY = int.Parse(v); break;
                     case "invert_y": InvertY = v == "1"; break;
                     case "noclip_speed": NoclipSpeed = double.Parse(v, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "cpu_cycles": CpuCycles = int.Parse(v); break;
+                    case "cpu_cycles": CpuCycles = int.Parse(v); if (CpuCycles == 300000 && !haveSpeed) CpuCycles = 500000; break;   // old default
+                    case "speed_version": haveSpeed = true; break;
                     case "key_freelook": ScanFreelook = Convert.ToInt32(v, 16); break;
                     case "key_noclip": ScanNoclip = Convert.ToInt32(v, 16); break;
                     case "key_distance": ScanDistance = Convert.ToInt32(v, 16); if (ScanDistance == 0x17) ScanDistance = 0x24; break;   // old default I = infrared
@@ -1639,10 +1665,12 @@ static partial class TNPlus
                 "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +
                 "; HD smoothing at start (toggled in game with key_smoothing)\r\nhd_smoothing = " + (HdSmoothing ? 1 : 0) + "\r\n" +
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
+                "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
-                "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting\r\ncpu_cycles = " + CpuCycles + "\r\n" +
+                "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
+                "; HD on a mid-range PC: 300000 = ~37 fps, 400000 = ~50, 500000 = ~62, 600000 = ~76. Too high for your PC = choppy sound\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 2\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (41 = F7), 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +

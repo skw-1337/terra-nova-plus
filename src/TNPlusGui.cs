@@ -21,7 +21,7 @@ static partial class TNPlus
     static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono;
 
     static Label guiHelp, guiWarn, guiPreset;
-    static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset;
+    static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed;
     const int ROW0 = 46, ROWH = 32, CTL_H = 26, COL_CTL = 156, COL_W = 140, COL_BADGE = 306;
     static int PaneH(int rows) { return ROW0 + rows * ROWH - (ROWH - CTL_H) + 14; }
 
@@ -67,7 +67,7 @@ static partial class TNPlus
             }
         }
     }
-    static CheckBox ckWide, ckFree, ckClip, ckStereo, ckHit;
+    static CheckBox ckWide, ckFree, ckClip, ckStereo, ckHit, ckPhys;
     static bool guiBusy;                            // refreshing the controls: ignore their events
     static Action guiRedrawGame;
 
@@ -134,15 +134,18 @@ static partial class TNPlus
         cbMusic = Combo(pSnd, "Music", 0, awe ? MUSIC_NAMES : new[] { MUSIC_NAMES[0], MUSIC_NAMES[1], MUSIC_NAMES[2] }, "BETA", "");
         Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(1));
         ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), "Look around with the mouse, " + KeyName(ScanFreelook) + " in game. Sensitivity and inverted look in TNPlus.ini.");
-        Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(2));
+        Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(3));
         ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), "Only if your sound is mirrored: under DOSBox the game's SB16 driver swaps left and right. " + KeyName(ScanStereo) + " swaps the sound effects in game, to compare.");
         ckHit = Switch(pFix, "Projectile hits", 1, "BETA", "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
+        ckPhys = Switch(pFix, "Physics speed", 2, "BETA", "The game walks faster the higher the frame rate (+65 % at 76 fps), jumps and falls too. Fixed: same speed at any frame rate.");
         Panel pCheat = Pane(f, "CHEATS", rx, pFix.Bottom + 10, pw, PaneH(1));
         ckClip = Switch(pCheat, "Noclip", 0, KeyName(ScanNoclip), "Fly through everything, " + KeyName(ScanNoclip) + " in game. Speed in TNPlus.ini.");
-        Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(2) + 24);
+        Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);
         cbTarget = Combo(pLaunch, "Run", 0, new[] { "FULL GAME", "DEMO 1", "DEMO 2" }, null, "The two 1996 demos shipped with GOG and Steam have missions the full game hasn't. No HD there yet.");
         cbPreset = Combo(pLaunch, "Preset", 1, new[] { "ORIGINAL", "CLASSIC+", "BEST", "CUSTOM" }, null, "Presets set picture and controls at once. Fixes and music are yours to choose.");
-        guiPreset = Lbl(pLaunch, "", 14, PaneH(2) - 4, TSmall, TDim); guiPreset.AutoSize = false; guiPreset.Size = new Size(pw - 28, 20);
+        cbSpeed = Combo(pLaunch, "CPU speed", 2, new[] { "300000", "400000", "500000", "600000", "GAME'S OWN" }, "BETA",
+            "DOSBox CPU cycles. HD on a mid-range PC: 300000 ~37 fps, 400000 ~50, 500000 ~62, 600000 ~76. Choppy sound = too high for your PC.");
+        guiPreset = Lbl(pLaunch, "", 14, PaneH(3) - 4, TSmall, TDim); guiPreset.AutoSize = false; guiPreset.Size = new Size(pw - 28, 20);
 
         // help and warnings: a readout strip like the cockpit's message line
         int yb = Math.Max(pCtl.Bottom, pLaunch.Bottom) + 14;
@@ -180,6 +183,8 @@ static partial class TNPlus
         ckStereo.CheckedChanged += delegate { if (!guiBusy) { OptStereoFix = ckStereo.Checked; GuiRefresh(); } };
         cbMusic.Changed += delegate { if (!guiBusy) { OptMusic = cbMusic.Index; GuiRefresh(); } };
         ckHit.CheckedChanged += delegate { if (!guiBusy) { OptHitFix = ckHit.Checked; GuiRefresh(); } };
+        ckPhys.CheckedChanged += delegate { if (!guiBusy) { OptPhysFix = ckPhys.Checked; GuiRefresh(); } };
+        cbSpeed.Changed += delegate { if (!guiBusy) { CpuCycles = CYCLE_CHOICES[cbSpeed.Index]; GuiRefresh(); } };
         cbTarget.Changed += delegate { if (!guiBusy) { LaunchTarget = cbTarget.Index; GuiRefresh(); } };
         cbPreset.CycleMax = 2;
         cbPreset.Changed += delegate { if (!guiBusy && cbPreset.Index < 3) { ApplyPreset(cbPreset.Index); GuiRefresh(); } };
@@ -201,8 +206,11 @@ static partial class TNPlus
         int music = EffectiveMusic(); cbMusic.Set(music);
         cbMusic.Tag = MUSIC_INFO[music] + (AweRom() == null ? ". Optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README." :
             music == 3 ? ". Experimental: barely tested, some instruments may sound off." : ".");
-        ckHit.Checked = OptHitFix; cbTarget.Set(LaunchTarget);
-        foreach (CheckBox c in new[] { ckWide, ckFree, ckClip, ckStereo, ckHit }) Led(c);
+        ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; cbTarget.Set(LaunchTarget);
+        int sp = Array.IndexOf(CYCLE_CHOICES, CpuCycles);
+        if (sp < 0) { cbSpeed.Items = new[] { "300000", "400000", "500000", "600000", "GAME'S OWN", CpuCycles.ToString() }; sp = 5; }
+        cbSpeed.CycleMax = 4; cbSpeed.Set(sp);
+        foreach (CheckBox c in new[] { ckWide, ckFree, ckClip, ckStereo, ckHit, ckPhys }) Led(c);
         int p = CurrentPreset(); cbPreset.Set(p < 0 ? 3 : p);
         guiPreset.Text = p < 0 ? "Your own settings. A preset starts again from a known mix." : PRESET_INFO[p];
         string warn = "";
