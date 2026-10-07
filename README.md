@@ -30,7 +30,7 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 
 ### HD 640x400
 - The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
-- `F12` toggles the 3D smoothing. Since beta 4 it is lighter (3/4 of the pixel, 1/4 of its neighbour instead of half and half), so textures stay sharp.
+- `F12` toggles the 3D smoothing. Since beta 4 it only smooths real edges (hill against sky, water against land, objects), horizontally and vertically, and leaves the grain of the textures alone. It costs about 15 % fps (61.6 to 52.4 on Mariner at 500000 cycles).
 - Works with the GOG and Steam games, French and English (beta 3; before that it was French GOG only). The demos are next.
 
 ### Terrain detail
