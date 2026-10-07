@@ -4,17 +4,18 @@
 
 ## News
 
-**1.1.0 beta 2 is out**, [grab it here](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.1.0-beta2) and tell me what breaks. The stereo fix, the demos and the AWE32 music come from ideas by [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813) on TTLG, thanks!
+**1.1.0 beta 3 is out**, [grab it here](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.1.0-beta3) and tell me what breaks. The stereo fix, the demos and the AWE32 music come from ideas by [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813) on TTLG, thanks!
 
-- the game in **640x400**: the 3D view drawn at twice the width (French GOG exe only for now, English GOG/Steam is next)
+- **projectile hit fix**: with fast CPU cycles the game could not hit moving targets (the multipulsar missed, drones were nearly immortal). The cause was found in the game code, the fix is on by default and works at any frame rate
+- the game in **640x400**: the 3D view drawn at twice the width, GOG and Steam, French and English
+- a **real launcher window** in the colours of the cockpit (`TNPlus.exe --console` keeps the text menu)
+- DOSBox started with **300000 CPU cycles** (Steam and GOG ship 115000, which makes the game crawl)
 - launch the two **1996 demos** from the menu (GOG and Steam already ship them)
 - **reversed stereo fix** for DOSBox, and `F7` in game to compare
-- **Roland / General MIDI** music option, more terrain detail far away
-- beta 2: experimental **AWE32 music** from the game's own bank (you need to bring the AWE32 ROM yourself, see the beta README)
-- new launcher with presets and a GOG / Steam badge
+- **Roland / General MIDI** music, or the game's own **AWE32** bank (you need to bring the AWE32 ROM yourself, see the beta README), more terrain detail far away
 - view distance key moved from `I` to `J` (`I` is the game's infrared)
 
-![Terra Nova Plus 1.1.0 beta launcher](docs/launcher.png)
+![Terra Nova Plus 1.1.0 beta 3 launcher](docs/launcher_beta3.png)
 
 Details in the [README of the beta branch](https://github.com/skw-1337/terra-nova-plus/tree/beta). Version 1.0.1 below is still the stable one.
 
