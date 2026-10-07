@@ -103,6 +103,48 @@ static partial class TNPlus
     static readonly byte[][] SMOOTH_NEW = { new byte[] { 0x40, 0x60, 0, 0 }, new byte[] { 0, 0xC0, 0, 0 }, new byte[] { 0x58, 0x98, 0, 0 } };
     static int smoothState = 0;                     // 0 to do, 1 buffers enlarged, -1 unavailable
 
+    // Terrain LOD (with the prepared exe only, its 128x128 vertex map). Every polygon of the ground costs about
+    // the same to transform, clip, sort and draw, however small it is on screen. Beyond LOD_FROM cells the
+    // polygons go in a ring of their own; a filter called just before the triangle setup (hook on its call)
+    // replaces each complete 2x2 block of that ring by one polygon on the shared even vertices (texture of the
+    // block's first cell stretched over it, lighting per vertex as before). Blocks cut by the screen edge or the
+    // outer edge keep their 4 polygons; at the seam with the full ring the big polygon is drawn over the small
+    // ones, so no crack. 309 bytes of code in the free end of the HD code area (the exe prepared for HD).
+    // The column renderer also stops drawing columns that lie entirely under the polygons (start distance
+    // 5 -> 16 cells). Mission 12, HD, 500000 cycles, 48 cells: 1806 -> 887 polygons, 46.5 -> 56.5 fps.
+    const int LOD_FROM = 24;
+    const uint LOD_CAVE = 0x465E00;
+    static readonly string[] LOD_CODE = {
+        "60B800100000B9D04F2C00FFD185C00F841901000089C589C7B90004000031C0F3AB8B35907E42000FB70D947E420085C90F84EE00000056510FB746100FB7561283E07F83E27FC1E20709D00FAB450083C6204975E3595E89F7807E1F020F829B0000000FB746100FB7561283E0FE83E2FE89D383E37FC1E3075083E07F09C3580FA35D0073788D5B010FA35D00736F8D5B7F0FA35D0073668D5B010FA35D00735D81EB810000000FAB9D0008000072595156B908000000F3A55E59668947F0668957F266895FF483C00283E07F81E3803F000009C366895FF681C30001000081E3FF3F000066895FF881E3803F00000FB747F083E07F09C366895FFAEB0B5156B908000000F3A55E5983C620490F8546FFFFFF89F82B05907E4200C1E80566A3947E420089E8B974502C00FFD1616804182B00C3",
+        "60B800100000B9404F2C00FFD185C00F841901000089C589C7B90004000031C0F3AB8B35E07D42000FB70DE47D420085C90F84EE00000056510FB746100FB7561283E07F83E27FC1E20709D00FAB450083C6204975E3595E89F7807E1F020F829B0000000FB746100FB7561283E0FE83E2FE89D383E37FC1E3075083E07F09C3580FA35D0073788D5B010FA35D00736F8D5B7F0FA35D0073668D5B010FA35D00735D81EB810000000FAB9D0008000072595156B908000000F3A55E59668947F0668957F266895FF483C00283E07F81E3803F000009C366895FF681C30001000081E3FF3F000066895FF881E3803F00000FB747F083E07F09C366895FFAEB0B5156B908000000F3A55E5983C620490F8546FFFFFF89F82B05E07D4200C1E80566A3E47D420089E8B9E44F2C00FFD1616814182B00C3" };
+    static readonly uint[] LOD_HOOK = { 0x29E303, 0x29E313 };     // call triangle setup 0x2B1804 / 0x2B1814
+    static readonly uint[] LOD_SETUP = { 0x2B1804, 0x2B1814 };
+    static readonly uint[] LOD_VOXEL = { 0x2B575D, 0x2B576D };    // mov [ebp-0Ch], 5: first column distance
+    static bool OptTerrainLod = true;
+    static int lodState = 0;                        // 0 to do, 1 on, -1 off or unavailable
+
+    static void TryLod()
+    {
+        lodState = -1;
+        for (int lang = 0; lang < 2; lang++)
+        {
+            byte[] hookOld = new byte[] { 0xE8, 0, 0, 0, 0 }, hookNew = new byte[] { 0xE8, 0, 0, 0, 0 };
+            BitConverter.GetBytes((int)(LOD_SETUP[lang] - (LOD_HOOK[lang] + 5))).CopyTo(hookOld, 1);
+            BitConverter.GetBytes((int)(LOD_CAVE - (LOD_HOOK[lang] + 5))).CopyTo(hookNew, 1);
+            byte[] vox = Hex("C745F405000000"), voxNew = Hex("C745F410000000");
+            byte[] code = Hex(LOD_CODE[lang]);
+            byte[] h = Read(LOD_HOOK[lang], 5), v = Read(LOD_VOXEL[lang], 7), c = Read(LOD_CAVE, code.Length);
+            bool free = true;
+            foreach (byte x in c) if (x != 0) { free = false; break; }
+            if (!(Same(h, hookOld) || Same(h, hookNew)) || !(Same(v, vox) || Same(v, voxNew)) || !(free || Same(c, code))) continue;
+            Write(LOD_CAVE, code);                  // the code first, then the call to it
+            Write(LOD_HOOK[lang], hookNew);
+            Write(LOD_VOXEL[lang], voxNew);
+            lodState = 1;
+            return;
+        }
+    }
+
     static int SmoothCells()
     {
         int n = farTerrain ? SMOOTH_FAR[OptDetail] : SMOOTH_TO[OptDetail];
@@ -119,7 +161,8 @@ static partial class TNPlus
         if (farTerrain)
         {
             smoothState = 1;
-            Say("Smooth terrain up to " + SmoothCells() + " cells (the game: 12)", 0);
+            if (OptTerrainLod) TryLod(); else lodState = -1;
+            Say("Smooth terrain up to " + SmoothCells() + " cells (the game: 12)" + (lodState == 1 ? ", lighter beyond " + LOD_FROM : ""), 0);
             return;
         }
         for (int lang = 0; lang < 2; lang++)
@@ -1027,7 +1070,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null; smoothState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null; smoothState = 0; lodState = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
@@ -1218,16 +1261,31 @@ static partial class TNPlus
     // Rings of the terrain camera (copied there from RESSIM.RES 925/926 by the game at each mission start):
     // +0x30 7 words (first three = ring distances), +0x58 index of the first type-0 ring, +0x5A ring count,
     // +0x5C rings of 12 bytes: type, (from, to), step, (from, to). Only the usual 6-ring layout is touched.
+    // With the terrain LOD the polygons take two rings (full up to LOD_FROM, merged beyond) and the columns
+    // keep three: the column renderer doubles its step at each ring end by itself and goes on to the fog.
     static void FixDetail(int[] d)
     {
         byte[] b = Read(aTerrain, 0xA8);
-        if (BitConverter.ToInt16(b, 0x5A) != 6 || BitConverter.ToInt16(b, 0x58) != 2) return;
-        int[] types = { 1, 2, 0, 0, 0, 0 }, steps = { 1, 1, 1, 2, 4, 8 };
+        if (BitConverter.ToInt16(b, 0x5A) != 6) return;
+        int near = smoothState == 1 ? SmoothCells() : -1;
+        bool lod = lodState == 1 && near > LOD_FROM;
+        int[] gameTypes = { 1, 2, 0, 0, 0, 0 }, gameSteps = { 1, 1, 1, 2, 4, 8 };
+        int[] types = lod ? new[] { 1, 2, 2, 0, 0, 0 } : gameTypes, steps = lod ? new[] { 1, 1, 1, 1, 2, 4 } : gameSteps;
+        int first0 = lod ? 3 : 2;
+        // the table is the game's own preset (just loaded) or already ours; anything else is left alone
+        int cur0 = BitConverter.ToInt16(b, 0x58);
+        bool game = cur0 == 2, mine = cur0 == first0;
         for (int k = 0; k < 6; k++)
-            if (b[0x5C + 12 * k] != types[k] || BitConverter.ToInt16(b, 0x5C + 12 * k + 5) != steps[k]) return;
-        int near = smoothState == 1 ? SmoothCells() : BitConverter.ToInt16(b, 0x5C + 12 + 9);
-        int[] to = { BitConverter.ToInt16(b, 0x5C + 9), near, d[0], d[1], d[2], d[3] };
-        bool same = true;
+        {
+            int t = b[0x5C + 12 * k], st = BitConverter.ToInt16(b, 0x5C + 12 * k + 5);
+            if (t != gameTypes[k] || st != gameSteps[k]) game = false;
+            if (t != types[k] || st != steps[k]) mine = false;
+        }
+        if (!game && !mine) return;
+        if (near < 0) near = BitConverter.ToInt16(b, 0x5C + 12 + 9);
+        int[] to = lod ? new[] { BitConverter.ToInt16(b, 0x5C + 9), LOD_FROM, near, d[0], d[1], d[2] }
+                       : new[] { BitConverter.ToInt16(b, 0x5C + 9), near, d[0], d[1], d[2], d[3] };
+        bool same = mine;
         for (int k = 1; k < 6 && same; k++) same = BitConverter.ToInt16(b, 0x5C + 12 * k + 9) == to[k];
         if (same) return;
         byte[] r = new byte[72];
@@ -1244,6 +1302,7 @@ static partial class TNPlus
         }
         Write(aTerrain + 0x30, new byte[] { (byte)d[0], (byte)(d[0] >> 8), (byte)d[1], (byte)(d[1] >> 8), (byte)d[2], (byte)(d[2] >> 8) });
         Write(aTerrain + 0x5C, r);
+        Write(aTerrain + 0x58, new byte[] { (byte)first0, 0 });
     }
 
     static void PeriodicFixes(int distMode)
@@ -1419,7 +1478,12 @@ static partial class TNPlus
         else
         {
             byte[] zone = Read(HdPayload.Zone, (int)(HdPayload.End - HdPayload.Zone));
-            foreach (byte b in zone) if (b != 0) { why = "its memory area is not free"; break; }
+            for (int i = 0; i < zone.Length; i++)
+            {
+                uint a = HdPayload.Zone + (uint)i;
+                if (a >= LOD_CAVE && a < LOD_CAVE + LOD_CODE[0].Length / 2) continue;   // terrain LOD code
+                if (zone[i] != 0) { why = "its memory area is not free"; break; }
+            }
         }
         if (why != null) { hdState = -1; Say("HD 640x400 unavailable: " + why, 300, 300); return; }
         Write(HdPayload.Data, HdPayload.DataInit);
@@ -1862,6 +1926,7 @@ static partial class TNPlus
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
+                    case "terrain_lod": OptTerrainLod = v != "0"; break;
                     case "object_distance": OptObjDist = Math.Max(0, Array.IndexOf(OBJDIST_NAMES, v.ToUpperInvariant())); break;
                     case "key_smoothing": ScanSmoothing = Convert.ToInt32(v, 16); break;
                     case "key_stereo": ScanStereo = Convert.ToInt32(v, 16); break;
@@ -1907,12 +1972,13 @@ static partial class TNPlus
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
+                "; 1 = lighter polygons beyond 24 cells with SHARP and SHARPER (about +20 % fps at SHARPER)\r\nterrain_lod = " + (OptTerrainLod ? 1 : 0) + "\r\n" +
                 (OptSmoothCells > 0 ? "; tests: forced end of the smooth terrain (cells)\r\nsmooth_cells = " + OptSmoothCells + "\r\n" : "") +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
-                "; HD with SHARPER terrain on a mid-range PC: 500000 = ~47 fps, 600000 = ~56, 700000 = ~65, 800000 = ~75. Too high for your PC = choppy sound\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 3\r\n" +
+                "; HD, SHARPER terrain, mission 12: 500000 = ~56 fps, 700000 = ~79. Too high for your PC = choppy sound\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 3\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (41 = F7), 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
