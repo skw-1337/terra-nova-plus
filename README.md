@@ -10,10 +10,10 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **Noclip** | `U` | Free flight: your usual move keys, `Space` / `Left Ctrl` up/down, `Left Shift` ×4 speed. Great to explore the maps and look at the scenery. |
 | **View distance** | `J` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
 | **Force 320×400** | — | The engine's best resolution, applied automatically in every mission (the game normally only keeps it in save files). |
-| **Widescreen 16:9** | — | DOSBox stretches the picture to 16:9 and the tool widens the engine's field of view by 33 % to match: correct proportions, more of the battlefield on the sides. |
+| **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD, beta): missions in a real 16:9 picture, cockpit and HUD at their own proportions in the middle and the 3D world on the sides. |
 | **Field of view** | — | `GAME` / `90` / `100` / `110` degrees for the 3D view, cockpit and full view, at every zoom level (the game: 84.5). The small cockpit cameras keep theirs. Works in 4:3 and in 16:9. |
 
-Everything happens in memory while you play, except one thing: for HD and terrain detail TNPlus patches `TNOVA\__FF.EXE` once, and keeps the untouched file as `__FF.EXE.tnplus-original`.
+Everything happens in memory while you play, except one thing: for HD, terrain detail, field of view and 16:9 TNPlus patches `TNOVA\__FF.EXE` once, and keeps the untouched file as `__FF.EXE.tnplus-original`.
 
 ## 1.1.0 beta
 
@@ -96,14 +96,15 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 
 - **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
 - **Noclip**: land before switching it off — switching it off in mid-air means a free fall.
-- **Widescreen** is anamorphic: the engine can only draw 320 pixels across, so the cockpit and the menus are stretched a little. The 3D view itself keeps correct proportions.
+- **Widescreen STRETCHED** is anamorphic: the engine draws 320 pixels across, so the cockpit and the menus are stretched a little; the 3D keeps correct proportions. **TRUE** needs HD and the game started from the launcher. Above and below the 3D window the sides stay black, the menus are still stretched, and the mouse is captured when you click in the window (DOSBox releases it with its usual key).
 - Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. They can be changed in `TNPlus.ini`.
 
 ## Settings (`TNPlus.ini`)
 
 | Key | Default | Meaning |
 |---|---|---|
-| `freelook`, `noclip`, `force_320x400`, `widescreen` | `1`, `1`, `1`, `0` | the menu options |
+| `freelook`, `noclip`, `force_320x400` | `1`, `1`, `1` | the menu options |
+| `widescreen` | `0` | `0` off, `1` stretched, `2` true 16:9 (HD) |
 | `view_distance` | `MAX` | `NORMAL`, `FAR` or `MAX` at start |
 | `sensitivity_x`, `sensitivity_y` | `12`, `8` | mouse speed (heading / pitch units per mouse count) |
 | `invert_y` | `0` | `1` = inverted vertical look |
@@ -168,6 +169,7 @@ or manually:
 | 320×400 | goes through the same path as the options screen's "Accept" button; the game applies it on the next mission frame |
 | Field of view | every camera is set up by one routine from its zoom (focal lengths, culling angles, view matrix, the 3D library's projection); the stock view is 2·atan(1 / 1.1·zoom) = 84.5°. A hook gives the main camera an effective zoom = zoom × 1 / (1.1·tan(FOV/2)), so every zoom level follows; the terrain rings keep the raw zoom. The polygon terrain is built in 3 sectors of 45° around the heading: a second hook lowers the angle that builder sees to what its window covers, otherwise views wider than 90° facing a diagonal lost most of the ground. |
 | Widescreen | DOSBox is started with `aspect = stretch`. Every camera's vertical scale ×4/3 and the 3D library's pixel ratio ×3/4 (hooks in the camera setup and the renderer): correct proportions in every view, small cockpit cameras included. The main view gets 33 % more width through its effective zoom, so the terrain culling follows the screen edges (the old way, a global pixel ratio, left the polygon terrain short of the edges; it is kept as a fallback). |
+| True 16:9 | the game's driver sets its 640x400 mode through a table of VESA modes: that entry is switched to DOSBox's 848x480 (`vesa_modes = all`), and the scan line set to 848 right after the game switches (its own call asks for 640). The HD composition puts the 320x400 game screen in the middle at x2 (one row in five doubled, 400 to 480 rows), the main 3D view is drawn 848 columns wide at the same pixel density, so the centre is the usual HD view and the sides show more of the world (its culling angle is widened while it draws, the polygon terrain builder is limited to its 135° window). The engine's per-column tables are enlarged to 848 columns, which is why `__FF.EXE` gets 24 KB of extra memory now (16 KB before). |
 
 ## Credits
 

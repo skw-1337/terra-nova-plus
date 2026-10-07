@@ -1,9 +1,9 @@
 // GENERE par _MODS/re/hd_mod.py export - ne pas modifier a la main.
 // Terra Nova HD (3D en double largeur + ecran VESA 640x400 + HUD Scale2x) : code injecte, donnees initiales et patchs.
-// Adresses de la version francaise GOG (__FF.EXE avec objet 3 agrandi de 16 Ko).
+// Adresses de la version francaise GOG (__FF.EXE avec objet 3 agrandi de 24 Ko).
 static class HdPayloadFr
 {
-    public const uint Zone = 0x465024, End = 0x468d10, PoolBase = 0x469024;
+    public const uint Zone = 0x465024, End = 0x468d10, PoolBase = 0x46b024;
     public const uint Code = 0x465100, Data = 0x466100;
     public const uint Smoothing = 0x466154, HudFilter = 0x4661bc, Frames = 0x466124, PoolMax = 0x35d03c, DriverMode = 0x35f978;
     public const uint Valid = 0x466134, HdWidth = 0x4661b8, HdHeight = 0x4661b4;   // last 3D frame: drawn in HD, its width (2x) and height

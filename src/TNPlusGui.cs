@@ -22,7 +22,7 @@ static partial class TNPlus
 
     static Label guiHelp, guiWarn, guiPreset;
     static readonly string[] SPEED_NAMES = { "400000", "500000", "600000", "700000", "800000", "GAME'S OWN" };
-    static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed, cbObj, cbFov;
+    static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed, cbObj, cbFov, cbWide;
     const int ROW0 = 46, ROWH = 32, CTL_H = 26, COL_CTL = 156, COL_W = 140, COL_BADGE = 306;
     static int PaneH(int rows) { return ROW0 + rows * ROWH - (ROWH - CTL_H) + 14; }
 
@@ -68,7 +68,7 @@ static partial class TNPlus
             }
         }
     }
-    static CheckBox ckWide, ckFree, ckClip, ckStereo, ckHit, ckPhys;
+    static CheckBox ckFree, ckClip, ckStereo, ckHit, ckPhys;
     static bool guiBusy;                            // refreshing the controls: ignore their events
     static Action guiRedrawGame;
 
@@ -127,7 +127,7 @@ static partial class TNPlus
         int y0 = 124, lx = 20, rx = 400, pw = 360;
         Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(6));
         cbDisplay = Combo(pPic, "Display", 0, DISPLAY_LABELS, "BETA", "HD 640x400: the 3D view drawn at twice the width, GOG and Steam, French and English. " + KeyName(ScanSmoothing) + " toggles the smoothing in game.");
-        ckWide = Switch(pPic, "Widescreen 16:9", 1, null, "The camera is corrected for a 16:9 DOSBox window. Needs the game to be launched from here.");
+        cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, "BETA", "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): cockpit and HUD at their real proportions in the middle, the 3D world on the sides, mouse captured on click. Needs the game launched from here.");
         cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER costs about 25 % fps (the default CPU speed makes up for it).");
         cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), "View distance at mission start. " + KeyName(ScanDistance) + " cycles it in game.");
         cbFov = Combo(pPic, "Field of view", 5, FOV_NAMES, "BETA", "Horizontal field of view of the 3D view in degrees, at every zoom level. GAME: 84.5, or 100.9 in 16:9. The small cockpit cameras keep theirs.");
@@ -178,7 +178,7 @@ static partial class TNPlus
 
         // events
         cbDisplay.Changed += delegate { if (!guiBusy) { Display = cbDisplay.Index; GuiRefresh(); } };
-        ckWide.CheckedChanged += delegate { if (!guiBusy) { OptWide = ckWide.Checked; GuiRefresh(); } };
+        cbWide.Changed += delegate { if (!guiBusy) { SetWideMode(cbWide.Index); GuiRefresh(); } };
         cbDetail.Changed += delegate { if (!guiBusy) { OptDetail = cbDetail.Index; GuiRefresh(); } };
         cbDist.Changed += delegate { if (!guiBusy) { OptDistance = cbDist.Index; GuiRefresh(); } };
         cbObj.Changed += delegate { if (!guiBusy) { OptObjDist = cbObj.Index; GuiRefresh(); } };
@@ -206,7 +206,7 @@ static partial class TNPlus
         guiBusy = true;
         if (guiRedrawGame != null) guiRedrawGame();
         string why; bool hdOk = HdAvailable(out why);
-        cbDisplay.Set(Display); ckWide.Checked = OptWide; cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov);
+        cbDisplay.Set(Display); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov);
         ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix;
         int music = EffectiveMusic(); cbMusic.Set(music);
         cbMusic.Tag = MUSIC_INFO[music] + (AweRom() == null ? ". Optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README." :
@@ -215,7 +215,7 @@ static partial class TNPlus
         int sp = Array.IndexOf(CYCLE_CHOICES, CpuCycles);
         if (sp < 0) { var it = new List<string>(SPEED_NAMES); it.Add(CpuCycles.ToString()); cbSpeed.Items = it.ToArray(); sp = SPEED_NAMES.Length; }
         cbSpeed.CycleMax = SPEED_NAMES.Length - 1; cbSpeed.Set(sp);
-        foreach (CheckBox c in new[] { ckWide, ckFree, ckClip, ckStereo, ckHit, ckPhys }) Led(c);
+        foreach (CheckBox c in new[] { ckFree, ckClip, ckStereo, ckHit, ckPhys }) Led(c);
         int p = CurrentPreset(); cbPreset.Set(p < 0 ? 3 : p);
         guiPreset.Text = p < 0 ? "Your own settings. A preset starts again from a known mix." : PRESET_INFO[p];
         string warn = "";

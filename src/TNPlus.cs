@@ -111,12 +111,12 @@ static partial class TNPlus
     // view is 2 atan(1 / (1.1 zoom)) = 84.5 deg wide. The hook gives the main camera (0x38FBD4 / 0x38FB24) an
     // effective zoom = zoom x K, K = 1 / (1.1 tan(FOV / 2)); the ring distances keep the raw zoom. Code in the
     // free end of the HD code area, written at the main menu like the other code patches.
-    const uint FOV_CAVE = 0x465E00;                 // data: K, then 12 bytes, code at +0x10
+    const uint FOV_CAVE = 0x46A000;                 // data: K, then 12 bytes, code at +0x10 (after the HD zone)
     static readonly string[] FOV_CODE = {
-        "51B80000010029C8BA40AF2F00FFD2BF0000020029C7598B1E81FED4FB3800752689C8F72D005E46000FACD0108944240485DB741289D889C2C1FA10C1E010F73D005E460089C385DB7506BD00000100C3B80000010029D8BA40AF2F00FFD2BD0000020029C5C3F72D045E46000FACD01089C2894604C3B8A5C62E00FFD05052A176233600F72D085E46000FACD010A3762336005A58C3",
-        "51B80000010029C8BAB0AC2F00FFD2BF0000020029C7598B1E81FE24FB3800752689C8F72D005E46000FACD0108944240485DB741289D889C2C1FA10C1E010F73D005E460089C385DB7506BD00000100C3B80000010029D8BAB0AC2F00FFD2BD0000020029C5C3F72D045E46000FACD01089C2894604C3B8C5C42E00FFD05052A1CE223600F72D085E46000FACD010A3CE2236005A58C3" };
+        "51B80000010029C8BA40AF2F00FFD2BF0000020029C7598B1E81FED4FB3800752689C8F72D00A046000FACD0108944240485DB741289D889C2C1FA10C1E010F73D00A0460089C385DB7506BD00000100C3B80000010029D8BA40AF2F00FFD2BD0000020029C5C3F72D04A046000FACD01089C2894604C3B8A5C62E00FFD05052A176233600F72D08A046000FACD010A3762336005A58C3",
+        "51B80000010029C8BAB0AC2F00FFD2BF0000020029C7598B1E81FE24FB3800752689C8F72D00A046000FACD0108944240485DB741289D889C2C1FA10C1E010F73D00A0460089C385DB7506BD00000100C3B80000010029D8BAB0AC2F00FFD2BD0000020029C5C3F72D04A046000FACD01089C2894604C3B8C5C42E00FFD05052A1CE223600F72D08A046000FACD010A3CE2236005A58C3" };
     static readonly uint[] FOV_HOOK = { 0x29E833, 0x29E843 };
-    static readonly byte[][] FOV_HOOK_NEW = { new byte[] { 0xE8, 0xD8, 0x75, 0x1C, 0x00, 0xEB, 0x2C }, new byte[] { 0xE8, 0xC8, 0x75, 0x1C, 0x00, 0xEB, 0x2C } };
+    static readonly byte[][] FOV_HOOK_NEW = { new byte[] { 0xE8, 0xD8, 0xB7, 0x1C, 0x00, 0xEB, 0x2C }, new byte[] { 0xE8, 0xC8, 0xB7, 0x1C, 0x00, 0xEB, 0x2C } };
     static readonly byte[] FOV_HOOK_OLD = { 0xB8, 0x00, 0x00, 0x01, 0x00, 0x29, 0xC8 };
     // 16:9 (the picture is stretched x4/3 by DOSBox): every camera's vertical scale (camera+4, 0x29EA61) x4/3 and
     // the 3D library's pixel ratio x3/4 right after the renderer loads it (call at 0x29E751): proportions stay right
@@ -125,9 +125,9 @@ static partial class TNPlus
     // ratio the polygon terrain stopped at 45 deg, short of the screen edges).
     static readonly uint[] WIDE_HOOK_B = { 0x29EA61, 0x29EA71 }, WIDE_HOOK_C = { 0x29E751, 0x29E761 };
     static readonly byte[] WIDE_B_OLD = { 0x89, 0xC2, 0x89, 0x46, 0x04 };
-    static readonly byte[][] WIDE_B_NEW = { new byte[] { 0xE8, 0x11, 0x74, 0x1C, 0x00 }, new byte[] { 0xE8, 0x01, 0x74, 0x1C, 0x00 } };
+    static readonly byte[][] WIDE_B_NEW = { new byte[] { 0xE8, 0x11, 0xB6, 0x1C, 0x00 }, new byte[] { 0xE8, 0x01, 0xB6, 0x1C, 0x00 } };
     static readonly byte[][] WIDE_C_OLD = { new byte[] { 0xE8, 0x4F, 0xDF, 0x04, 0x00 }, new byte[] { 0xE8, 0x5F, 0xDD, 0x04, 0x00 } };
-    static readonly byte[][] WIDE_C_NEW = { new byte[] { 0xE8, 0x31, 0x77, 0x1C, 0x00 }, new byte[] { 0xE8, 0x21, 0x77, 0x1C, 0x00 } };
+    static readonly byte[][] WIDE_C_NEW = { new byte[] { 0xE8, 0x31, 0xB9, 0x1C, 0x00 }, new byte[] { 0xE8, 0x21, 0xB9, 0x1C, 0x00 } };
     static bool wideHooks = false;                  // 16:9 done by the hooks (else the old pixel ratio way)
     static int fovState = 0;                        // 0 to do, 1 on, -1 off or unavailable
 
@@ -136,13 +136,13 @@ static partial class TNPlus
     // builder then gave up after a few rows (about 350 polygons, voxel walls on screen). The hook on its call
     // (0x2AA3B2 / 0x2AA3C2) lowers the half-angle it sees to what the window covers at that heading, then puts it
     // back; the strip left at one screen edge near a diagonal (8 deg at most at 100 deg) is drawn by the voxel.
-    const uint WEDGE_CAVE = 0x465F00;
+    const uint WEDGE_CAVE = 0x46A100;
     static readonly string[] WEDGE_CODE = {
         "5051560FB74818510FB7720CB900F0000081FE00E000007753B90010000081FE002000007646B90030000081FE004000007239B90050000081FE00600000762CB90070000081FE00800000721FB90090000081FE00A000007612B900B0000081FE00C000007205B900D0000029CE0FBFF685F67D02F7DEF7DE81C600300000393424760466897018B968892A00FFD1598B74240866894E185E5983C404C3",
         "5051560FB74818510FB7720CB900F0000081FE00E000007753B90010000081FE002000007646B90030000081FE004000007239B90050000081FE00600000762CB90070000081FE00800000721FB90090000081FE00A000007612B900B0000081FE00C000007205B900D0000029CE0FBFF685F67D02F7DEF7DE81C600300000393424760466897018B978892A00FFD1598B74240866894E185E5983C404C3" };
     static readonly uint[] WEDGE_HOOK = { 0x2AA3B2, 0x2AA3C2 };
     static readonly byte[] WEDGE_OLD = { 0xE8, 0xB1, 0xE5, 0xFF, 0xFF };
-    static readonly byte[][] WEDGE_NEW = { new byte[] { 0xE8, 0x49, 0xBB, 0x1B, 0x00 }, new byte[] { 0xE8, 0x39, 0xBB, 0x1B, 0x00 } };
+    static readonly byte[][] WEDGE_NEW = { new byte[] { 0xE8, 0x49, 0xFD, 0x1B, 0x00 }, new byte[] { 0xE8, 0x39, 0xFD, 0x1B, 0x00 } };
 
     static int FovDegrees() { int d; return OptFov > 0 && int.TryParse(FOV_NAMES[OptFov], out d) ? d : 0; }
 
@@ -150,12 +150,15 @@ static partial class TNPlus
     {
         fovState = -1; wideHooks = false;
         int deg = FovDegrees();
-        bool wide = WideActive();
-        if (deg == 0 && !wide) return;
-        // GAME in 16:9 = the view widened x4/3 as before (100.9 deg)
-        double k = deg > 0 ? 1 / (1.1 * Math.Tan(deg * Math.PI / 360)) : 0.75;
+        bool wide = WideActive(), trueWide = TrueWideActive();
+        if (deg == 0 && !wide && !trueWide) return;
+        // GAME in stretched 16:9 = the view widened x4/3 as before (100.9 deg); in true 16:9 the HD view is simply
+        // wider than the cockpit window, the centre keeps the chosen field of view
+        double k = deg > 0 ? 1 / (1.1 * Math.Tan(deg * Math.PI / 360)) : (wide ? 0.75 : 1);
         for (int lang = 0; lang < 2; lang++)
         {
+            HdPayload.Use(lang == 1, false);
+            if (ReadUInt(HdPayload.PoolVar) != HdPayload.PoolBase) continue;   // __FF.EXE not prepared (24 KB)
             byte[] code = Hex(FOV_CODE[lang]);
             byte[] h = Read(FOV_HOOK[lang], 7), c = Read(FOV_CAVE + 0x10, code.Length);
             bool free = true;
@@ -190,10 +193,11 @@ static partial class TNPlus
                 Write(WEDGE_HOOK[lang], WEDGE_NEW[lang]);
             }
             fovState = 1;
-            Say("Field of view " + (deg > 0 ? deg + " degrees" : "100.9 degrees (16:9)") + (wideHooks ? ", 16:9 camera" : "") + " (the game: 84.5)", 0);
+            Say("Field of view " + (deg > 0 ? deg + " degrees" : (wide ? "100.9 degrees (16:9)" : "84.5 degrees")) + (wideHooks ? ", 16:9 camera" : "") +
+                (trueWide ? ", true 16:9" : "") + " (the game: 84.5)", 0);
             return;
         }
-        Say("Field of view unavailable: unsupported game version", 300, 300);
+        Say("Field of view unavailable: start the game from this tool (it prepares __FF.EXE)", 300, 300);
     }
 
     static int SmoothCells()
@@ -284,12 +288,14 @@ static partial class TNPlus
     const string EN_SHA_READY2 = "e32cab7c164e1b5334c85e1c2504580856735647e183f9d7b7798794c31e9607";
     const string HD_SHA_READY3 = "7118722688f6df83bbd49e84bfae7c52f906f540b7e76e007830834216ecdafd";   // + zoom clamp
     const string EN_SHA_READY3 = "da65ac1bc7542b4819edb48ed52de4cf23d460072ae5dd7bd8a7bd46d9b1a9c6";
+    const string HD_SHA_READY4 = "fcf516dc17b13ff0c5c1931b6a8953d189e80bd49f3f56de5cc2f02ae82e1af9";   // object 3 +24 KB
+    const string EN_SHA_READY4 = "63aa6a1d72ed81b18be91e8869b69cdef303e7d0021153f54b21dd953b5764c2";
     static bool KnownSha(string sha)
     {
-        return sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY || sha == HD_SHA_READY2 || sha == HD_SHA_READY3 ||
-               sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3;
+        return sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY || sha == HD_SHA_READY2 || sha == HD_SHA_READY3 || sha == HD_SHA_READY4 ||
+               sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3 || sha == EN_SHA_READY4;
     }
-    static bool EnglishSha(string sha) { return sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3; }
+    static bool EnglishSha(string sha) { return sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3 || sha == EN_SHA_READY4; }
 
     // Far smooth terrain. The polygons of the near ground are joined through a map of shared vertices that the
     // engine indexes with 6 bits per axis (64x64, so 31 cells at most), and its buffers are allocated every
@@ -335,8 +341,9 @@ static partial class TNPlus
     };
     static readonly uint[] TERRAIN_SHIFT = { 0x2AA2F5, 0x2AA305 };   // its first "shl ebx,6", French / English
     const uint EXE_CODE_DELTA = 0x1AAB5C;
-    const uint OBJ3_SIZE = 0x10F9B0, OBJ3_HD = 0x10F9B0 + 0x4000;             // French: object 3 virtual size
-    const uint OBJ3_SIZE_EN = 0x10F900, OBJ3_HD_EN = 0x10F900 + 0x4000;       // English
+    const uint OBJ3_SIZE = 0x10F9B0, OBJ3_HD = 0x10F9B0 + 0x6000;             // French: object 3 virtual size
+    const uint OBJ3_SIZE_EN = 0x10F900, OBJ3_HD_EN = 0x10F900 + 0x6000;       // English
+    // (24 KB since the true 16:9: the HD tables for 848 columns, then the field of view hooks; 16 KB before)
     static int hdState = 0;                         // 0 waiting, 1 active, -1 unavailable (reason said)
 
     // Projectile hits above ~30 fps. Every frame the game casts a ray from each projectile over the distance it
@@ -498,12 +505,24 @@ static partial class TNPlus
     static bool haveFog, have400, haveWide, haveDetail, haveStereo;
     static uint aStereo;
     static bool launchedWide = false;               // DOSBox started by us with the 16:9 overlay
-    static bool OptWideAttach = false;              // ini only (tests): 16:9 camera also on a game we attached to
+    static bool OptWideAttach = false;              // ini only (tests): 16:9 also on a game we attached to
+    static bool OptWideTrue = false;                // 16:9: false STRETCHED (DOSBox stretches, camera corrected), true TRUE
+    static bool launchedTrue = false;               // DOSBox started by us for the true 16:9 (VESA 848x480)
+    static readonly string[] WIDE_NAMES = { "OFF", "STRETCHED", "TRUE" };
+    static int WideMode() { return OptWide ? (OptWideTrue ? 2 : 1) : 0; }
+    static void SetWideMode(int m) { OptWide = m > 0; OptWideTrue = m == 2; }
 
-    // the 16:9 camera correction is running on this game
+    // true 16:9 (HD only): the game's HD screen is a VESA 848x480 mode of DOSBox, cockpit and HUD at their own
+    // proportions in the middle, the 3D view drawn across the whole width (HdPayload*Wide)
+    static bool TrueWideActive()
+    {
+        return OptWide && OptWideTrue && OptHD && ((launchedTrue && launched != null && gamePid == launched.Id) || OptWideAttach);
+    }
+
+    // the stretched 16:9 camera correction is running on this game
     static bool WideActive()
     {
-        return OptWide && haveWide && ((launchedWide && launched != null && gamePid == launched.Id) || OptWideAttach);
+        return OptWide && haveWide && !TrueWideActive() && ((launchedWide && launched != null && gamePid == launched.Id) || OptWideAttach);
     }
     static bool launchedDemo = false;               // DOSBox started by us on one of the 1996 demos
     static Process launched = null;                 // the DOSBox process started from the menu
@@ -518,7 +537,7 @@ static partial class TNPlus
     static void Main(string[] args)
     {
         Console.Title = TITLE + " " + VERSION;
-        HdPayload.Use(false);
+        HdPayload.Use(false, false);
         LoadSettings();
         onClose = ev => { Release(); return false; };
         SetConsoleCtrlHandler(onClose, true);
@@ -582,6 +601,7 @@ static partial class TNPlus
     {
         Display = p;                                // 0 original, 1 320x400, 2 HD (falls back to 320x400 by itself)
         OptWide = p == 2;
+        OptWideTrue = p == 2;
         OptDetail = p;                              // GAME / SHARP / SHARPER
         OptDistance = p;                            // NORMAL / FAR / MAX
         OptFreelook = p > 0;
@@ -591,7 +611,7 @@ static partial class TNPlus
     static int CurrentPreset()
     {
         for (int p = 0; p < 3; p++)
-            if (Display == p && OptWide == (p == 2) && OptDetail == p && OptDistance == p
+            if (Display == p && OptWide == (p == 2) && OptWideTrue == (p == 2) && OptDetail == p && OptDistance == p
                 && OptFreelook == (p > 0) && OptNoclip == (p > 0))
                 return p;
         return -1;
@@ -647,7 +667,7 @@ static partial class TNPlus
             List<List<Seg>> left = new List<List<Seg>>(), right = new List<List<Seg>>();
             left.Add(Sec("PICTURE"));
             left.Add(Opt("1", "Display", Val(DISPLAY_LABELS[EffectiveDisplay()]), "BETA", 0));
-            left.Add(Opt("2", "Widescreen 16:9", Sw(OptWide), null, 0));
+            left.Add(Opt("2", "Widescreen 16:9", Val(WIDE_NAMES[WideMode()]), OptWideTrue ? "BETA" : null, 0));
             left.Add(Opt("3", "Terrain detail", Val(DETAIL_NAMES[OptDetail]), "BETA", 0));
             left.Add(Opt("4", "View distance", Val(DIST_NAMES[OptDistance]), null, ScanDistance));
             left.Add(Opt("O", "Object distance", Val(OBJDIST_NAMES[OptObjDist]), "BETA", 0));
@@ -718,7 +738,7 @@ static partial class TNPlus
                 case 'P': ApplyPreset(preset < 0 ? 2 : (preset + 1) % 3); break;
                 case 'L': LaunchTarget = (LaunchTarget + 1) % 3; break;
                 case '1': Display = (Display + 1) % 3; break;
-                case '2': OptWide = !OptWide; break;
+                case '2': SetWideMode((WideMode() + 1) % 3); break;
                 case '3': OptDetail = (OptDetail + 1) % 3; break;
                 case '4': OptDistance = (OptDistance + 1) % 3; break;
                 case 'O': OptObjDist = (OptObjDist + 1) % 3; break;
@@ -1043,7 +1063,7 @@ static partial class TNPlus
         ApplyMusic(TARGET_DIRS[LaunchTarget]);
         hdState = demo ? -1 : 0;                    // HD only knows the full game's executable
         hdExeReady = false;
-        if ((OptHD || OptDetail > 0) && !demo)
+        if ((OptHD || OptDetail > 0 || OptFov > 0 || OptWide) && !demo)
         {
             string why;
             hdExeReady = PrepareExeForHd(out why);
@@ -1060,9 +1080,15 @@ static partial class TNPlus
         if (OptWide)
         {
             string overlay = Path.Combine(ExeDir, "TNPlus_16x9.conf");
-            File.WriteAllText(overlay,
-                "# Terra Nova Plus: stretch the 4:3 picture to 16:9 (the tool widens the field of view to match)\r\n" +
-                "[render]\r\naspect = stretch\r\ninteger_scaling = off\r\n");
+            bool trueWide = OptWideTrue && OptHD && hdExeReady;
+            File.WriteAllText(overlay, trueWide
+                ? "# Terra Nova Plus: true 16:9 (missions in DOSBox's VESA 848x480; the mouse is captured on click so that it\r\n" +
+                  "# stays on the game's cursor over the centred cockpit)\r\n" +
+                  "[dosbox]\r\nvesa_modes = all\r\n[render]\r\naspect = stretch\r\ninteger_scaling = off\r\n" +
+                  "[mouse]\r\nmouse_capture = onclick\r\n"
+                : "# Terra Nova Plus: stretch the 4:3 picture to 16:9 (the tool widens the field of view to match)\r\n" +
+                  "[render]\r\naspect = stretch\r\ninteger_scaling = off\r\n");
+            launchedTrue = trueWide;
             args += " -conf \"" + overlay + "\"";
         }
         args += " -noconsole";
@@ -1071,6 +1097,7 @@ static partial class TNPlus
         psi.UseShellExecute = false;
         launched = Process.Start(psi);
         launchedWide = OptWide;
+        if (!OptWide) launchedTrue = false;
         launchedDemo = demo;
         Console.WriteLine((demo ? TARGET_NAMES[LaunchTarget] : "Game") + " started" + (OptWide ? " in widescreen 16:9." : "."));
         return true;
@@ -1125,7 +1152,7 @@ static partial class TNPlus
             {
                 if (launched != null && launched.HasExited)
                 {   // the game started from the menu is closed: back to the menu
-                    Release(); Detach(); launched = null; launchedWide = false;
+                    Release(); Detach(); launched = null; launchedWide = false; launchedTrue = false;
                     ShowWindow(GetConsoleWindow(), 9);
                     return;
                 }
@@ -1153,7 +1180,7 @@ static partial class TNPlus
                 if (OptPhysFix && physFixState == 0 && now - lastPhys > 0.5) { lastPhys = now; TryPhysFix(); }
                 if (OptObjDist > 0 && objState == 0 && now - lastPhys > 0.5) TryObjDist();
                 if (OptDetail > 0 && smoothState == 0 && now - lastPhys > 0.5) TrySmooth();
-                if ((OptFov > 0 || WideActive()) && fovState == 0 && now - lastPhys > 0.5) TryFov();
+                if ((OptFov > 0 || WideActive() || TrueWideActive()) && fovState == 0 && now - lastPhys > 0.5) TryFov();
                 if (objState == 1 && now - lastObj > 0.5) { lastObj = now; ObjDistTable(); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
@@ -1433,14 +1460,14 @@ static partial class TNPlus
         if (!File.Exists(exe)) { msg = "TNOVA\\__FF.EXE not found"; return false; }
         byte[] d = File.ReadAllBytes(exe);
         string sha = Sha256(d);
-        if (sha == HD_SHA_READY3 || sha == EN_SHA_READY3) { msg = "ready"; return true; }
+        if (sha == HD_SHA_READY4 || sha == EN_SHA_READY4) { msg = "ready"; return true; }
         if (!KnownSha(sha)) { msg = "unknown __FF.EXE (GOG French, GOG English and Steam are supported)"; return false; }
         bool english = EnglishSha(sha);
         uint size = english ? OBJ3_SIZE_EN : OBJ3_SIZE, hd = english ? OBJ3_HD_EN : OBJ3_HD;
         int le = IndexOf(d, new byte[] { (byte)'L', (byte)'E', 0, 0 }, 0);
         int at = le + BitConverter.ToInt32(d, le + 0x40) + 24 * 2;        // object table, object 3: virtual size
         uint cur = le < 0 ? 0 : BitConverter.ToUInt32(d, at);
-        if (cur != size && cur != hd) { msg = "unexpected executable layout"; return false; }
+        if (cur != size && cur != size + 0x4000 && cur != hd) { msg = "unexpected executable layout"; return false; }
         // the backup is always the untouched exe (a beta 3 READY exe without backup is turned back first)
         byte[] orig = (byte[])d.Clone();
         BitConverter.GetBytes(size).CopyTo(orig, at);
@@ -1456,7 +1483,7 @@ static partial class TNPlus
             old.CopyTo(orig, o);
         }
         if (Sha256(orig) != (english ? EN_SHA : HD_SHA_ORIGINAL)) { msg = "unexpected __FF.EXE content"; return false; }
-        if (Sha256(d) != (english ? EN_SHA_READY3 : HD_SHA_READY3)) { msg = "__FF.EXE update failed"; return false; }
+        if (Sha256(d) != (english ? EN_SHA_READY4 : HD_SHA_READY4)) { msg = "__FF.EXE update failed"; return false; }
         string backup = exe + ".tnplus-original";
         try
         {
@@ -1464,7 +1491,7 @@ static partial class TNPlus
             File.WriteAllBytes(exe, d);
         }
         catch (Exception e) { msg = "cannot update __FF.EXE (" + e.Message + ")"; return false; }
-        if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY3 : HD_SHA_READY3)) { msg = "__FF.EXE update failed"; return false; }
+        if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY4 : HD_SHA_READY4)) { msg = "__FF.EXE update failed"; return false; }
         msg = "prepared (HD memory, far smooth terrain; original kept as __FF.EXE.tnplus-original)";
         return true;
     }
@@ -1508,7 +1535,7 @@ static partial class TNPlus
     // translated, later writes to that code would be ignored (the temporary pool is still unused until then)
     static void TryHdInject()
     {
-        HdPayload.Use(ExeLanguage(GameDir) == "English");   // the code and its addresses depend on the executable
+        HdPayload.Use(ExeLanguage(GameDir) == "English", TrueWideActive());   // the code and its addresses depend on the executable
         int n = HdPayload.PatchAt.Length;
         bool allNew = true, allOld = true;
         for (int i = 0; i < n; i++)
@@ -1532,12 +1559,7 @@ static partial class TNPlus
         else
         {
             byte[] zone = Read(HdPayload.Zone, (int)(HdPayload.End - HdPayload.Zone));
-            for (int i = 0; i < zone.Length; i++)
-            {
-                uint a = HdPayload.Zone + (uint)i;
-                if (a >= FOV_CAVE && a < WEDGE_CAVE + WEDGE_CODE[0].Length / 2) continue;   // field of view hooks
-                if (zone[i] != 0) { why = "its memory area is not free"; break; }
-            }
+            foreach (byte zb in zone) if (zb != 0) { why = "its memory area is not free"; break; }
         }
         if (why != null) { hdState = -1; Say("HD 640x400 unavailable: " + why, 300, 300); return; }
         Write(HdPayload.Data, HdPayload.DataInit);
@@ -1972,7 +1994,7 @@ static partial class TNPlus
                     case "force_320x400": oldForce = v != "0"; break;
                     case "display": Display = Math.Max(0, Array.IndexOf(DISPLAY_NAMES, v.ToUpperInvariant())); haveDisplay = true; break;
                     case "launch": LaunchTarget = Math.Max(0, Array.IndexOf(TARGET_NAMES, v.ToUpperInvariant())); break;
-                    case "widescreen": OptWide = v != "0"; break;
+                    case "widescreen": SetWideMode(v == "2" || v.ToUpperInvariant() == "TRUE" ? 2 : v == "0" ? 0 : 1); break;
                     case "stereo_fix": OptStereoFix = v != "0"; break;
                     case "music": OptMusic = Math.Max(0, Array.IndexOf(MUSIC_NAMES, v.ToUpperInvariant())); break;
                     case "hd": oldHd = v != "0"; break;
@@ -2019,7 +2041,7 @@ static partial class TNPlus
                 "noclip = " + (OptNoclip ? 1 : 0) + "\r\n" +
                 "; NORMAL, FAR or MAX\r\nview_distance = " + DIST_NAMES[OptDistance] + "\r\n" +
                 "; GAME, SHARP or SHARPER (more terrain detail in the distance)\r\nterrain_detail = " + DETAIL_NAMES[OptDetail] + "\r\n" +
-                "widescreen = " + (OptWide ? 1 : 0) + "\r\n" +
+                "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: cockpit at its proportions, 3D on the sides)\r\nwidescreen = " + WideMode() + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
                 "; ROLAND, FM, GAME'S OWN or AWE32 (music of the game and demos; AWE32 needs awe32.raw, an AWE32 ROM dump,\r\n" +
                 "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +

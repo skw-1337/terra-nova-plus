@@ -11,10 +11,28 @@ static class HdPayload
     public static byte[][] PatchOld, PatchNew;
     public static bool English;
 
-    public static void Use(bool english)
+    public static void Use(bool english, bool wide)
     {
         English = english;
-        if (english)
+        if (wide && english)
+        {
+            Zone = HdPayloadEnWide.Zone; End = HdPayloadEnWide.End; PoolBase = HdPayloadEnWide.PoolBase; Code = HdPayloadEnWide.Code; Data = HdPayloadEnWide.Data;
+            Smoothing = HdPayloadEnWide.Smoothing; HudFilter = HdPayloadEnWide.HudFilter; Frames = HdPayloadEnWide.Frames;
+            PoolMax = HdPayloadEnWide.PoolMax; DriverMode = HdPayloadEnWide.DriverMode; Valid = HdPayloadEnWide.Valid;
+            HdWidth = HdPayloadEnWide.HdWidth; HdHeight = HdPayloadEnWide.HdHeight; PoolVar = HdPayloadEnWide.PoolVar;
+            CodeBytes = HdPayloadEnWide.CodeBytes; DataInit = HdPayloadEnWide.DataInit;
+            PatchAt = HdPayloadEnWide.PatchAt; PatchOld = HdPayloadEnWide.PatchOld; PatchNew = HdPayloadEnWide.PatchNew;
+        }
+        else if (wide)
+        {
+            Zone = HdPayloadFrWide.Zone; End = HdPayloadFrWide.End; PoolBase = HdPayloadFrWide.PoolBase; Code = HdPayloadFrWide.Code; Data = HdPayloadFrWide.Data;
+            Smoothing = HdPayloadFrWide.Smoothing; HudFilter = HdPayloadFrWide.HudFilter; Frames = HdPayloadFrWide.Frames;
+            PoolMax = HdPayloadFrWide.PoolMax; DriverMode = HdPayloadFrWide.DriverMode; Valid = HdPayloadFrWide.Valid;
+            HdWidth = HdPayloadFrWide.HdWidth; HdHeight = HdPayloadFrWide.HdHeight; PoolVar = HdPayloadFrWide.PoolVar;
+            CodeBytes = HdPayloadFrWide.CodeBytes; DataInit = HdPayloadFrWide.DataInit;
+            PatchAt = HdPayloadFrWide.PatchAt; PatchOld = HdPayloadFrWide.PatchOld; PatchNew = HdPayloadFrWide.PatchNew;
+        }
+        else if (english)
         {
             Zone = HdPayloadEn.Zone; End = HdPayloadEn.End; PoolBase = HdPayloadEn.PoolBase; Code = HdPayloadEn.Code; Data = HdPayloadEn.Data;
             Smoothing = HdPayloadEn.Smoothing; HudFilter = HdPayloadEn.HudFilter; Frames = HdPayloadEn.Frames;
