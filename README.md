@@ -38,7 +38,6 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 - Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 32 cells and SHARPER to 48.
 - The engine could not go past 31 cells: its vertex grid is 64x64 and its polygon buffers are small. TNPlus patches `TNOVA\__FF.EXE` once (128x128 grid, bigger buffers, 1 MB render memory) and keeps the untouched file as `__FF.EXE.tnplus-original`.
 - Mission 12 in HD, 48 cells: 46.5 fps at 500000 cycles, 65 at 700000. The game is limited by the CPU cycles, not by your PC, so the tool now starts at 700000.
-- Optional, off by default: `terrain_lod = 1` in `TNPlus.ini` draws one polygon per 2x2 cells beyond 24 cells (about +20 % fps), but hills then show terraces. `F11` toggles it in game.
 
 ### Sound
 - **Fix reversed stereo** (off by default): under DOSBox the game's Sound Blaster 16 driver swaps left and right, cutscenes included. The tool can start DOSBox with the channels swapped back.
@@ -111,7 +110,6 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `key_freelook`, `key_noclip`, `key_distance` | `15`, `16`, `24` | **physical key scancodes** (hex): `15` = Y, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
 | `hit_fix` | `1` | `0` = leave the game's projectile hit test as it is (misses above ~30 fps) |
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps) |
-| `terrain_lod` | `0` | `1` = lighter polygons beyond 24 cells, faster but terraces on hills (`F11` in game) |
 | `object_distance` | `MAX` | `GAME`, `FAR` or `MAX`: how far scenery, units and buildings are drawn |
 | `cpu_cycles` | `700000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting (an old default, 300000 or 500000, is moved to 700000 once) |
 | `sound` | `1` | `0` = no beeps |
