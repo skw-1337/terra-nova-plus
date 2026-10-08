@@ -174,6 +174,30 @@ static partial class TNPlus
         { "o_hold", "H" }, { "o_follow", "M" }, { "o_nav", "N" }, { "o_pickup", "P" }, { "o_retreat", "R" },
         { "o_status", "S" }, { "o_target", "T" }, { "exit", "X" } };
 
+    // the other keys a command can use, as printed on each keyboard (the digits are the same everywhere)
+    static readonly string[][] LAYOUT_PUNCT = {      // scancodes 0C 0D 1A 1B 28 29 2B 32 33 34 35 (empty: a letter row)
+        new[] { "-", "=", "[", "]", "'", "`", "\\", "", ",", ".", "/" },
+        new[] { ")", "=", "^", "$", "\u00d9", "\u00b2", "*", ",", ";", ":", "!" },
+        new[] { "\u00df", "\u00b4", "\u00dc", "+", "\u00c4", "^", "#", "", ",", ".", "-" },
+        new[] { "[", "]", "/", "=", "-", "`", "\\", "", "", "", "" },
+        new[] { "-", "=", "[", "]", "'", "`", "\\", "", ",", ".", "/" } };
+    static readonly int[] PUNCT_SC = { 0x0C, 0x0D, 0x1A, 0x1B, 0x28, 0x29, 0x2B, 0x32, 0x33, 0x34, 0x35 };
+
+    // keys are shown as printed on the keyboard of the preset picked (GAME, CUSTOM: the Windows keyboard)
+    static int DisplayLayout() { return ChosenLayout >= 1 && ChosenLayout < LAYOUT_COUNT ? ChosenLayout : -1; }
+    static string LayoutKeyName(int layout, int sc)
+    {
+        if (sc >= 0x02 && sc <= 0x0B) return sc == 0x0B ? "0" : ((char)('1' + sc - 2)).ToString();
+        int[] start = { 0x10, 0x1E, 0x2C };
+        for (int r = 0; r < 3; r++)
+        {
+            string row = LAYOUT_ROWS[layout - 1][r];
+            if (sc >= start[r] && sc < start[r] + row.Length) return row[sc - start[r]].ToString();
+        }
+        int i = Array.IndexOf(PUNCT_SC, sc);
+        return i >= 0 && LAYOUT_PUNCT[layout - 1][i] != "" ? LAYOUT_PUNCT[layout - 1][i] : null;
+    }
+
     static int LetterSc(int layout, char c)
     {
         int[] start = { 0x10, 0x1E, 0x2C };

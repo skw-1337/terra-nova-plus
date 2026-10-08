@@ -2183,6 +2183,8 @@ static partial class TNPlus
 
     static string KeyName(int scan)
     {
+        int dl = DisplayLayout();
+        if (dl > 0) { string n = LayoutKeyName(dl, scan); if (n != null) return n; }
         uint vk = MapVirtualKey((uint)scan, 1);
         if (vk >= 0x70 && vk <= 0x87) return "F" + (vk - 0x6F);
         if (vk >= 0x30 && vk <= 0x5A) return ((char)vk).ToString();
