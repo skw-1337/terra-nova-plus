@@ -2338,7 +2338,7 @@ static partial class TNPlus
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
-                "; true 16:9 HD, SHARPER terrain: 700000 = ~40 fps, 1000000 = ~57, 1200000 = ~70 (about one full CPU core).\r\n; DOSBox lowers them when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 4\r\n" +
+                "; raise it if the game feels slow, DOSBox lowers it for a moment when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 4\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 23 = H, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (40 = F6, 41 = F7), 57 = F11, 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
