@@ -353,7 +353,7 @@ static partial class TNPlus
         ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), ""); KeyBadge(lastBadge, 3);
         ckHit = Switch(pFix, "Projectile hits", 1, "BETA", "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
         ckPhys = Switch(pFix, "Physics speed", 2, "BETA", "The game walks faster the higher the frame rate (+65 % at 76 fps), jumps and falls too. Fixed: same speed at any frame rate.");
-        ckAnti = Switch(pFix, "Anti-flicker (HD)", 3, "BETA", "The game's textures have no mipmaps: far away they flicker and swim as soon as the view moves. Each pixel of the 3D is calmed with the frame before (still pixels keep their colour). Switched with the HD smoothing in game (F6). A few % fps.");
+        ckAnti = Switch(pFix, "Anti-flicker (HD)", 3, "BETA", "The game's textures have no mipmaps: far away they flicker and swim as soon as the view moves. Each pixel of the 3D is calmed with the frames before (still pixels keep their colour). Shift+F6 in game switches it on and off. About 10 % fps.");
         Panel pCheat = Pane(f, "CHEATS", rx, pFix.Bottom + 10, pw, PaneH(1));
         ckClip = Switch(pCheat, "Noclip", 0, KeyName(ScanNoclip), ""); KeyBadge(lastBadge, 1);
         Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);

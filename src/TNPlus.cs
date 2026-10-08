@@ -67,7 +67,7 @@ static partial class TNPlus
     static bool OptPhysFix = true;                  // physics clock fixed for high frame rates (see PHYSFIX_AT)
     // HD anti-flicker: each pixel of the 3D is the colour halfway between this frame and the last one. The engine's
     // textures have no mipmaps: far away they flicker from frame to frame as soon as the view moves. Still pixels
-    // keep their colour. On with the HD smoothing (F6 switches both)
+    // keep their colour. Independent of the HD smoothing; Shift + the smoothing key (F6) switches it in game
     static bool OptAntiFlicker = true;
     static int OptObjDist = 2;                      // object draw distance: 0 GAME, 1 FAR, 2 MAX (see OBJ_*)
     static readonly string[] OBJDIST_NAMES = { "GAME", "FAR", "MAX" };
@@ -1440,10 +1440,18 @@ static partial class TNPlus
                 bool s = hdState == 1 && fg && ((plain && Down(vkSmooth)) || toolMouse(4));
                 if (s && !prevS)
                 {
-                    HdSmoothing = ReadInt(HdPayload.Smoothing) == 0;
-                    WriteInt(HdPayload.Smoothing, HdSmoothing ? 1 : 0);
-                    WriteInt(HdPayload.AntiFlicker, HdSmoothing && OptAntiFlicker ? 1 : 0);
-                    Say("HD smoothing " + (HdSmoothing ? "ON" + (OptAntiFlicker ? " (anti-flicker too)" : "") : "OFF"), HdSmoothing ? 1000 : 600);
+                    if (Down(0x10))                         // Shift + the smoothing key: the anti-flicker
+                    {
+                        OptAntiFlicker = ReadInt(HdPayload.AntiFlicker) == 0;
+                        WriteInt(HdPayload.AntiFlicker, OptAntiFlicker ? 1 : 0);
+                        Say("HD anti-flicker " + (OptAntiFlicker ? "ON" : "OFF"), OptAntiFlicker ? 1000 : 600);
+                    }
+                    else
+                    {
+                        HdSmoothing = ReadInt(HdPayload.Smoothing) == 0;
+                        WriteInt(HdPayload.Smoothing, HdSmoothing ? 1 : 0);
+                        Say("HD smoothing " + (HdSmoothing ? "ON" : "OFF"), HdSmoothing ? 1000 : 600);
+                    }
                 }
                 prevS = s;
                 bool stk = haveStereo && fg && ((plain && Down(vkStereo)) || toolMouse(3));
@@ -1826,7 +1834,7 @@ static partial class TNPlus
         Write(HdPayload.Code2, HdPayload.Code2Bytes);      // anti-flicker, called by the HD code
         for (int i = 0; i < n; i++) Write(HdPayload.PatchAt[i], HdPayload.PatchNew[i]);
         WriteInt(HdPayload.Smoothing, HdSmoothing ? 1 : 0);
-        WriteInt(HdPayload.AntiFlicker, HdSmoothing && OptAntiFlicker ? 1 : 0);
+        WriteInt(HdPayload.AntiFlicker, OptAntiFlicker ? 1 : 0);
         WriteInt(HdPayload.HudFilter, 0);              // Scale2x HUD: left in the payload, no longer offered
         if (HdPayload.HudStretch != 0) WriteInt(HdPayload.HudStretch, OptWideHud ? 1 : 0);
         hdState = 1;
@@ -2350,7 +2358,7 @@ static partial class TNPlus
                 "; HD smoothing at start (toggled in game with key_smoothing)\r\nhd_smoothing = " + (HdSmoothing ? 1 : 0) + "\r\n" +
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
-                "; 1 = HD anti-flicker: far textures that flicker when the view moves are calmed (with the HD smoothing)\r\n" +
+                "; 1 = HD anti-flicker: far textures that flicker when the view moves are calmed (Shift+F6 in game)\r\n" +
                 "anti_flicker = " + (OptAntiFlicker ? 1 : 0) + "\r\n" +
                 "; GAME, 90, 100 or 110: horizontal field of view of the 3D view in degrees (the game: 84.5)\r\nfield_of_view = " + FOV_NAMES[OptFov] + "\r\n" +
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +

@@ -602,6 +602,11 @@
    "what": "terrain sectors code"
   },
   {
+   "from": "0x46A1A0",
+   "to": "0x46A1F7",
+   "what": "game keys: stuck key sweep"
+  },
+  {
    "from": "0x46A200",
    "to": "0x46A2AB",
    "what": "true 16:9 camera code"
@@ -613,16 +618,16 @@
   },
   {
    "from": "0x46AA20",
-   "to": "0x46AE4F",
+   "to": "0x46AE54",
    "what": "game keys code"
   },
   {
-   "from": "0x46AE50",
-   "to": "0x46AFEE",
+   "from": "0x46AE58",
+   "to": "0x46AFF6",
    "what": "HD anti-flicker code"
   },
   {
-   "from": "0x46AFEE",
+   "from": "0x46AFF6",
    "to": "0x46B024",
    "what": "free"
   }
