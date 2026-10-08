@@ -66,8 +66,8 @@ Terra Nova Plus makes object 3 0x6000 bytes bigger in the exe file. The original
 | 0x46A100 – 0x46A19E | terrain sectors |
 | 0x46A200 – 0x46A2AB | true 16:9 camera |
 | 0x46A300 – 0x46AA16 | edge objects code |
-| 0x46AA20 – 0x46AE34 | game keys code |
-| 0x46AE34 – 0x46B024 | free |
+| 0x46AA20 – 0x46AE4F | game keys code |
+| 0x46AE4F – 0x46B024 | free |
 
 Patch sites in the game code are listed in the JSON, with the bytes before and after.
 
@@ -106,6 +106,9 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   3D was drawn at.
 - **Reading the camera scale at the wrong moment:** with a locked target the engine also renders the small target
   view, so a value read at a random time can come from that one. Check the canvas width first.
+- **A key held while our key translation switched on stayed down for the game.** The press went through as it was,
+  the release was translated, so the game never saw the original key go up (the player kept turning). A key pressed
+  untranslated now stays untranslated until it is released.
 - **DOSBox's dynamic core** (see above): patches written from outside into code that already ran are not seen, and
   variables written into a code page can crash it.
 
