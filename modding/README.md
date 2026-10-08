@@ -71,6 +71,58 @@ Terra Nova Plus makes object 3 0x6000 bytes bigger in the exe file. The original
 
 Patch sites in the game code are listed in the JSON, with the bytes before and after.
 
+## Bugs
+
+### Game bugs, fixed in Terra Nova Plus
+
+- **Projectiles miss moving targets above ~30 fps.** A projectile tests the entity grid in steps over the distance it
+  moved, and the step count was rounded down, so at high frame rates it tested nothing. Rounded up at 0x311553.
+- **Walking, jumps and falls get faster with the frame rate** (+65 % at 76 fps). The physics kept a few ms of
+  leftover time and added it again every frame. It also skipped frames shorter than 10 ms, so walking stuttered above
+  ~80 fps. Fixed at 0x311F5A and 0x311F77.
+- **Black screen forever at the end of a mission.** The game frees the cockpit's click zones but keeps testing the
+  mouse against them for a moment and can loop forever. The zone walk now gives up after 255 steps (0x2F249C).
+- **"ERROR: back_intersect: Too many temporary points!"** with far terrain: the clipping point buffer (800) overflows.
+  Raised to 6400 in the exe.
+- **Crash when zooming with far terrain.** Each zoom level multiplies the terrain rings (48 became 62 to 87). Capped
+  at 48 in the exe (0x2A8990).
+- **The per-frame object list overflows** with more objects: 400 entries, and two of its writers have no check.
+  Raised to 1200.
+- **Rain falls only on the left half** in HD: its column was not doubled. Fixed in the HD code.
+- **Sound effects stereo is reversed under DOSBox** (the SB16 driver swaps left and right). Optional fix through
+  DOSBox's mixer, F7 swaps it in game.
+- **The ground stops short of the screen edges** with a view wider than about 90°: the terrain is only built in 3
+  sectors of 45° around the heading. A hook on the builder (0x2AA3C2) and extra strips fix most of it.
+
+### Traps we fell into while patching
+
+- **A constant shifted like an address.** Our French-to-English address map also moved the cursor size 32x64
+  (`0x400020`), so the cursor save-under got a width of -144: a huge copy, and DOSBox closed when a second mission
+  started. Only map real addresses.
+- **Objects sliding on the ground in a wider view.** The 3D library's horizontal object scale is half-width ×
+  (height × pixel ratio / width), so the width cancels out: changing the pixel ratio when widening the view made
+  buildings 0.70× or 1.42× too wide and they slid when turning. Leave the library's pixel ratio alone.
+- **Target box off target after widening the view:** the library's half-width (0x3622E2) has to match the width the
+  3D was drawn at.
+- **Reading the camera scale at the wrong moment:** with a locked target the engine also renders the small target
+  view, so a value read at a random time can come from that one. Check the canvas width first.
+- **DOSBox's dynamic core** (see above): patches written from outside into code that already ran are not seen, and
+  variables written into a code page can crash it.
+
+### Not solved
+
+- **Noclip crash at high altitude**, seen once. Maybe the clipping point overflow above, not seen since.
+- **Black screen after finishing a mission and starting Panama** on Steam, seen once. Probably the cursor constant
+  bug above, not seen since.
+- **A thin strip at one screen edge** can still show the far terrain renderer near the diagonals with a wide view
+  (8° at most at 100°).
+- **True 16:9**: the menus are stretched, only missions are drawn in 848x480. The full view (`G`) and the locked
+  target box with the stretched cockpit still need checking in game.
+- **AWE32 music**: a few instruments are slightly out of tune, and the percussion the game's bank doesn't define
+  falls back to the Windows sound set.
+- **Remapped keys**: extended keys (arrows, Page Up...) can't be picked as new keys yet (the E0 path of the keyboard
+  handler isn't translated).
+
 ## A shared patch format
 
 One entry per patch: `address`, `old` (hex), `new` (hex), plus a `feature` name. A tool checks `old` before
