@@ -666,6 +666,8 @@ static partial class TNPlus
         onClose = ev => { Release(); return false; };
         SetConsoleCtrlHandler(onClose, true);
         bool consoleMenu = Array.IndexOf(args, "--console") >= 0;   // the old text menu
+        int ip = Array.IndexOf(args, "--pid");                      // tests: attach to this DOSBox only
+        if (ip >= 0 && ip + 1 < args.Length) int.TryParse(args[ip + 1], out OnlyPid);
         while (consoleMenu ? Menu() : GuiMenu()) Run();   // back to the menu when a game started from it closes
     }
 
@@ -1823,11 +1825,15 @@ static partial class TNPlus
     // ------------------------------------------------------------------ attach / signature scan
     static bool attached;                          // a game was found (attach mode messages)
 
+    static int OnlyPid = 0;                         // --pid N: attach to that DOSBox only (tests next to a game)
+
     static void TryAttach()
     {
         foreach (Process p in Process.GetProcesses())
         {
             if (!p.ProcessName.ToLowerInvariant().Contains("dosbox")) continue;
+            if (launched != null && p.Id != launched.Id) continue;   // started from here: that DOSBox only
+            if (OnlyPid != 0 && p.Id != OnlyPid) continue;
             IntPtr h = OpenProcess(0x0010 | 0x0020 | 0x0008 | 0x0400, false, p.Id);
             if (h == IntPtr.Zero) continue;
             hProc = h; gamePid = p.Id;
