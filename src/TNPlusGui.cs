@@ -20,7 +20,51 @@ static partial class TNPlus
     static readonly Color TOrange = Color.FromArgb(214, 122, 28), TField = Color.FromArgb(12, 26, 24);
     static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono;
 
-    static Label guiHelp, guiWarn, guiPreset;
+    static Label guiHelp, guiWarn, guiPreset, guiKeys, lastBadge;
+    static readonly List<KeyValuePair<Label, int>> keyBadges = new List<KeyValuePair<Label, int>>();
+    static int rebindKey = -1;                      // KEY_WHAT index waiting for its new key, -1 none
+
+    // a purple key badge: a click waits for the next key pressed (Esc cancels), stored as its scancode
+    static void KeyBadge(Label b, int key)
+    {
+        keyBadges.Add(new KeyValuePair<Label, int>(b, key));
+        b.Cursor = Cursors.Hand;
+        b.MouseEnter += delegate { if (rebindKey < 0) guiHelp.Text = "> click to change the " + KEY_WHAT[key] + " key"; };
+        b.Click += delegate
+        {
+            rebindKey = rebindKey == key ? -1 : key;
+            GuiRefresh();
+            guiHelp.Text = rebindKey < 0 ? "> unchanged" : "> press the new " + KEY_WHAT[key] + " key (Esc cancels)";
+        };
+    }
+
+    class KeyCatcher : IMessageFilter
+    {
+        public bool PreFilterMessage(ref Message m)
+        {
+            if (rebindKey < 0 || (m.Msg != 0x100 && m.Msg != 0x104)) return false;   // WM_KEYDOWN, WM_SYSKEYDOWN
+            long lp = m.LParam.ToInt64();
+            int vk = (int)m.WParam.ToInt64(), scan = (int)((lp >> 16) & 0xFF), k = rebindKey;
+            bool ext = ((lp >> 24) & 1) != 0;
+            rebindKey = -1;
+            string msg;
+            if (vk == 0x1B) msg = "unchanged";
+            else if (ext || scan == 0 || Array.IndexOf(KEY_RESERVED, scan) >= 0)
+                msg = "that key is taken by the game or the tool (Esc, O, noclip moves, Space, Ctrl, Shift, arrows...): pick another one";
+            else
+            {
+                int other = -1;
+                for (int i = 0; i < KEY_WHAT.Length; i++) if (i != k && GetKey(i) == scan) other = i;
+                if (other >= 0) SetKey(other, GetKey(k));   // already used by another tool key: the two swap
+                SetKey(k, scan);
+                SaveSettings();
+                msg = KEY_WHAT[k] + ": " + KeyName(scan) + (other >= 0 ? ", " + KEY_WHAT[other] + " moved to " + KeyName(GetKey(other)) : "");
+            }
+            GuiRefresh();
+            guiHelp.Text = "> " + msg;
+            return true;
+        }
+    }
     static readonly string[] SPEED_NAMES = { "500000", "700000", "1000000", "1200000", "1400000", "GAME'S OWN" };
     static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed, cbObj, cbFov, cbWide;
     const int ROW0 = 46, ROWH = 32, CTL_H = 26, COL_CTL = 156, COL_W = 140, COL_BADGE = 306;
@@ -129,22 +173,22 @@ static partial class TNPlus
         cbDisplay = Combo(pPic, "Display", 0, DisplayLabels(), "BETA", "");
         cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, "BETA", "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. Needs the game launched from here.");
         cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER costs about 25 % fps (the default CPU speed makes up for it).");
-        cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), "View distance at mission start. " + KeyName(ScanDistance) + " cycles it in game.");
+        cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), ""); KeyBadge(lastBadge, 2);
         cbFov = Combo(pPic, "Field of view", 5, FOV_NAMES, "BETA", "Horizontal field of view of the 3D view in degrees, at every zoom level. GAME: 84.5, or 100.9 in 16:9. The small cockpit cameras keep theirs.");
         cbObj = Combo(pPic, "Object distance", 4, OBJDIST_NAMES, "BETA", "How far bushes, trees, units and buildings are drawn. GAME: scenery 20 cells. FAR: 30, unit ranges x2. MAX: 40, x3. About 4 % fps at MAX.");
         Panel pSnd = Pane(f, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));
         cbMusic = Combo(pSnd, "Music", 0, MUSIC_NAMES, "BETA", "");   // AWE32 always offered: found or not is shown below
         Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(1));
-        ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), "Look around with the mouse, " + KeyName(ScanFreelook) + " in game. Sensitivity and inverted look in TNPlus.ini.");
+        ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), ""); KeyBadge(lastBadge, 0);
         Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(3));
-        ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), "Only if your sound is mirrored: under DOSBox the game's SB16 driver swaps left and right. " + KeyName(ScanStereo) + " swaps the sound effects in game, to compare.");
+        ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), ""); KeyBadge(lastBadge, 3);
         ckHit = Switch(pFix, "Projectile hits", 1, "BETA", "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
         ckPhys = Switch(pFix, "Physics speed", 2, "BETA", "The game walks faster the higher the frame rate (+65 % at 76 fps), jumps and falls too. Fixed: same speed at any frame rate.");
         Panel pCheat = Pane(f, "CHEATS", rx, pFix.Bottom + 10, pw, PaneH(1));
-        ckClip = Switch(pCheat, "Noclip", 0, KeyName(ScanNoclip), "Fly through everything, " + KeyName(ScanNoclip) + " in game. Speed in TNPlus.ini.");
+        ckClip = Switch(pCheat, "Noclip", 0, KeyName(ScanNoclip), ""); KeyBadge(lastBadge, 1);
         Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);
         cbTarget = Combo(pLaunch, "Run", 0, new[] { "FULL GAME", "DEMO 1", "DEMO 2" }, null, "The two 1996 demos shipped with GOG and Steam have missions the full game hasn't. No HD there yet.");
-        cbPreset = Combo(pLaunch, "Preset", 1, new[] { "ORIGINAL", "CLASSIC+", "BEST", "CUSTOM" }, null, "Presets set picture and controls at once. Fixes and music are yours to choose.");
+        cbPreset = Combo(pLaunch, "Preset", 1, new[] { "ORIGINAL", "CLASSIC+", "BEST", "CUSTOM" }, null, "Presets set picture and controls at once. Fixes, cheats and music are yours to choose.");
         cbSpeed = Combo(pLaunch, "CPU speed", 2, SPEED_NAMES, "BETA",
             "DOSBox CPU cycles: the game runs as fast as they allow. True 16:9 HD: 700000 ~40 fps, 1000000 ~57, 1200000 ~70 (one full CPU core). DOSBox lowers them by itself when your PC cannot keep up.");
         guiPreset = Lbl(pLaunch, "", 14, PaneH(3) - 4, TSmall, TDim); guiPreset.AutoSize = false; guiPreset.Size = new Size(pw - 28, 20);
@@ -155,8 +199,7 @@ static partial class TNPlus
         strip.Paint += delegate(object s, PaintEventArgs e) { Bevel(e.Graphics, strip.Size, true); };
         guiHelp = Lbl(strip, "> point at a setting to read what it does", 12, 8, TMono, TLed); guiHelp.AutoSize = false; guiHelp.Size = new Size(716, 30);
         guiWarn = Lbl(strip, "", 12, 36, TMono, TAmber); guiWarn.AutoSize = false; guiWarn.Size = new Size(716, 16);
-        Lbl(f, "IN GAME   " + KeyName(ScanFreelook) + " freelook   " + KeyName(ScanNoclip) + " noclip   " + KeyName(ScanDistance) + " view distance   " +
-            KeyName(ScanStereo) + " stereo swap   " + KeyName(ScanSmoothing) + " HD smoothing", 20, yb + 64, TSmall, TDim);
+        guiKeys = Lbl(f, "", 20, yb + 64, TSmall, TDim);
 
         // buttons, orange like the loadout screen's
         Button bLaunch = Btn(f, "LAUNCH", 20, yb + 88, 170, 32, true);
@@ -194,7 +237,11 @@ static partial class TNPlus
         cbPreset.Changed += delegate { if (!guiBusy && cbPreset.Index < 3) { ApplyPreset(cbPreset.Index); GuiRefresh(); } };
         guiRedrawGame = drawGame;
         GuiRefresh();
+        KeyCatcher catcher = new KeyCatcher();
+        Application.AddMessageFilter(catcher);
         Application.Run(f);
+        Application.RemoveMessageFilter(catcher);
+        rebindKey = -1; keyBadges.Clear();
         guiRedrawGame = null;
         return result;
     }
@@ -206,6 +253,19 @@ static partial class TNPlus
         if (guiRedrawGame != null) guiRedrawGame();
         string why; bool hdOk = HdAvailable(out why);
         cbDisplay.Items = DisplayLabels(); cbDisplay.Tag = HdHelp() + ". " + KeyName(ScanSmoothing) + " toggles the smoothing in game.";
+        cbDist.Tag = "View distance at mission start. " + KeyName(ScanDistance) + " cycles it in game (click the purple key to change it).";
+        ckFree.Tag = "Look around with the mouse, " + KeyName(ScanFreelook) + " in game (click the purple key to change it). Sensitivity and inverted look in TNPlus.ini.";
+        ckStereo.Tag = "Only if your sound is mirrored: under DOSBox the game's SB16 driver swaps left and right. " + KeyName(ScanStereo) + " swaps the sound effects in game, to compare.";
+        ckClip.Tag = "Fly through everything, " + KeyName(ScanNoclip) + " in game (click the purple key to change it). Speed in TNPlus.ini.";
+        guiKeys.Text = "IN GAME   " + KeyName(ScanFreelook) + " freelook   " + KeyName(ScanNoclip) + " noclip   " + KeyName(ScanDistance) + " view distance   " +
+            KeyName(ScanStereo) + " stereo swap   " + KeyName(ScanSmoothing) + " HD smoothing";
+        foreach (KeyValuePair<Label, int> kb in keyBadges)
+        {
+            bool wait = kb.Value == rebindKey;
+            kb.Key.Text = wait ? "?" : KeyName(GetKey(kb.Value));
+            kb.Key.BackColor = wait ? TAmber : Color.FromArgb(118, 48, 160); kb.Key.ForeColor = wait ? Color.FromArgb(40, 30, 0) : Color.White;
+            kb.Key.Width = Math.Max(TextRenderer.MeasureText(kb.Key.Text, kb.Key.Font).Width + 12, 26);
+        }
         cbDisplay.Set(Display); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov);
         ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix;
         bool aweRom = AweRom() != null;
@@ -292,6 +352,7 @@ static partial class TNPlus
         int w = TextRenderer.MeasureText(tag, b.Font).Width + 12;
         b.Size = new Size(Math.Max(w, 26), 20); b.Location = new Point(x, y + (CTL_H - 20) / 2);
         parent.Controls.Add(b);
+        lastBadge = b;
     }
 
     static Sel Combo(Panel p, string label, int row, string[] items, string tag, string help)

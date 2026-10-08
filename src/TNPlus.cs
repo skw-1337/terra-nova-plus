@@ -54,7 +54,7 @@ static partial class TNPlus
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
-    static bool OptFreelook = true, OptNoclip = true, OptForce400 = true, OptWide = false, OptHD = false;
+    static bool OptFreelook = true, OptNoclip = false, OptForce400 = true, OptWide = false, OptHD = false;
     static int OptDistance = 2;                     // 0 NORMAL, 1 FAR, 2 MAX
     static bool OptStereoFix = false;                // DOSBox: swap the Sound Blaster stereo (the game's SB16 driver reverses it)
     static bool OptHitFix = true;                   // projectile hit test fixed for high frame rates (see TryHitFix)
@@ -77,6 +77,16 @@ static partial class TNPlus
     static int ScanFreelook = 0x15, ScanNoclip = 0x16, ScanDistance = 0x24;   // Y U J (physical keys; I is the game's infrared)
     static int ScanSmoothing = 0x58;                // F12: HD smoothing on / off
     static int ScanStereo = 0x41;                   // F7: swap the stereo of the sound effects in game
+    // the in-game keys the launcher can change (click the purple key, press the new one)
+    static readonly string[] KEY_WHAT = { "freelook", "noclip", "view distance", "stereo swap", "HD smoothing" };
+    static int GetKey(int i) { return i == 0 ? ScanFreelook : i == 1 ? ScanNoclip : i == 2 ? ScanDistance : i == 3 ? ScanStereo : ScanSmoothing; }
+    static void SetKey(int i, int s)
+    {
+        if (i == 0) ScanFreelook = s; else if (i == 1) ScanNoclip = s; else if (i == 2) ScanDistance = s; else if (i == 3) ScanStereo = s; else ScanSmoothing = s;
+    }
+    // keys the tool or the game need for themselves: Esc, O (options), the noclip moves, Space, Left Ctrl,
+    // Left Shift, I (infrared)
+    static readonly int[] KEY_RESERVED = { 0x01, 0x18, 0x11, 0x1E, 0x1F, 0x20, 0x39, 0x1D, 0x2A, 0x17 };
     static double NoclipSpeed = 15.0;               // game units per second (a walking PBA ~2.5)
     static int CpuCycles = 1000000;                 // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
     static readonly int[] CYCLE_CHOICES = { 500000, 700000, 1000000, 1200000, 1400000, 0 };
@@ -640,6 +650,7 @@ static partial class TNPlus
 
     [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint type);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetKeyNameText(int lParam, StringBuilder name, int size);
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out int pid);
     [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr hwnd, out RECT r);
@@ -788,15 +799,14 @@ static partial class TNPlus
         OptWideTrue = p == 2;
         OptDetail = p;                              // GAME / SHARP / SHARPER
         OptDistance = p;                            // NORMAL / FAR / MAX
-        OptFreelook = p > 0;
-        OptNoclip = p > 0;
+        OptFreelook = p > 0;                        // noclip is a cheat: left to the player
     }
 
     static int CurrentPreset()
     {
         for (int p = 0; p < 3; p++)
             if (Display == p && OptWide == (p == 2) && OptWideTrue == (p == 2) && OptDetail == p && OptDistance == p
-                && OptFreelook == (p > 0) && OptNoclip == (p > 0))
+                && OptFreelook == (p > 0))
                 return p;
         return -1;
     }
@@ -2167,7 +2177,10 @@ static partial class TNPlus
     {
         uint vk = MapVirtualKey((uint)scan, 1);
         if (vk >= 0x70 && vk <= 0x87) return "F" + (vk - 0x6F);
-        return vk >= 0x30 && vk <= 0x5A ? ((char)vk).ToString() : "scancode 0x" + scan.ToString("X2");
+        if (vk >= 0x30 && vk <= 0x5A) return ((char)vk).ToString();
+        StringBuilder sb = new StringBuilder(32);
+        if (GetKeyNameText(scan << 16, sb, 32) > 0 && sb.Length <= 8) return sb.ToString().ToUpperInvariant();
+        return "scancode 0x" + scan.ToString("X2");
     }
 
     static void LoadSettings()

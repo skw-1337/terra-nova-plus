@@ -98,13 +98,13 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 - **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
 - **Noclip**: land before switching it off — switching it off in mid-air means a free fall.
 - **Widescreen STRETCHED** is anamorphic: the engine draws 320 pixels across, so the cockpit and the menus are stretched a little; the 3D keeps correct proportions. **TRUE** needs HD and the game started from the launcher. The cockpit and HUD are stretched like in STRETCHED (`wide_hud = 0` keeps them at their own proportions in the middle, with black above and below the 3D on the sides), the menus are stretched too, and the mouse is captured when you click in the window (DOSBox releases it with its usual key).
-- Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. They can be changed in `TNPlus.ini`.
+- Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. To change one, click its purple key in the launcher and press the new key (`Esc` cancels), or edit `TNPlus.ini`.
 
 ## Settings (`TNPlus.ini`)
 
 | Key | Default | Meaning |
 |---|---|---|
-| `freelook`, `noclip`, `force_320x400` | `1`, `1`, `1` | the menu options |
+| `freelook`, `noclip`, `force_320x400` | `1`, `0`, `1` | the menu options |
 | `widescreen` | `0` | `0` off, `1` stretched, `2` true 16:9 (HD) |
 | `wide_hud` | `1` | true 16:9: `1` cockpit and HUD stretched to the full width, `0` centred at their own proportions |
 | `edge_objects` | `1` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta) |
