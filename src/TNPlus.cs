@@ -10,7 +10,8 @@
 //    - widescreen 16:9          : DOSBox stretches the picture, the tool widens the
 //                                 engine's field of view to match (no distortion)
 //    - HD 640x400 (F12)         : the 3D view is rendered with twice the columns (596x199)
-//                                 on a VESA 640x400 screen; F12 toggles the smoothing
+//                                 on a VESA 640x400 screen (848x480 and 848 columns in
+//                                 true 16:9); F12 toggles the smoothing
 //
 //  Every address is found through CODE SIGNATURES (no hard-coded addresses): English /
 //  French executables, Steam, GOG and CD versions, any DOSBox memory size. Exception: the
@@ -728,8 +729,18 @@ static partial class TNPlus
     static readonly string[] PRESET_INFO = {
         "the game as it was",
         "sharper 320x400, freelook, a bit more view and detail",
-        "everything on: HD 640x400, 16:9, max view and detail" };
+        "everything on: HD 848x480 in true 16:9, max view and detail" };
     static int Display = 2;                         // 0 original, 1 320x400, 2 HD 640x400
+
+    // HD is 640x400, or DOSBox's VESA 848x480 in true 16:9: the labels follow the settings, the messages what runs
+    static string HdName() { return WideMode() == 2 ? "HD 848x480" : "HD 640x400"; }
+    static string HdNow() { return TrueWideActive() ? "HD 848x480" : "HD 640x400"; }
+    static string[] DisplayLabels() { return new[] { DISPLAY_LABELS[0], DISPLAY_LABELS[1], HdName() }; }
+    static string HdHelp()
+    {
+        return (WideMode() == 2 ? "HD 848x480 (true 16:9): the 3D view drawn 848 columns wide" : "HD 640x400: the 3D view drawn at twice the width") +
+            ", GOG and Steam, French and English";
+    }
     static string hdCheckedDir = null, hdWhy = "";
     static bool hdOk = false;
 
@@ -839,7 +850,7 @@ static partial class TNPlus
             int music = EffectiveMusic();
             List<List<Seg>> left = new List<List<Seg>>(), right = new List<List<Seg>>();
             left.Add(Sec("PICTURE"));
-            left.Add(Opt("1", "Display", Val(DISPLAY_LABELS[EffectiveDisplay()]), "BETA", 0));
+            left.Add(Opt("1", "Display", Val(DisplayLabels()[EffectiveDisplay()]), "BETA", 0));
             left.Add(Opt("2", "Widescreen 16:9", Val(WIDE_NAMES[WideMode()]), OptWideTrue ? "BETA" : null, 0));
             left.Add(Opt("3", "Terrain detail", Val(DETAIL_NAMES[OptDetail]), "BETA", 0));
             left.Add(Opt("4", "View distance", Val(DIST_NAMES[OptDistance]), null, ScanDistance));
@@ -876,12 +887,12 @@ static partial class TNPlus
             }
             Rule('─');
             // help for the key pressed last, and the warnings that matter
-            if (Display == 2 && !hdOkNow) Warn("HD 640x400 " + why + ": 320x400 is used");
+            if (Display == 2 && !hdOkNow) Warn(HdName() + " " + why + ": 320x400 is used");
             if (demoMissing) Warn("demo " + LaunchTarget + " not found in the game folder (see README)");
             switch (lastKey)
             {
-                case '1': Note("HD 640x400: the 3D view drawn at twice the width, GOG and Steam, French and English; " + KeyName(ScanSmoothing) + " toggles the smoothing"); break;
-                case '2': Note("widescreen: the camera is corrected for a 16:9 DOSBox window (needs launching from here)"); break;
+                case '1': Note(HdHelp() + "; " + KeyName(ScanSmoothing) + " toggles the smoothing"); break;
+                case '2': Note("widescreen: STRETCHED = DOSBox stretches the picture, camera corrected; TRUE (HD) = 848x480, the 3D in real 16:9, HUD stretched (needs launching from here)"); break;
                 case '3': Note("more ground detail far away (steep walls stop looking like a saw); costs 10-20 % fps"); break;
                 case '4': Note("view distance at mission start; " + KeyName(ScanDistance) + " cycles it in game"); break;
                 case '5': Note("mouse freelook: " + KeyName(ScanFreelook) + " in game; sensitivity and inverted look in TNPlus.ini"); break;
@@ -1242,7 +1253,7 @@ static partial class TNPlus
         {
             string why;
             hdExeReady = PrepareExeForHd(out why);
-            Console.WriteLine(hdExeReady ? "__FF.EXE: " + why : "HD 640x400 and far smooth terrain unavailable: " + why);
+            Console.WriteLine(hdExeReady ? "__FF.EXE: " + why : "HD and far smooth terrain unavailable: " + why);
             if (!OptHD) hdExeReady = false;
         }
         string db = Path.Combine(GameDir, "_DOSBOX");
@@ -1290,7 +1301,7 @@ static partial class TNPlus
             (OptNoclip ? KeyName(ScanNoclip) + " noclip   " : "") + KeyName(ScanDistance) + " view distance");
         if (OptFreelook) Console.WriteLine("Freelook switches off in menus (O / Esc) and when the mission ends.");
         if (OptNoclip) Console.WriteLine("Noclip: move keys, Space / Left Ctrl up / down, Left Shift x4. Land before switching it off!");
-        if (OptHD) Console.WriteLine("HD 640x400: missions in 320x400 are shown in HD, " + KeyName(ScanSmoothing) + " toggles the 3D smoothing.");
+        if (OptHD) Console.WriteLine(HdNow() + ": missions in 320x400 are shown in HD, " + KeyName(ScanSmoothing) + " toggles the 3D smoothing.");
         Console.WriteLine("When you are done playing, close this window (anti-cheat note: see README).");
         Console.WriteLine();
         attached = false;
@@ -1726,7 +1737,7 @@ static partial class TNPlus
         }
         if (allNew && Same(Read(HdPayload.Code, HdPayload.CodeBytes.Length), HdPayload.CodeBytes))
         {
-            hdState = 1; Say("HD 640x400 already active in this game", 0); return;
+            hdState = 1; Say(HdNow() + " already active in this game", 0); return;
         }
         string why = null;
         uint pool = allOld ? ReadUInt(HdPayload.PoolVar) : 0;
@@ -1742,7 +1753,7 @@ static partial class TNPlus
             byte[] zone = Read(HdPayload.Zone, (int)(HdPayload.End - HdPayload.Zone));
             foreach (byte zb in zone) if (zb != 0) { why = "its memory area is not free"; break; }
         }
-        if (why != null) { hdState = -1; Say("HD 640x400 unavailable: " + why, 300, 300); return; }
+        if (why != null) { hdState = -1; Say(HdNow() + " unavailable: " + why, 300, 300); return; }
         Write(HdPayload.Data, HdPayload.DataInit);
         Write(HdPayload.Code, HdPayload.CodeBytes);
         for (int i = 0; i < n; i++) Write(HdPayload.PatchAt[i], HdPayload.PatchNew[i]);
@@ -1750,7 +1761,7 @@ static partial class TNPlus
         WriteInt(HdPayload.HudFilter, 0);              // Scale2x HUD: left in the payload, no longer offered
         if (HdPayload.HudStretch != 0) WriteInt(HdPayload.HudStretch, OptWideHud ? 1 : 0);
         hdState = 1;
-        Say("HD 640x400 ready: missions in 320x400 will be in HD (" + KeyName(ScanSmoothing) + " smoothing " +
+        Say(HdNow() + " ready: missions in 320x400 will be in HD (" + KeyName(ScanSmoothing) + " smoothing " +
             (HdSmoothing ? "ON" : "OFF") + ")", 1000);
     }
 
@@ -2226,7 +2237,7 @@ static partial class TNPlus
         {
             File.WriteAllText(IniPath,
                 "; Terra Nova Plus settings (the menu at start-up edits the first part)\r\n" +
-                "; ORIGINAL, 320X400 or HD (HD 640x400 falls back to 320x400 where it is not available)\r\ndisplay = " + DISPLAY_NAMES[Display] + "\r\n" +
+                "; ORIGINAL, 320X400 or HD (640x400, 848x480 in true 16:9; falls back to 320x400 where it is not available)\r\ndisplay = " + DISPLAY_NAMES[Display] + "\r\n" +
                 "; GAME, DEMO 1 or DEMO 2\r\nlaunch = " + TARGET_NAMES[LaunchTarget] + "\r\n" +
                 "freelook = " + (OptFreelook ? 1 : 0) + "\r\n" +
                 "noclip = " + (OptNoclip ? 1 : 0) + "\r\n" +

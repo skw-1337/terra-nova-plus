@@ -126,7 +126,7 @@ static partial class TNPlus
         // panels: picture / sound / controls on the left, fixes / cheats / launch on the right
         int y0 = 124, lx = 20, rx = 400, pw = 360;
         Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(6));
-        cbDisplay = Combo(pPic, "Display", 0, DISPLAY_LABELS, "BETA", "HD 640x400: the 3D view drawn at twice the width, GOG and Steam, French and English. " + KeyName(ScanSmoothing) + " toggles the smoothing in game.");
+        cbDisplay = Combo(pPic, "Display", 0, DisplayLabels(), "BETA", "");
         cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, "BETA", "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. Needs the game launched from here.");
         cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER costs about 25 % fps (the default CPU speed makes up for it).");
         cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), "View distance at mission start. " + KeyName(ScanDistance) + " cycles it in game.");
@@ -205,6 +205,7 @@ static partial class TNPlus
         guiBusy = true;
         if (guiRedrawGame != null) guiRedrawGame();
         string why; bool hdOk = HdAvailable(out why);
+        cbDisplay.Items = DisplayLabels(); cbDisplay.Tag = HdHelp() + ". " + KeyName(ScanSmoothing) + " toggles the smoothing in game.";
         cbDisplay.Set(Display); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov);
         ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix;
         bool aweRom = AweRom() != null;
@@ -221,7 +222,7 @@ static partial class TNPlus
         int p = CurrentPreset(); cbPreset.Set(p < 0 ? 3 : p);
         guiPreset.Text = p < 0 ? "Your own settings. A preset starts again from a known mix." : PRESET_INFO[p];
         string warn = "";
-        if (Display == 2 && !hdOk) warn = "HD 640x400 " + why + ": 320x400 is used.";
+        if (Display == 2 && !hdOk) warn = HdName() + " " + why + ": 320x400 is used.";
         if (LaunchTarget > 0 && !HasDemo(GameDir, LaunchTarget)) warn += (warn == "" ? "" : "  ") + "Demo " + LaunchTarget + " not found in the game folder, see README.";
         if (OptMusic == 3) warn += (warn == "" ? "" : "  ") + (aweRom ? "AWE32 ROM found: AWE32 music on." : "AWE32 ROM not found (awe32.raw next to TNPlus.exe): ROLAND is used.");
         guiWarn.Text = warn.ToUpperInvariant();
