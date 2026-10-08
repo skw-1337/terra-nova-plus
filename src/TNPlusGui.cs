@@ -230,7 +230,7 @@ static partial class TNPlus
                             : "> point at a setting to read what it does";
     }
     static readonly string[] SPEED_NAMES = { "500000", "700000", "1000000", "1200000", "1400000", "GAME'S OWN" };
-    static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed, cbObj, cbFov, cbWide;
+    static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed, cbObj, cbFov, cbWide, cbScale;
     const int ROW0 = 46, ROWH = 32, CTL_H = 26, COL_CTL = 170, COL_W = 150, COL_BADGE = 330, GUI_W = 840;
     static int PaneH(int rows) { return ROW0 + rows * ROWH - (ROWH - CTL_H) + 14; }
 
@@ -276,7 +276,7 @@ static partial class TNPlus
             }
         }
     }
-    static CheckBox ckFree, ckClip, ckStereo, ckHit, ckPhys;
+    static CheckBox ckFree, ckClip, ckStereo, ckHit, ckPhys, ckAnti;
     static bool guiBusy;                            // refreshing the controls: ignore their events
     static Action guiRedrawGame;
 
@@ -337,21 +337,23 @@ static partial class TNPlus
         tabSet.Cursor = Cursors.Hand; tabKeys.Cursor = Cursors.Hand;
         tabSet.Click += delegate { ShowPage(false); }; tabKeys.Click += delegate { ShowPage(true); };
         int y0 = 156, lx = 20, pw = (GUI_W - 60) / 2, rx = lx + pw + 20;
-        Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(6));
+        Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(7));
         cbDisplay = Combo(pPic, "Display", 0, DisplayLabels(), "BETA", "");
         cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, "BETA", "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. Needs the game launched from here.");
         cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER costs about 25 % fps (the default CPU speed makes up for it).");
         cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), ""); KeyBadge(lastBadge, 2);
         cbFov = Combo(pPic, "Field of view", 5, FOV_NAMES, "BETA", "Horizontal field of view of the 3D view in degrees, at every zoom level. GAME: 84.5, or 100.9 in 16:9. The small cockpit cameras keep theirs.");
         cbObj = Combo(pPic, "Object distance", 4, OBJDIST_NAMES, "BETA", "How far bushes, trees, units and buildings are drawn. GAME: scenery 20 cells. FAR: 30, unit ranges x2. MAX: 40, x3. About 4 % fps at MAX.");
+        cbScale = Combo(pPic, "Scaling", 6, SCALING_NAMES, "BETA", "How DOSBox scales the picture to your screen. SHARP: every pixel the same size, edges still sharp (OpenGL, sharp shader): much less shimmer when the view moves. GAME'S OWN: the edition's setting (Direct3D, nearest pixels of uneven sizes). Needs the game launched from here.");
         Panel pSnd = Pane(f, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));
         cbMusic = Combo(pSnd, "Music", 0, MUSIC_NAMES, "BETA", "");   // AWE32 always offered: found or not is shown below
         Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(1));
         ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), ""); KeyBadge(lastBadge, 0);
-        Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(3));
+        Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(4));
         ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), ""); KeyBadge(lastBadge, 3);
         ckHit = Switch(pFix, "Projectile hits", 1, "BETA", "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
         ckPhys = Switch(pFix, "Physics speed", 2, "BETA", "The game walks faster the higher the frame rate (+65 % at 76 fps), jumps and falls too. Fixed: same speed at any frame rate.");
+        ckAnti = Switch(pFix, "Anti-flicker (HD)", 3, "BETA", "The game's textures have no mipmaps: far away they flicker and swim as soon as the view moves. Each pixel of the 3D is calmed with the frame before (still pixels keep their colour). Switched with the HD smoothing in game (F6). A few % fps.");
         Panel pCheat = Pane(f, "CHEATS", rx, pFix.Bottom + 10, pw, PaneH(1));
         ckClip = Switch(pCheat, "Noclip", 0, KeyName(ScanNoclip), ""); KeyBadge(lastBadge, 1);
         Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);
@@ -395,6 +397,7 @@ static partial class TNPlus
         cbDetail.Changed += delegate { if (!guiBusy) { OptDetail = cbDetail.Index; GuiRefresh(); } };
         cbDist.Changed += delegate { if (!guiBusy) { OptDistance = cbDist.Index; GuiRefresh(); } };
         cbObj.Changed += delegate { if (!guiBusy) { OptObjDist = cbObj.Index; GuiRefresh(); } };
+        cbScale.Changed += delegate { if (!guiBusy) { OptScaling = cbScale.Index; GuiRefresh(); } };
         cbFov.Changed += delegate { if (!guiBusy) { OptFov = cbFov.Index; GuiRefresh(); } };
         ckFree.CheckedChanged += delegate { if (!guiBusy) { OptFreelook = ckFree.Checked; GuiRefresh(); } };
         ckClip.CheckedChanged += delegate { if (!guiBusy) { OptNoclip = ckClip.Checked; GuiRefresh(); } };
@@ -402,6 +405,7 @@ static partial class TNPlus
         cbMusic.Changed += delegate { if (!guiBusy) { OptMusic = cbMusic.Index; GuiRefresh(); } };
         ckHit.CheckedChanged += delegate { if (!guiBusy) { OptHitFix = ckHit.Checked; GuiRefresh(); } };
         ckPhys.CheckedChanged += delegate { if (!guiBusy) { OptPhysFix = ckPhys.Checked; GuiRefresh(); } };
+        ckAnti.CheckedChanged += delegate { if (!guiBusy) { OptAntiFlicker = ckAnti.Checked; GuiRefresh(); } };
         cbSpeed.Changed += delegate { if (!guiBusy) { CpuCycles = CYCLE_CHOICES[cbSpeed.Index]; GuiRefresh(); } };
         cbTarget.Changed += delegate { if (!guiBusy) { LaunchTarget = cbTarget.Index; GuiRefresh(); } };
         cbPreset.CycleMax = 2;
@@ -453,7 +457,7 @@ static partial class TNPlus
         }
         foreach (KeyValuePair<Label, GameKey> mb in mouseBadges) PaintMouseBadge(mb.Key, mb.Value.Mouse, mouseGame == mb.Value);
         foreach (KeyValuePair<Label, int> mb in mouseToolBadges) PaintMouseBadge(mb.Key, ToolMouse[mb.Value], mouseTool == mb.Value);
-        cbDisplay.Set(Display); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov);
+        cbDisplay.Set(Display); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov); cbScale.Set(OptScaling);
         ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix;
         bool aweRom = AweRom() != null;
         cbMusic.Set(OptMusic);
@@ -461,7 +465,7 @@ static partial class TNPlus
             ? (aweRom ? ". awe32.raw found. Experimental: barely tested, some instruments may sound off."
                       : ". awe32.raw (AWE32 ROM, 1 MB, not included) not found next to TNPlus.exe: ROLAND is played instead, see README.")
             : aweRom ? "." : ". Optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README.");
-        ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; cbTarget.Set(LaunchTarget);
+        ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; ckAnti.Checked = OptAntiFlicker; cbTarget.Set(LaunchTarget);
         int sp = Array.IndexOf(CYCLE_CHOICES, CpuCycles);
         if (sp < 0) { var it = new List<string>(SPEED_NAMES); it.Add(CpuCycles.ToString()); cbSpeed.Items = it.ToArray(); sp = SPEED_NAMES.Length; }
         cbSpeed.CycleMax = SPEED_NAMES.Length - 1; cbSpeed.Set(sp);

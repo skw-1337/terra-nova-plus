@@ -57,8 +57,18 @@ static partial class TNPlus
     static bool OptFreelook = true, OptNoclip = false, OptForce400 = true, OptWide = false, OptHD = false;
     static int OptDistance = 2;                     // 0 NORMAL, 1 FAR, 2 MAX
     static bool OptStereoFix = false;                // DOSBox: swap the Sound Blaster stereo (the game's SB16 driver reverses it)
+    // how DOSBox scales the picture to the screen. The editions use Direct3D with nearest pixels: on most screens the
+    // factor isn't a whole number (848 columns x 3.02 on 2560, 400 lines x 3.6 on 1440), pixels get uneven sizes and
+    // the picture shimmers when the view moves. SHARP: OpenGL with DOSBox's sharp shader (whole-number scaling,
+    // then a smooth step for the rest): every pixel the same size, edges still sharp
+    static int OptScaling = 1;
+    static readonly string[] SCALING_NAMES = { "GAME'S OWN", "SHARP" };
     static bool OptHitFix = true;                   // projectile hit test fixed for high frame rates (see TryHitFix)
     static bool OptPhysFix = true;                  // physics clock fixed for high frame rates (see PHYSFIX_AT)
+    // HD anti-flicker: each pixel of the 3D is the colour halfway between this frame and the last one. The engine's
+    // textures have no mipmaps: far away they flicker from frame to frame as soon as the view moves. Still pixels
+    // keep their colour. On with the HD smoothing (F6 switches both)
+    static bool OptAntiFlicker = true;
     static int OptObjDist = 2;                      // object draw distance: 0 GAME, 1 FAR, 2 MAX (see OBJ_*)
     static readonly string[] OBJDIST_NAMES = { "GAME", "FAR", "MAX" };
     static int OptFov = 0;                          // field of view of the main 3D view: index in FOV_NAMES (see FOV_*)
@@ -1235,7 +1245,8 @@ static partial class TNPlus
         string path = Path.Combine(ExeDir, "TNPlus_launch.conf");
         // a mouse bind on the middle button: DOSBox would release the captured mouse on that click
         bool mid = GameKeys.Exists(g => g.Mouse == 1) || Array.IndexOf(ToolMouse, 1) >= 0;
-        File.WriteAllText(path, CpuSection(db) + (mid ? "[mouse]\r\nmouse_middle_release = false\r\n" : "") + text);
+        string scale = OptScaling == 1 ? "[sdl]\r\noutput = opengl\r\n[render]\r\nglshader = sharp\r\n" : "";
+        File.WriteAllText(path, CpuSection(db) + scale + (mid ? "[mouse]\r\nmouse_middle_release = false\r\n" : "") + text);
         return path;
     }
 
@@ -1431,7 +1442,8 @@ static partial class TNPlus
                 {
                     HdSmoothing = ReadInt(HdPayload.Smoothing) == 0;
                     WriteInt(HdPayload.Smoothing, HdSmoothing ? 1 : 0);
-                    Say("HD smoothing " + (HdSmoothing ? "ON" : "OFF"), HdSmoothing ? 1000 : 600);
+                    WriteInt(HdPayload.AntiFlicker, HdSmoothing && OptAntiFlicker ? 1 : 0);
+                    Say("HD smoothing " + (HdSmoothing ? "ON" + (OptAntiFlicker ? " (anti-flicker too)" : "") : "OFF"), HdSmoothing ? 1000 : 600);
                 }
                 prevS = s;
                 bool stk = haveStereo && fg && ((plain && Down(vkStereo)) || toolMouse(3));
@@ -1805,12 +1817,16 @@ static partial class TNPlus
         {
             byte[] zone = Read(HdPayload.Zone, (int)(HdPayload.End - HdPayload.Zone));
             foreach (byte zb in zone) if (zb != 0) { why = "its memory area is not free"; break; }
+            byte[] c2 = Read(HdPayload.Code2, HdPayload.Code2Bytes.Length);
+            if (why == null && !AllZero(c2) && !Same(c2, HdPayload.Code2Bytes)) why = "its memory area is not free";
         }
         if (why != null) { hdState = -1; Say(HdNow() + " unavailable: " + why, 300, 300); return; }
         Write(HdPayload.Data, HdPayload.DataInit);
         Write(HdPayload.Code, HdPayload.CodeBytes);
+        Write(HdPayload.Code2, HdPayload.Code2Bytes);      // anti-flicker, called by the HD code
         for (int i = 0; i < n; i++) Write(HdPayload.PatchAt[i], HdPayload.PatchNew[i]);
         WriteInt(HdPayload.Smoothing, HdSmoothing ? 1 : 0);
+        WriteInt(HdPayload.AntiFlicker, HdSmoothing && OptAntiFlicker ? 1 : 0);
         WriteInt(HdPayload.HudFilter, 0);              // Scale2x HUD: left in the payload, no longer offered
         if (HdPayload.HudStretch != 0) WriteInt(HdPayload.HudStretch, OptWideHud ? 1 : 0);
         hdState = 1;
@@ -2266,11 +2282,13 @@ static partial class TNPlus
                     case "launch": LaunchTarget = Math.Max(0, Array.IndexOf(TARGET_NAMES, v.ToUpperInvariant())); break;
                     case "widescreen": SetWideMode(v == "2" || v.ToUpperInvariant() == "TRUE" ? 2 : v == "0" ? 0 : 1); break;
                     case "stereo_fix": OptStereoFix = v != "0"; break;
+                    case "scaling": OptScaling = Math.Max(0, Array.IndexOf(SCALING_NAMES, v.ToUpperInvariant())); break;
                     case "music": OptMusic = Math.Max(0, Array.IndexOf(MUSIC_NAMES, v.ToUpperInvariant())); break;
                     case "hd": oldHd = v != "0"; break;
                     case "hd_smoothing": HdSmoothing = v != "0"; break;
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
+                    case "anti_flicker": OptAntiFlicker = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
@@ -2325,11 +2343,15 @@ static partial class TNPlus
                 "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: the 3D drawn in 848 columns)\r\nwidescreen = " + WideMode() + "\r\n" +
                 "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
+                "; SHARP (DOSBox in OpenGL with its sharp shader: every pixel the same size, less shimmer) or GAME'S OWN\r\n" +
+                "scaling = " + SCALING_NAMES[OptScaling] + "\r\n" +
                 "; ROLAND, FM, GAME'S OWN or AWE32 (music of the game and demos; AWE32 needs awe32.raw, an AWE32 ROM dump,\r\n" +
                 "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +
                 "; HD smoothing at start (toggled in game with key_smoothing)\r\nhd_smoothing = " + (HdSmoothing ? 1 : 0) + "\r\n" +
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
+                "; 1 = HD anti-flicker: far textures that flicker when the view moves are calmed (with the HD smoothing)\r\n" +
+                "anti_flicker = " + (OptAntiFlicker ? 1 : 0) + "\r\n" +
                 "; GAME, 90, 100 or 110: horizontal field of view of the 3D view in degrees (the game: 84.5)\r\nfield_of_view = " + FOV_NAMES[OptFov] + "\r\n" +
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
                 "; 1 = terrain and objects up to the screen edges with a wider field of view or true 16:9 (beta)\r\nedge_objects = " + (OptEdge ? 1 : 0) + "\r\n" +
