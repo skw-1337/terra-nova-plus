@@ -221,7 +221,7 @@ static partial class TNPlus
         new[] { "0x2ADEFF", "B800BE0200", "B800E00400" },
         new[] { "0x29E2F0", "E893C00000", "E80BC01C00" },
     };
-    static bool OptEdge = false;                    // ini edge_objects (off: a phantom near tree in the side strips)
+    static bool OptEdge = true;                     // ini edge_objects
     static int edgeState = 0;                       // 1 on, -1 off or unavailable
 
     static void TryEdge(int lang)

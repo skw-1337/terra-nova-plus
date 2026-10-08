@@ -105,7 +105,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 |---|---|---|
 | `freelook`, `noclip`, `force_320x400` | `1`, `1`, `1` | the menu options |
 | `widescreen` | `0` | `0` off, `1` stretched, `2` true 16:9 (HD) |
-| `edge_objects` | `0` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta, French exe for now) |
+| `edge_objects` | `1` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta, French exe for now) |
 | `view_distance` | `MAX` | `NORMAL`, `FAR` or `MAX` at start |
 | `sensitivity_x`, `sensitivity_y` | `12`, `8` | mouse speed (heading / pitch units per mouse count) |
 | `invert_y` | `0` | `1` = inverted vertical look |
