@@ -40,14 +40,13 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 ### HD 640x400
 - The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
 - With Widescreen TRUE the screen is 848x480 and the 3D view 848 columns wide (still 199 rows in the cockpit: the height is the game's 400-line screen, one row in five doubled to reach 480).
-- `F6` toggles the 3D smoothing (`F12` before beta 5: that one is the game's mission info key). Since beta 4 it only smooths real edges (hill against sky, water against land, objects), horizontally and vertically, and leaves the grain of the textures alone. It costs about 15 % fps (61.6 to 52.4 on Mariner at 500000 cycles).
-- Works with the GOG and Steam games, French and English (beta 3; before that it was French GOG only). The demos are next.
+- `F6` toggles the 3D smoothing (`F12` before beta 5: that one is the game's mission info key). Since beta 4 it only smooths real edges (hill against sky, water against land, objects), horizontally and vertically, and leaves the grain of the textures alone. It costs a few fps.
+- Works with the GOG and Steam games, French and English. Not in the demos yet.
 
 ### Terrain detail
-- More ground detail far away. Steep walls in the distance no longer turn into a saw blade. Costs around 10-20 % fps.
+- More ground detail far away. Steep walls in the distance no longer turn into a saw blade.
 - Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 32 cells and SHARPER to 48.
 - The engine could not go past 31 cells: its vertex grid is 64x64 and its polygon buffers are small. TNPlus patches `TNOVA\__FF.EXE` once (128x128 grid, bigger buffers, 1 MB render memory) and keeps the untouched file as `__FF.EXE.tnplus-original`.
-- Mission 12 in HD, 48 cells: 46.5 fps at 500000 cycles, 65 at 700000. The game is limited by the CPU cycles, not by your PC, so the tool now starts at 700000.
 
 ### Sound
 - **Fix reversed stereo** (off by default): under DOSBox the game's Sound Blaster 16 driver swaps left and right, cutscenes included. The tool can start DOSBox with the channels swapped back.
@@ -75,19 +74,19 @@ If your install has no `TNDEMO1` / `TNDEMO2` folder (CD version): get the demos 
 Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, add `mixer sb reverse /noshow` at the top of your DOSBox `[autoexec]` instead, or use ripsaw8080's `SB16.DIG` patch (thanks to rfnagel and zjorz for pointing it out).
 
 ### Gameplay (beta 3 and 4)
-- **Projectile hit fix** (on by default). Known bug since the 90s: with fast CPU cycles the multipulsar can't hit moving targets and drones become nearly immortal. Nightdive even dropped the Steam config to 115000 cycles because of it. Cause found in the game code: every frame a projectile checks the distance it just travelled against the entity grid, in steps of a fixed size, and the number of steps is rounded *down*. Above ~30 fps a pulsar bolt travels less than one step per frame, so the count is 0 and the bolt tests nothing: it can only hit the ground. The fix rounds the count up, and projectiles hit at any frame rate, yours and the enemies' alike (yes, the game gets a bit harder: that's how it was meant to play). Needed if you use the 300000 cycles the tool sets.
+- **Projectile hit fix** (on by default). Known bug since the 90s: with fast CPU cycles the multipulsar can't hit moving targets and drones become nearly immortal. Nightdive even dropped the Steam config to 115000 cycles because of it. Cause found in the game code: every frame a projectile checks the distance it just travelled against the entity grid, in steps of a fixed size, and the number of steps is rounded *down*. Above ~30 fps a pulsar bolt travels less than one step per frame, so the count is 0 and the bolt tests nothing: it can only hit the ground. The fix rounds the count up, and projectiles hit at any frame rate, yours and the enemies' alike (yes, the game gets a bit harder: that's how it was meant to play). Needed at the CPU speed the tool sets.
 - **Physics speed fix** (beta 4, on by default). The game also walked faster the higher the frame rate: 2.0 game units per second at 37 fps, 3.3 at 76 fps, jumps and falls too. The physics engine kept a few milliseconds of leftover time that it added again on every frame. Cleared now: about 1.9 units per second at any frame rate.
-- **End-of-mission freeze guard** (beta 4, always on). The game frees the cockpit's click zones when a mission ends but keeps testing the mouse against them for a moment, and could get stuck there forever on a black screen (it happened every time at the end of Panama with freelook at 500000 cycles). The routine that walks those zones now gives up after 255 steps, and freelook stops writing the cursor as soon as the game stops running frames.
+- **End-of-mission freeze guard** (beta 4, always on). The game frees the cockpit's click zones when a mission ends but keeps testing the mouse against them for a moment, and could get stuck there forever on a black screen. The routine that walks those zones now gives up after 255 steps, and freelook stops writing the cursor as soon as the game stops running frames.
 - **Smoother walking** (beta 4, part of the physics fix). The physics skipped any frame shorter than 10 ms; above ~80 fps DOSBox gives 8 ms frames, so one frame in six had no movement and walking stuttered. Every frame is simulated now.
-- **Object distance** (beta 4, GAME / FAR / MAX, MAX by default). Bushes, trees and rocks were only drawn within 20 terrain cells whatever the detail setting, and units and buildings within a range per type (20 cells for PBAs). FAR draws scenery up to 30 cells and doubles the ranges, MAX goes to 40 cells and triples them (120 cells at most). The engine's fixed-size object list and the limits of its entity walk are raised first so the extra objects fit. The game has no model LOD to improve: objects are always drawn with the same model. Measured on mission 12 in HD: 24 to 65 objects drawn per frame, 84 to 82 fps.
+- **Object distance** (beta 4, GAME / FAR / MAX, MAX by default). Bushes, trees and rocks were only drawn within 20 terrain cells whatever the detail setting, and units and buildings within a range per type (20 cells for PBAs). FAR draws scenery up to 30 cells and doubles the ranges, MAX goes to 40 cells and triples them (120 cells at most). The engine's fixed-size object list and the limits of its entity walk are raised first so the extra objects fit. The game has no model LOD to improve: objects are always drawn with the same model.
 
 ### Small stuff
-- The tool starts DOSBox with 700000 CPU cycles since beta 4 (**CPU speed** in the launcher, `cpu_cycles` in `TNPlus.ini`, 0 to keep the edition's setting). The Steam and GOG configs ship with 115000, which makes the game crawl. Measured in HD with SHARPER terrain on mission 12: 47 fps at 500000, 65 at 700000. DOSBox used 0.6 CPU core at 700000. In true 16:9 (848 columns of 3D) the default is 1000000 since beta 5: 40 fps at 700000, 57 at 1000000, about 70 at 1200000, where emulation takes one full CPU core (more brings nothing on a typical PC: the game's texture loops rewrite their own code, which is costly for DOSBox's recompiler). Our HD code is about 2 % of the emulated time. When your PC cannot keep up (the infrared view costs about 25 % more per cycle), DOSBox now lowers the cycles for a moment instead of lagging with choppy sound. Higher speeds are safe for the gameplay thanks to the two fixes above.
+- The tool starts DOSBox with 1000000 CPU cycles (**CPU speed** in the launcher, `cpu_cycles` in `TNPlus.ini`, 0 to keep the edition's setting). The Steam and GOG configs ship with 115000, which makes the game crawl. If the game feels slow, try a higher speed; if your PC can't keep up, DOSBox lowers the cycles for a moment instead of lagging. Higher speeds are safe for the gameplay thanks to the two fixes above.
 - View distance moved from `I` to `J`: `I` is the game's infrared. Old settings files are updated on their own.
 
 ## Download & use
 
-1. Download `TerraNovaPlus_v1.1.0-beta3.zip` from the [Releases](../../releases) page and unzip it anywhere.
+1. Download the latest zip from the [Releases](../../releases) page and unzip it anywhere.
 2. Run **`TNPlus.exe`**. A window opens:
 
    ![Terra Nova Plus launcher](docs/launcher_beta3.png)
@@ -96,10 +95,6 @@ Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, ad
 3. The window closes and a small console stays minimized in the taskbar. Play! When the game closes, the window comes back.
 
 The game folder is detected automatically (**GOG** registry and **Steam** libraries). If you have both, **Switch** goes from one to the other. For any other install, start the game yourself and click **Attach**: everything works except widescreen, stereo fix and music, which need the tool to start DOSBox.
-
-SHA-256 of `TNPlus.exe` v1.0.1: `8DEBF7EA5AE60536A01ED160BD30672B7B42D1D25011FFE0A19D7544C63EE996`
-
-v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). With **A** (attach), the window now stays open and says it is waiting for the game, and only minimizes once the game is found.
 
 ## Tips
 
@@ -129,7 +124,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps) |
 | `field_of_view` | `GAME` | `GAME`, `90`, `100` or `110`: horizontal field of view in degrees (GAME = 84.5, or 100.9 in 16:9) |
 | `object_distance` | `MAX` | `GAME`, `FAR` or `MAX`: how far scenery, units and buildings are drawn |
-| `cpu_cycles` | `1000000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting (an old default, 300000, 500000 or 700000, is moved up once) |
+| `cpu_cycles` | `1000000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting |
 | `sound` | `1` | `0` = no beeps |
 | `game_dir` | *(auto)* | game folder, if auto-detection does not find it |
 
