@@ -1,0 +1,625 @@
+{
+ "game": "Terra Nova: Strike Force Centauri, English v1.09 __FF.EXE (Steam and GOG ship the same file)",
+ "exe_sha256": "B762C54509F1716282C4D357A72013B8D84BA25F17B0483B733678FF81E63DD1",
+ "tool": "Terra Nova Plus 1.1.0 beta 5 - https://github.com/skw-1337/terra-nova-plus",
+ "addresses": "linear addresses in DOSBox guest memory while the game runs (object 1 code = file offset + 0x1AAB5C)",
+ "memory_patches": [
+  {
+   "feature": "HD",
+   "address": "0x2A84AD",
+   "old": "BF40384200",
+   "new": "BF00794600",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x2A84B2",
+   "old": "B900050000",
+   "new": "B9400D0000",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x2A86AB",
+   "old": "8B9240384200",
+   "new": "8B9200794600",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x29E20E",
+   "old": "899A3CE64100",
+   "new": "899A40864600",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x29E249",
+   "old": "891C853CE64100",
+   "new": "891C8540864600",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x29E372",
+   "old": "89983CE64100",
+   "new": "899840864600",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x29E3EE",
+   "old": "B940E64100",
+   "new": "B944864600",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x2B275A",
+   "old": "8AC8C1E51081E60000FFFF33C090",
+   "new": "668BC8C1E51081E60000FFFF33C0",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x2B277F",
+   "old": "FEC9",
+   "new": "6649",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x2614C3",
+   "old": "B800F40100",
+   "new": "B8002D0500",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x26152D",
+   "old": "B800F40100",
+   "new": "B8002D0500",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x262F68",
+   "old": "B800F40100",
+   "new": "B8002D0500",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x2A1021",
+   "old": "817C24103F0100007E08C74424103F010000",
+   "new": "E8DB4F1C0090909090909090909090909090",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x2A1042",
+   "old": "81FB3F010000",
+   "new": "3B1DD8614600",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x2AFA34",
+   "old": "31C0A040A53500C1F904D1F8",
+   "new": "E8E4651B0090909090909090",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x29E756",
+   "old": "807D2C007405E83BEA0000",
+   "new": "E8586D1C00909090909090",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x29E81C",
+   "old": "807D2C007405E8B5E90000",
+   "new": "E85E6F1C00909090909090",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x262F4C",
+   "old": "B802000000",
+   "new": "B813000000",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x35CD8E",
+   "old": "0200",
+   "new": "1300",
+   "checked": "game data area (not in the code snapshot)"
+  },
+  {
+   "feature": "HD",
+   "address": "0x29EA51",
+   "old": "A1CCF83500",
+   "new": "E803681C00",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x261FCC",
+   "old": "E843080000",
+   "new": "E8043A2000",
+   "checked": "in memory"
+  },
+  {
+   "feature": "HD",
+   "address": "0x364ED4",
+   "old": "1300000180029001",
+   "new": "1300220280029001",
+   "note": "true 16:9 only: VESA mode table entry 640x400 -> 848x480",
+   "checked": "game data area (not in the code snapshot)"
+  },
+  {
+   "feature": "field of view",
+   "address": "0x29E843",
+   "old": "B80000010029C8",
+   "new": "E8C8B71C00EB2C",
+   "note": "call to the FOV code at 0x46A010; in true 16:9 it calls 0x46A200 instead: E8B8B91C00EB2C",
+   "checked": "in memory"
+  },
+  {
+   "feature": "16:9",
+   "address": "0x29EA71",
+   "old": "89C2894604",
+   "new": "E81AB81C00",
+   "note": "true 16:9; stretched 16:9 writes E801B61C00",
+   "checked": "in memory"
+  },
+  {
+   "feature": "16:9",
+   "address": "0x29E761",
+   "old": "E85FDD0400",
+   "new": "E821B91C00",
+   "note": "stretched 16:9 only",
+   "checked": "old bytes checked (not active in the test setup)"
+  },
+  {
+   "feature": "field of view",
+   "address": "0x2AA3C2",
+   "old": "E8B1E5FFFF",
+   "new": "E839FD1B00",
+   "note": "terrain sectors: call to 0x46A100",
+   "checked": "in memory"
+  },
+  {
+   "feature": "edge objects",
+   "address": "0x2AE02B",
+   "old": "8B1D388C4300",
+   "new": "E890C91B0090",
+   "checked": "in memory"
+  },
+  {
+   "feature": "edge objects",
+   "address": "0x2AE043",
+   "old": "31C980FC030F94C0",
+   "new": "E890C91B00909090",
+   "checked": "in memory"
+  },
+  {
+   "feature": "edge objects",
+   "address": "0x2AF4C9",
+   "old": "81C4300100005D5F5EC3",
+   "new": "E922B51B009090909090",
+   "checked": "in memory"
+  },
+  {
+   "feature": "edge objects",
+   "address": "0x2ADF0F",
+   "old": "B800BE0200",
+   "new": "B800E00400",
+   "checked": "in memory"
+  },
+  {
+   "feature": "edge objects",
+   "address": "0x29E300",
+   "old": "E893C00000",
+   "new": "E8FBBF1C00",
+   "checked": "in memory"
+  },
+  {
+   "feature": "projectile hit fix",
+   "address": "0x311553",
+   "old": "89C2C1FA10C1E010F7FBC1F810",
+   "new": "8D4418FF99F7FB909090909090",
+   "checked": "in memory"
+  },
+  {
+   "feature": "physics speed fix",
+   "address": "0x311F77",
+   "old": "EB06892D",
+   "new": "31ED892D",
+   "checked": "in memory"
+  },
+  {
+   "feature": "physics speed fix",
+   "address": "0x311F5A",
+   "old": "81FD8F020000",
+   "new": "81FD00000000",
+   "checked": "in memory"
+  },
+  {
+   "feature": "end-of-mission freeze guard",
+   "address": "0x2F249C",
+   "old": "5589E583EC04895DFC8B5DFE6685DB7C2F6639DA7E2A8B55FCC1FA108B00C1E20301D0741B8B55FC663B107C0C663B50027F06B00189EC5DC38B400485C075E830C089EC5DC38BC0",
+   "new": "5589E583EC04895DFC8B5DFE6685DB7C336639DA7E2E8B55FCC1FA108B00C1E20301D0741F8B55FCB3FF663B107C0A663B50027F04B001EB0D8B400485C07404FECB75E630C0C9C3",
+   "checked": "in memory"
+  },
+  {
+   "feature": "object distance",
+   "address": "0x2A0F2C",
+   "old": "B8C0120000",
+   "new": "B840380000",
+   "checked": "in memory"
+  },
+  {
+   "feature": "object distance",
+   "address": "0x2A14F2",
+   "old": "663D9001",
+   "new": "663DB004",
+   "checked": "in memory"
+  },
+  {
+   "feature": "object distance",
+   "address": "0x2A16DC",
+   "old": "6681F99001",
+   "new": "6681F9B004",
+   "checked": "in memory"
+  },
+  {
+   "feature": "object distance",
+   "address": "0x2B3B26",
+   "old": "3B05C0CA4300",
+   "new": "3D8000000090",
+   "checked": "in memory"
+  },
+  {
+   "feature": "object distance",
+   "address": "0x2B585C",
+   "old": "83F978",
+   "new": "83F97F",
+   "checked": "in memory"
+  },
+  {
+   "feature": "object distance",
+   "address": "0x2B5607",
+   "old": "66A188CB4300",
+   "new": "B8xx00000090",
+   "note": "mov eax, radius (30 FAR, 40 MAX)",
+   "checked": "in memory"
+  },
+  {
+   "feature": "game keys",
+   "address": "0x29E838",
+   "old": "89542404895C2408",
+   "new": "E8E3C11C00909090",
+   "note": "calls the installer at 0x46AA20 at the first camera set-up of a mission",
+   "checked": "in memory"
+  },
+  {
+   "feature": "game keys",
+   "address": "0x31AB4B",
+   "old": "0FBEC0257F01000080F401",
+   "new": "E842FF1400909090909090",
+   "note": "keyboard interrupt handler; written by the game itself (from the installer), not from outside: DOSBox keeps that code compiled",
+   "checked": "in memory"
+  }
+ ],
+ "file_patches": [
+  {
+   "file_offset": "0x037C51",
+   "old": "F910",
+   "new": "5911",
+   "what": "LE object table: object 3 virtual size 0x10F900 -> 0x115900 (+24 KB for the tool's code and data)"
+  },
+  {
+   "file_offset": "0x0FDE34",
+   "old": "8D14850000000029C28B5C243CC1E20201DA31C0668B425F89453C",
+   "new": "6BD00C0354243C0FB7425F83F8307605B83000000089453C909090",
+   "address": "0x2A8990",
+   "what": "zoom: far terrain rings capped at 48 cells"
+  },
+  {
+   "file_offset": "0x0FF7A1",
+   "old": "3F80E13F",
+   "new": "7F80E17F",
+   "address": "0x2AA2FD",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x0FF7AB",
+   "old": "06",
+   "new": "07",
+   "address": "0x2AA307",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x0FF7BE",
+   "old": "3F",
+   "new": "7F",
+   "address": "0x2AA31A",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x0FF7C4",
+   "old": "0680E33F",
+   "new": "0780E37F",
+   "address": "0x2AA320",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x0FF7DD",
+   "old": "3F80E13F",
+   "new": "7F80E17F",
+   "address": "0x2AA339",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x0FF7E7",
+   "old": "06",
+   "new": "07",
+   "address": "0x2AA343",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x0FF7FC",
+   "old": "3F80E33F",
+   "new": "7F80E37F",
+   "address": "0x2AA358",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x0FF806",
+   "old": "06",
+   "new": "07",
+   "address": "0x2AA362",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x100579",
+   "old": "C03E00",
+   "new": "400002",
+   "address": "0x2AB0D5",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x1033A6",
+   "old": "4000",
+   "new": "0001",
+   "address": "0x2ADF02",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x1033B4",
+   "old": "427200",
+   "new": "00BE02",
+   "address": "0x2ADF10",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x1033C4",
+   "old": "7D00",
+   "new": "0004",
+   "address": "0x2ADF20",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x103B2C",
+   "old": "3F83E03FC1E206",
+   "new": "7F83E07FC1E207",
+   "address": "0x2AE688",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x103C3E",
+   "old": "3F83E23F",
+   "new": "7F83E27F",
+   "address": "0x2AE79A",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x103C48",
+   "old": "06",
+   "new": "07",
+   "address": "0x2AE7A4",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x103E6C",
+   "old": "3F83E03FC1E206",
+   "new": "7F83E07FC1E207",
+   "address": "0x2AE9C8",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x104034",
+   "old": "3F",
+   "new": "7F",
+   "address": "0x2AEB90",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x104039",
+   "old": "0683E03F",
+   "new": "0783E07F",
+   "address": "0x2AEB95",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x10424F",
+   "old": "3FC1E006",
+   "new": "7FC1E007",
+   "address": "0x2AEDAB",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x10426C",
+   "old": "3F",
+   "new": "7F",
+   "address": "0x2AEDC8",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x10450E",
+   "old": "3F83E23FC1E006",
+   "new": "7F83E27FC1E007",
+   "address": "0x2AF06A",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x104658",
+   "old": "3F",
+   "new": "7F",
+   "address": "0x2AF1B4",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x104664",
+   "old": "0683E03F",
+   "new": "0783E07F",
+   "address": "0x2AF1C0",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x104845",
+   "old": "3F",
+   "new": "7F",
+   "address": "0x2AF3A1",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x10484A",
+   "old": "0683E03F",
+   "new": "0783E07F",
+   "address": "0x2AF3A6",
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+  },
+  {
+   "file_offset": "0x1059C6",
+   "old": "E07900",
+   "new": "00CF03",
+   "address": "0x2B0522",
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+  },
+  {
+   "file_offset": "0x106132",
+   "old": "2003",
+   "new": "0019",
+   "address": "0x2B0C8E",
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+  },
+  {
+   "file_offset": "0x106277",
+   "old": "2003",
+   "new": "0019",
+   "address": "0x2B0DD3",
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+  },
+  {
+   "file_offset": "0x10639B",
+   "old": "2003",
+   "new": "0019",
+   "address": "0x2B0EF7",
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+  },
+  {
+   "file_offset": "0x1064C8",
+   "old": "2003",
+   "new": "0019",
+   "address": "0x2B1024",
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+  },
+  {
+   "file_offset": "0x1065EC",
+   "old": "2003",
+   "new": "0019",
+   "address": "0x2B1148",
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+  },
+  {
+   "file_offset": "0x11A387",
+   "old": "E004",
+   "new": "0018",
+   "address": "0x2C4EE3",
+   "what": "render pool 0x4E000 -> 1.5 MB"
+  },
+  {
+   "file_offset": "0x11A38C",
+   "old": "E004",
+   "new": "0018",
+   "address": "0x2C4EE8",
+   "what": "render pool 0x4E000 -> 1.5 MB"
+  }
+ ],
+ "tool_areas": [
+  {
+   "from": "0x465024",
+   "to": "0x46B024",
+   "what": "the 24 KB added to object 3 (zero at load, the game's heap starts at 0x46B024)"
+  },
+  {
+   "from": "0x465100",
+   "to": "0x466100",
+   "what": "HD code"
+  },
+  {
+   "from": "0x466100",
+   "to": "0x469390",
+   "what": "HD data and per-column tables"
+  },
+  {
+   "from": "0x469400",
+   "to": "0x469408",
+   "what": "true 16:9 variables"
+  },
+  {
+   "from": "0x469410",
+   "to": "0x469A00",
+   "what": "edge objects data"
+  },
+  {
+   "from": "0x469A10",
+   "to": "0x469F30",
+   "what": "game keys data (key map 0x469B30, 128 keys x 4 modifiers)"
+  },
+  {
+   "from": "0x46A000",
+   "to": "0x46A0A7",
+   "what": "field of view data + code"
+  },
+  {
+   "from": "0x46A100",
+   "to": "0x46A19E",
+   "what": "terrain sectors code"
+  },
+  {
+   "from": "0x46A200",
+   "to": "0x46A2AB",
+   "what": "true 16:9 camera code"
+  },
+  {
+   "from": "0x46A300",
+   "to": "0x46AA16",
+   "what": "edge objects code"
+  },
+  {
+   "from": "0x46AA20",
+   "to": "0x46AE34",
+   "what": "game keys code"
+  },
+  {
+   "from": "0x46AE34",
+   "to": "0x46B024",
+   "what": "free"
+  }
+ ]
+}
