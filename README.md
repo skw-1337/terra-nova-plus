@@ -53,9 +53,9 @@ The catch: nine sounds out of ten in that bank live in the ROM chip of the real 
 
 1. Get `awe32.raw` (1 MB), the AWE32 ROM dump used by the 86Box emulator: go to [86Box/roms, sound/creative](https://github.com/86Box/roms/tree/master/sound/creative), click `awe32.raw`, then the download button on the right ("Download raw file").
 2. Put it in the same folder as `TNPlus.exe` (keep the tool in its own folder, it writes a few files next to itself).
-3. Start the launcher: AWE32 appears in the Music choices.
+3. Start the launcher and pick AWE32 in Music: the notice line under the settings says if the ROM was found.
 
-The check is done when the launcher starts, so restart it after copying the file. It looks for the exact name `awe32.raw`, in its own folder only (not the game's), and the file must be exactly 1 048 576 bytes: a truncated or different dump is ignored without a message. Without the file the choice isn't shown and music stays on Roland (a `music = AWE32` in `TNPlus.ini` falls back to Roland too). It's experimental: a few instruments are still slightly out of tune, and I have no real card to compare with. The percussion the bank doesn't define is played with the Windows sound set.
+The check is done when the launcher starts, so restart it after copying the file. It looks for the exact name `awe32.raw`, in its own folder only (not the game's), and the file must be exactly 1 048 576 bytes, a truncated or different dump counts as not found. Without the file, AWE32 stays selectable but the notice says the ROM wasn't found and music plays on Roland (same for a `music = AWE32` in `TNPlus.ini`, the console says it too). It's experimental: a few instruments are still slightly out of tune, and I have no real card to compare with. The percussion the bank doesn't define is played with the Windows sound set.
 
 ### Demos
 

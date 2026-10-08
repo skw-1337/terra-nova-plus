@@ -1242,6 +1242,9 @@ static partial class TNPlus
         }
         string db = Path.Combine(GameDir, "_DOSBOX");
         string args = "-conf dosbox_terranova_windows.conf -conf \"" + WriteLaunchConf(db, LaunchTarget) + "\"";
+        if (OptMusic == 3)
+            Console.WriteLine(AweRom() != null ? "AWE32: awe32.raw found."
+                : "AWE32: awe32.raw (AWE32 ROM, 1 MB) not found next to TNPlus.exe, Roland GS music instead (see README).");
         if (EffectiveMusic() == 3)
         {
             string music = PrepareAwe(TARGET_DIRS[LaunchTarget]);

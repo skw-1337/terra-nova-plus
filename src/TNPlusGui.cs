@@ -133,8 +133,7 @@ static partial class TNPlus
         cbFov = Combo(pPic, "Field of view", 5, FOV_NAMES, "BETA", "Horizontal field of view of the 3D view in degrees, at every zoom level. GAME: 84.5, or 100.9 in 16:9. The small cockpit cameras keep theirs.");
         cbObj = Combo(pPic, "Object distance", 4, OBJDIST_NAMES, "BETA", "How far bushes, trees, units and buildings are drawn. GAME: scenery 20 cells. FAR: 30, unit ranges x2. MAX: 40, x3. About 4 % fps at MAX.");
         Panel pSnd = Pane(f, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));
-        bool awe = AweRom() != null;
-        cbMusic = Combo(pSnd, "Music", 0, awe ? MUSIC_NAMES : new[] { MUSIC_NAMES[0], MUSIC_NAMES[1], MUSIC_NAMES[2] }, "BETA", "");
+        cbMusic = Combo(pSnd, "Music", 0, MUSIC_NAMES, "BETA", "");   // AWE32 always offered: found or not is shown below
         Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(1));
         ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), "Look around with the mouse, " + KeyName(ScanFreelook) + " in game. Sensitivity and inverted look in TNPlus.ini.");
         Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(3));
@@ -208,9 +207,12 @@ static partial class TNPlus
         string why; bool hdOk = HdAvailable(out why);
         cbDisplay.Set(Display); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov);
         ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix;
-        int music = EffectiveMusic(); cbMusic.Set(music);
-        cbMusic.Tag = MUSIC_INFO[music] + (AweRom() == null ? ". Optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README." :
-            music == 3 ? ". Experimental: barely tested, some instruments may sound off." : ".");
+        bool aweRom = AweRom() != null;
+        cbMusic.Set(OptMusic);
+        cbMusic.Tag = MUSIC_INFO[OptMusic] + (OptMusic == 3
+            ? (aweRom ? ". awe32.raw found. Experimental: barely tested, some instruments may sound off."
+                      : ". awe32.raw (AWE32 ROM, 1 MB, not included) not found next to TNPlus.exe: ROLAND is played instead, see README.")
+            : aweRom ? "." : ". Optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README.");
         ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; cbTarget.Set(LaunchTarget);
         int sp = Array.IndexOf(CYCLE_CHOICES, CpuCycles);
         if (sp < 0) { var it = new List<string>(SPEED_NAMES); it.Add(CpuCycles.ToString()); cbSpeed.Items = it.ToArray(); sp = SPEED_NAMES.Length; }
@@ -221,6 +223,7 @@ static partial class TNPlus
         string warn = "";
         if (Display == 2 && !hdOk) warn = "HD 640x400 " + why + ": 320x400 is used.";
         if (LaunchTarget > 0 && !HasDemo(GameDir, LaunchTarget)) warn += (warn == "" ? "" : "  ") + "Demo " + LaunchTarget + " not found in the game folder, see README.";
+        if (OptMusic == 3) warn += (warn == "" ? "" : "  ") + (aweRom ? "AWE32 ROM found: AWE32 music on." : "AWE32 ROM not found (awe32.raw next to TNPlus.exe): ROLAND is used.");
         guiWarn.Text = warn.ToUpperInvariant();
         guiBusy = false;
     }
