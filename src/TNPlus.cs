@@ -133,7 +133,7 @@ static partial class TNPlus
     // with the same field of view, while the 3D library (buildings, units, target box) kept its own scale: they
     // slid on the ground. Same cure as stretched 16:9, for the main camera only, with F = 2 x canvas width / 848
     // (298 in the cockpit, 320 in the full view) read by the game code itself: effective zoom x F and vertical
-    // scale x1/F at its set-up, the library's pixel ratio x F while the HD view is drawn. The middle is the 4:3
+    // scale x1/F at its set-up, the library's pixel ratio x 1/F while the HD view is drawn (its horizontal scale is ratio x canvas height / 2, the canvas width cancels out: objects then match the terrain, measured k = 1 as in 4:3). The middle is the 4:3
     // view again and the sides show more of the world. Code at 0x46A200 (set-up), 0x46A290 (scale), 0x46A2B0 (ratio);
     // 0x469400 = zoom factor of the last set-up, 0x469404 = 2 x its canvas width (a page without code: DOSBox's
     // dynamic core recompiles a code page that gets written, which can crash).
@@ -143,8 +143,8 @@ static partial class TNPlus
         "50528B44241001C0A304944600F72D00A04600BB50030000F7FBA3009446005A5851B80000010029C8BAB0AC2F00FFD2BF0000020029C7598B1E81FE24FB3800752689C8F72D009446000FACD0108944240485DB741289D889C2C1FA10C1E010F73D0094460089C385DB7506BD00000100C3B80000010029D8BAB0AC2F00FFD2BD0000020029C5C3" };
     static readonly string[] TRUE_B_CODE = { "81FED4FB3800750DBA50030000F7EAF73D0494460089C2894604C3", "81FE24FB3800750DBA50030000F7EAF73D0494460089C2894604C3" };
     static readonly string[] TRUE_C_CODE = {
-        "B8A5C62E00FFD081FDD4FB38007525833D0461460000741C5052A17861460001C0F72D76233600F73D84614600A3762336005A58C3",
-        "B8C5C42E00FFD081FD24FB38007525833D0461460000741C5052A17861460001C0F72DCE223600F73D84614600A3CE2236005A58C3" };
+        "B8A5C62E00FFD081FDD4FB38007529833D04614600007420505251A176233600F72D846146008B0D7861460001C9F7F9A376233600595A58C3",
+        "B8C5C42E00FFD081FD24FB38007529833D04614600007420505251A1CE223600F72D846146008B0D7861460001C9F7F9A3CE223600595A58C3" };
     static readonly byte[][] TRUE_A_NEW = { new byte[] { 0xE8, 0xC8, 0xB9, 0x1C, 0x00, 0xEB, 0x2C }, new byte[] { 0xE8, 0xB8, 0xB9, 0x1C, 0x00, 0xEB, 0x2C } };
     static readonly byte[][] TRUE_B_NEW = { new byte[] { 0xE8, 0x2A, 0xB8, 0x1C, 0x00 }, new byte[] { 0xE8, 0x1A, 0xB8, 0x1C, 0x00 } };
     static readonly byte[][] TRUE_C_NEW = { new byte[] { 0xE8, 0x5A, 0xBB, 0x1C, 0x00 }, new byte[] { 0xE8, 0x4A, 0xBB, 0x1C, 0x00 } };
