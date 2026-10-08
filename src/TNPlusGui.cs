@@ -129,15 +129,15 @@ static partial class TNPlus
             {
                 int ly = page.Height - 64;
                 Lbl(page, "LAYOUT", x + 2, ly + 6, TSmall, TAmber);
-                cbLayout = new Sel(); cbLayout.Items = LAYOUT_NAMES; cbLayout.CycleMax = 4;
+                cbLayout = new Sel(); cbLayout.Items = LAYOUT_NAMES; cbLayout.CycleMax = LAYOUT_COUNT - 1;
                 cbLayout.Location = new Point(x + 64, ly); cbLayout.Size = new Size(cw[c] - 64, CTL_H); page.Controls.Add(cbLayout);
                 cbLayout.MouseEnter += delegate
                 {
-                    guiHelp.Text = "> letter shortcuts (M map, P pause, ALT+A attack...) follow the letters of your keyboard, move, look and number keys keep their place. Yours: " + LAYOUT_NAMES[DetectLayout()];
+                    guiHelp.Text = "> GAME: the game's own keys. The others: move on WASD / ZQSD (S back, X stop), letter shortcuts (M map, P pause, ALT+A attack...) follow your keyboard's letters. Yours: " + LAYOUT_NAMES[DetectLayout()];
                 };
                 cbLayout.Changed += delegate
                 {
-                    if (guiBusy || cbLayout.Index > 4) return;
+                    if (guiBusy || cbLayout.Index >= LAYOUT_COUNT) return;
                     int l = cbLayout.Index;
                     ApplyLayout(l); rebindKey = -1; rebindGame = null; SaveSettings(); GuiRefresh();
                     List<string> moved = new List<string>();

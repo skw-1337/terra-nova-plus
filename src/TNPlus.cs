@@ -1327,8 +1327,9 @@ static partial class TNPlus
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
         double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0;
         const int VK_MENU = 0x12, VK_CONTROL = 0x11;
-        // noclip moves on the game's Forward / Stop / Turn left / Turn right keys (W S A D unless changed)
-        int[] vkFwd = { (int)MapVirtualKey((uint)PlainKey("fwd", 0x11), 1) }, vkBack = { (int)MapVirtualKey((uint)PlainKey("stop", 0x1F), 1) };
+        // noclip moves on the game's Forward / Turn left / Turn right keys and the one on S (W A S D unless changed)
+        int kBack = PlainKey("back", 0x2D) == 0x1F ? 0x1F : PlainKey("stop", 0x1F);   // the key on S: Stop (game), Back (presets)
+        int[] vkFwd = { (int)MapVirtualKey((uint)PlainKey("fwd", 0x11), 1) }, vkBack = { (int)MapVirtualKey((uint)kBack, 1) };
         int[] vkLeft = { (int)MapVirtualKey((uint)PlainKey("turnl", 0x1E), 1) }, vkRight = { (int)MapVirtualKey((uint)PlainKey("turnr", 0x20), 1) };
         const int VK_ESCAPE = 0x1B, VK_SPACE = 0x20, VK_LCONTROL = 0xA2, VK_LSHIFT = 0xA0;
         RawMouse mouse = new RawMouse();
@@ -2236,7 +2237,7 @@ static partial class TNPlus
                     case "cpu_cycles": CpuCycles = int.Parse(v); break;
                     case "speed_version": int.TryParse(v, out speedVer); break;
                     case "keys_version": int.TryParse(v, out keysVer); break;
-                    case "keys_layout": ChosenLayout = Array.IndexOf(LAYOUT_NAMES, v.ToUpperInvariant()); if (ChosenLayout > 4) ChosenLayout = -1; break;
+                    case "keys_layout": ChosenLayout = Array.IndexOf(LAYOUT_NAMES, v.ToUpperInvariant()); if (ChosenLayout >= LAYOUT_COUNT) ChosenLayout = -1; break;
                     case "key_freelook": ScanFreelook = Convert.ToInt32(v, 16); break;
                     case "key_noclip": ScanNoclip = Convert.ToInt32(v, 16); break;
                     case "key_distance": ScanDistance = Convert.ToInt32(v, 16); if (ScanDistance == 0x17) ScanDistance = 0x24; break;   // old default I = infrared

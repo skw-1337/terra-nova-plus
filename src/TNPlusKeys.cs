@@ -155,11 +155,13 @@ static partial class TNPlus
         return msg;
     }
 
-    // ---- keyboard layout presets: move, look and number keys keep their place (the game reads key positions,
-    // W A S D are Z Q S D on AZERTY), the letter shortcuts follow the letter printed on the keyboard; a letter that
-    // lands on a key already used keeps the game's place. Other QWERTY countries (UK, ES, IT, Nordic...) have their
-    // letters where QWERTY has them.
-    static readonly string[] LAYOUT_NAMES = { "QWERTY", "AZERTY", "QWERTZ", "DVORAK", "COLEMAK", "CUSTOM" };
+    // ---- keyboard layout presets. GAME = the game's own keys. The others: moves on W A S D as in today's games
+    // (Z Q S D on AZERTY: the game reads key positions), so Back takes S and Stop takes X (the game: S stop, X back);
+    // look and number keys keep their place; the letter shortcuts follow the letter printed on the keyboard, a letter
+    // that lands on a key already used keeps the game's place. Other QWERTY countries (UK, ES, IT, Nordic...) have
+    // their letters where QWERTY has them.
+    static readonly string[] LAYOUT_NAMES = { "GAME", "QWERTY", "AZERTY", "QWERTZ", "DVORAK", "COLEMAK", "CUSTOM" };
+    const int LAYOUT_COUNT = 6;
     static readonly string[][] LAYOUT_ROWS = {      // letter rows from scancodes 0x10, 0x1E, 0x2C
         new[] { "QWERTYUIOP", "ASDFGHJKL;", "ZXCVBNM" },
         new[] { "AZERTYUIOP", "QSDFGHJKLM", "WXCVBN" },
@@ -175,7 +177,7 @@ static partial class TNPlus
     static int LetterSc(int layout, char c)
     {
         int[] start = { 0x10, 0x1E, 0x2C };
-        for (int r = 0; r < 3; r++) { int i = LAYOUT_ROWS[layout][r].IndexOf(c); if (i >= 0) return start[r] + i; }
+        for (int r = 0; r < 3; r++) { int i = LAYOUT_ROWS[layout - 1][r].IndexOf(c); if (i >= 0) return start[r] + i; }
         return 0;
     }
 
@@ -185,6 +187,9 @@ static partial class TNPlus
         int n = GameKeys.Count;
         int[,] ch = new int[n, 2];
         for (int i = 0; i < n; i++) { ch[i, 0] = GameKeys[i].DefSc; ch[i, 1] = GameKeys[i].DefMod; }
+        if (layout == 0) return ch;
+        int back = GameKeys.FindIndex(g => g.Id == "back"), stop = GameKeys.FindIndex(g => g.Id == "stop");
+        ch[back, 0] = 0x1F; ch[stop, 0] = 0x2D;    // S back, X stop
         for (bool moved = true; moved; )
         {
             moved = false;
@@ -215,9 +220,9 @@ static partial class TNPlus
     {
         int det = DetectLayout();
         List<int> order = new List<int>();
-        if (ChosenLayout >= 0 && ChosenLayout < 5) order.Add(ChosenLayout);
+        if (ChosenLayout >= 0 && ChosenLayout < LAYOUT_COUNT) order.Add(ChosenLayout);
         if (!order.Contains(det)) order.Add(det);
-        for (int l = 0; l < 5; l++) if (!order.Contains(l)) order.Add(l);
+        for (int l = 0; l < LAYOUT_COUNT; l++) if (!order.Contains(l)) order.Add(l);
         foreach (int l in order)
         {
             int[,] ch = LayoutChords(l);
@@ -225,18 +230,18 @@ static partial class TNPlus
             for (int i = 0; i < GameKeys.Count && same; i++) same = GameKeys[i].Sc == ch[i, 0] && GameKeys[i].Mod == ch[i, 1];
             if (same) return l;
         }
-        return 5;
+        return LAYOUT_COUNT;
     }
 
     // the Windows keyboard layout, from where its letters are
     static int DetectLayout()
     {
         Func<char, uint> sc = c => MapVirtualKey((uint)c, 0);
-        if (sc('A') == 0x10) return 1;
-        if (sc('Z') == 0x15) return 2;
-        if (sc('P') == 0x13) return 3;
-        if (sc('F') == 0x12) return 4;
-        return 0;
+        if (sc('A') == 0x10) return 2;
+        if (sc('Z') == 0x15) return 3;
+        if (sc('P') == 0x13) return 4;
+        if (sc('F') == 0x12) return 5;
+        return 1;
     }
 
     // ---- in the game (addresses: _MODS/re/kb_cave.json)
