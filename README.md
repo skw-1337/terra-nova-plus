@@ -6,7 +6,7 @@ One small external tool. Pick your options in its window, click Launch, and the 
 
 | Option | Key in game | What it does |
 |---|---|---|
-| **Mouse freelook** | `Y` | Mouse left/right turns your PBA, up/down looks up/down, the aiming reticle stays centred: you fire where you look. Smooth (~500 updates per second), no screen shake, no reticle trails on the cockpit. |
+| **Mouse freelook** | `H` | Mouse left/right turns your PBA, up/down looks up/down, the aiming reticle stays centred: you fire where you look. Smooth (~500 updates per second), no screen shake, no reticle trails on the cockpit. |
 | **Noclip** | `U` | Free flight: your usual move keys, `Space` / `Left Ctrl` up/down, `Left Shift` ×4 speed. Great to explore the maps and look at the scenery. |
 | **View distance** | `J` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
 | **Force 320×400** | — | The engine's best resolution, applied automatically in every mission (the game normally only keeps it in save files). |
@@ -29,10 +29,16 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 - Settings are grouped: Picture, Sound, Controls, Fixes (things that are only needed if you have the problem), Cheats and Launch. In-game keys are shown in purple next to each option.
 - A yellow **BETA** badge marks what is new in 1.1.0, and a red **EXPERIMENTAL** one what is still rough.
 
+### Keyboard (beta 5)
+- The **KEYBOARD** tab lists every command of the game's key card (movement, view, weapons, squad orders, map, drone, system) and the tool's own keys. Click a key, then press the new one, alone or with Alt, Ctrl or Shift: any command can take any key or combination, squad orders without Alt included. A key already used by another command swaps with it. **RESET ALL KEYS** brings back the defaults.
+- Keys are shown with the letters of your keyboard layout. Shift + move keys (bound) and Ctrl + move or view keys (drone) follow your move and view keys.
+- Only during missions: menus and the names you type keep the keyboard as it is. Options (`O`) and Abort mission (`Ctrl+Esc`) stay where they are, and the extended keys (arrows, Page Up...) can't be picked as new keys.
+- Noclip moves on your Forward / Stop / Turn keys.
+
 ### HD 640x400
 - The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
 - With Widescreen TRUE the screen is 848x480 and the 3D view 848 columns wide (still 199 rows in the cockpit: the height is the game's 400-line screen, one row in five doubled to reach 480).
-- `F12` toggles the 3D smoothing. Since beta 4 it only smooths real edges (hill against sky, water against land, objects), horizontally and vertically, and leaves the grain of the textures alone. It costs about 15 % fps (61.6 to 52.4 on Mariner at 500000 cycles).
+- `F6` toggles the 3D smoothing (`F12` before beta 5: that one is the game's mission info key). Since beta 4 it only smooths real edges (hill against sky, water against land, objects), horizontally and vertically, and leaves the grain of the textures alone. It costs about 15 % fps (61.6 to 52.4 on Mariner at 500000 cycles).
 - Works with the GOG and Steam games, French and English (beta 3; before that it was French GOG only). The demos are next.
 
 ### Terrain detail
@@ -95,10 +101,10 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 
 ## Tips
 
-- **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
+- **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `H` again when you are back. Switch it off to click the cockpit buttons with the mouse.
 - **Noclip**: land before switching it off — switching it off in mid-air means a free fall.
 - **Widescreen STRETCHED** is anamorphic: the engine draws 320 pixels across, so the cockpit and the menus are stretched a little; the 3D keeps correct proportions. **TRUE** needs HD and the game started from the launcher. The cockpit and HUD are stretched like in STRETCHED (`wide_hud = 0` keeps them at their own proportions in the middle, with black above and below the 3D on the sides), the menus are stretched too, and the mouse is captured when you click in the window (DOSBox releases it with its usual key).
-- Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. To change one, click its purple key in the launcher and press the new key (`Esc` cancels), or edit `TNPlus.ini`.
+- Keys are **physical key positions**: `H`, `U`, `J` are the same keys on QWERTY and AZERTY. To change one, click its purple key in the launcher and press the new key (`Esc` cancels), or edit `TNPlus.ini`. Beta 5 moved freelook from `Y` (the game's previous target key) to `H`, and the HD smoothing from `F12` to `F6`; an ini still on the old keys is moved once.
 
 ## Settings (`TNPlus.ini`)
 
@@ -112,7 +118,9 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `sensitivity_x`, `sensitivity_y` | `12`, `8` | mouse speed (heading / pitch units per mouse count) |
 | `invert_y` | `0` | `1` = inverted vertical look |
 | `noclip_speed` | `15` | game units per second (a walking PBA does about 2.5) |
-| `key_freelook`, `key_noclip`, `key_distance` | `15`, `16`, `24` | **physical key scancodes** (hex): `15` = Y, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
+| `key_freelook`, `key_noclip`, `key_distance` | `23`, `16`, `24` | **physical key scancodes** (hex): `23` = H, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
+| `key_smoothing`, `key_stereo` | `40`, `41` | F6, F7 |
+| `key_game_<command>` | — | written by the KEYBOARD tab for the game's commands you changed: `[SHIFT+\|CTRL+\|ALT+]scancode`, e.g. `key_game_fwd = 25` |
 | `hit_fix` | `1` | `0` = leave the game's projectile hit test as it is (misses above ~30 fps) |
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps) |
 | `field_of_view` | `GAME` | `GAME`, `90`, `100` or `110`: horizontal field of view in degrees (GAME = 84.5, or 100.9 in 16:9) |
@@ -159,7 +167,7 @@ build.bat
 or manually:
 
 ```bat
-%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /r:System.Windows.Forms.dll /r:System.Drawing.dll /out:TNPlus.exe TNPlus.cs TNPlusGui.cs HdPayload.cs HdPayloadFr.cs HdPayloadEn.cs AweBank.cs
+%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /r:System.Windows.Forms.dll /r:System.Drawing.dll /out:TNPlus.exe TNPlus.cs TNPlusGui.cs TNPlusKeys.cs HdPayload.cs HdPayloadFr.cs HdPayloadEn.cs HdPayloadFrWide.cs HdPayloadEnWide.cs AweBank.cs
 ```
 
 ## How it works (short)
@@ -168,6 +176,7 @@ or manually:
 |---|---|
 | Freelook | writes the player's heading and head pitch, keeps the game's cursor centred and frozen (the game's own "cursor frozen" flag: no reticle trails) |
 | Noclip | finds the player's physics state (position ×6 in 16.16 fixed point, matched against the object table without writing anything) and drives it directly |
+| Game keys | the game reads the keyboard in one interrupt handler (an event queue and a key state array). A call to a routine of ours replaces 11 bytes of it and turns each key into the game's own, adding or hiding Alt / Ctrl / Shift events in the queue (the game follows the modifiers from it). That handler runs from the start, so DOSBox keeps it compiled and a patch from outside would not be seen: the call is written by the game itself, from a hook in the camera set-up of the first mission. Off outside missions. |
 | View distance | rewrites the 1024-entry fog table and its check copy in one go (the game compares them) with a larger fog radius |
 | 320×400 | goes through the same path as the options screen's "Accept" button; the game applies it on the next mission frame |
 | Field of view | every camera is set up by one routine from its zoom (focal lengths, culling angles, view matrix, the 3D library's projection); the stock view is 2·atan(1 / 1.1·zoom) = 84.5°. A hook gives the main camera an effective zoom = zoom × 1 / (1.1·tan(FOV/2)), so every zoom level follows; the terrain rings keep the raw zoom. The polygon terrain is built in 3 sectors of 45° around the heading: a second hook lowers the angle that builder sees to what its window covers, otherwise views wider than 90° facing a diagonal lost most of the ground. |

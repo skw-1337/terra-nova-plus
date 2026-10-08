@@ -9,6 +9,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 static partial class TNPlus
@@ -18,11 +19,17 @@ static partial class TNPlus
     static readonly Color TText = Color.FromArgb(214, 226, 220), TDim = Color.FromArgb(122, 150, 142), TAmber = Color.FromArgb(240, 178, 48);
     static readonly Color TTab = Color.FromArgb(38, 76, 178), TLed = Color.FromArgb(56, 214, 92), TLedOff = Color.FromArgb(40, 58, 54), TRed = Color.FromArgb(236, 72, 60);
     static readonly Color TOrange = Color.FromArgb(214, 122, 28), TField = Color.FromArgb(12, 26, 24);
-    static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono;
+    static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono, TKey;
 
     static Label guiHelp, guiWarn, guiPreset, guiKeys, lastBadge;
     static readonly List<KeyValuePair<Label, int>> keyBadges = new List<KeyValuePair<Label, int>>();
     static int rebindKey = -1;                      // KEY_WHAT index waiting for its new key, -1 none
+    static GameKey rebindGame = null;               // game command waiting for its new key
+    static readonly List<KeyValuePair<Label, GameKey>> gameBadges = new List<KeyValuePair<Label, GameKey>>();
+    static readonly List<Control> setPage = new List<Control>();
+    static Panel kbPage;
+    static Label tabSet, tabKeys;
+    [DllImport("user32.dll")] static extern short GetKeyState(int vk);
 
     // a purple key badge: a click waits for the next key pressed (Esc cancels), stored as its scancode
     static void KeyBadge(Label b, int key)
@@ -32,6 +39,7 @@ static partial class TNPlus
         b.MouseEnter += delegate { if (rebindKey < 0) guiHelp.Text = "> click to change the " + KEY_WHAT[key] + " key"; };
         b.Click += delegate
         {
+            rebindGame = null;
             rebindKey = rebindKey == key ? -1 : key;
             GuiRefresh();
             guiHelp.Text = rebindKey < 0 ? "> unchanged" : "> press the new " + KEY_WHAT[key] + " key (Esc cancels)";
@@ -42,28 +50,101 @@ static partial class TNPlus
     {
         public bool PreFilterMessage(ref Message m)
         {
-            if (rebindKey < 0 || (m.Msg != 0x100 && m.Msg != 0x104)) return false;   // WM_KEYDOWN, WM_SYSKEYDOWN
+            if ((rebindKey < 0 && rebindGame == null) || (m.Msg != 0x100 && m.Msg != 0x104)) return false;   // WM_(SYS)KEYDOWN
             long lp = m.LParam.ToInt64();
-            int vk = (int)m.WParam.ToInt64(), scan = (int)((lp >> 16) & 0xFF), k = rebindKey;
+            int vk = (int)m.WParam.ToInt64(), scan = (int)((lp >> 16) & 0xFF);
             bool ext = ((lp >> 24) & 1) != 0;
-            rebindKey = -1;
+            if (vk == 0x10 || vk == 0x11 || vk == 0x12 || (vk >= 0xA0 && vk <= 0xA5)) return true;   // a modifier: wait for the key
             string msg;
             if (vk == 0x1B) msg = "unchanged";
-            else if (ext || scan == 0 || Array.IndexOf(KEY_RESERVED, scan) >= 0)
-                msg = "that key is taken by the game or the tool (Esc, O, noclip moves, Space, Ctrl, Shift, arrows...): pick another one";
-            else
+            else if (rebindGame != null)
             {
-                int other = -1;
-                for (int i = 0; i < KEY_WHAT.Length; i++) if (i != k && GetKey(i) == scan) other = i;
-                if (other >= 0) SetKey(other, GetKey(k));   // already used by another tool key: the two swap
-                SetKey(k, scan);
-                SaveSettings();
-                msg = KEY_WHAT[k] + ": " + KeyName(scan) + (other >= 0 ? ", " + KEY_WHAT[other] + " moved to " + KeyName(GetKey(other)) : "");
+                int mods = 0, n = 0;
+                if (GetKeyState(0x10) < 0) { mods = 1; n++; }
+                if (GetKeyState(0x11) < 0) { mods = 2; n++; }
+                if (GetKeyState(0x12) < 0) { mods = 3; n++; }
+                msg = n > 1 ? "one modifier at most (Alt, Ctrl or Shift): try again" : AssignGameKey(rebindGame, scan, mods, ext);
             }
+            else msg = AssignToolKey(rebindKey, scan, ext);
+            rebindKey = -1; rebindGame = null;
+            SaveSettings();
             GuiRefresh();
             guiHelp.Text = "> " + msg;
             return true;
         }
+    }
+
+    // a key of the game's commands on the KEYBOARD page
+    static void GameBadge(Label b, GameKey g)
+    {
+        gameBadges.Add(new KeyValuePair<Label, GameKey>(b, g));
+        b.Cursor = g.Fixed ? Cursors.Default : Cursors.Hand;
+        b.MouseEnter += delegate
+        {
+            if (rebindKey >= 0 || rebindGame != null) return;
+            guiHelp.Text = "> " + g.Name.ToLowerInvariant() + ": " + ChordName(g.Sc, g.Mod) +
+                (g.Changed ? " (the game: " + ChordName(g.DefSc, g.DefMod) + ")" : "") + (g.Fixed ? ", can't be changed" : ", click to change it");
+        };
+        b.Click += delegate
+        {
+            if (g.Fixed) return;
+            rebindKey = -1;
+            rebindGame = rebindGame == g ? null : g;
+            GuiRefresh();
+            guiHelp.Text = rebindGame == null ? "> unchanged" : "> press the new key for " + g.Name.ToLowerInvariant() + ", alone or with Alt, Ctrl or Shift (Esc cancels)";
+        };
+    }
+
+    static Label KeyRow(Panel p, string name, int y)
+    {
+        Lbl(p, name.ToUpperInvariant(), 10, y + 1, TSmall, TAmber);
+        Label b = new Label(); b.AutoSize = false; b.TextAlign = ContentAlignment.MiddleCenter; b.Font = TKey;
+        b.Size = new Size(30, 17); b.Location = new Point(p.Width - 40, y); p.Controls.Add(b);
+        b.BringToFront();                           // over the end of a long name, never under it
+        return b;
+    }
+
+    // KEYBOARD page: the game's commands in 4 columns, the tool's keys, reset
+    static void BuildKeysPage(Panel page)
+    {
+        int[] cw = { 150, 175, 190, page.Width - 3 * 8 - 150 - 175 - 190 };   // SQUAD: long names with ALT+
+        string[][] cols = { new[] { "MOVEMENT", "WEAPONS" }, new[] { "VIEW", "MAP" }, new[] { "SQUAD" }, new[] { "DRONE", "SYSTEM", "TOOL" } };
+        for (int c = 0; c < 4; c++)
+        {
+            int x = 0, y = 0;
+            for (int k = 0; k < c; k++) x += cw[k] + 8;
+            foreach (string grp in cols[c])
+            {
+                bool tool = grp == "TOOL";
+                List<GameKey> keys = GameKeys.FindAll(g => g.Group == grp);
+                int rows = tool ? KEY_WHAT.Length : keys.Count;
+                Panel p = Pane(page, tool ? "TERRA NOVA PLUS" : grp, x, y, cw[c], 36 + rows * 18 + 6);
+                int ry = 36;
+                if (tool) for (int i = 0; i < KEY_WHAT.Length; i++) { KeyBadge(KeyRow(p, KEY_WHAT[i], ry), i); ry += 18; }
+                else foreach (GameKey g in keys) { GameBadge(KeyRow(p, g.Name, ry), g); ry += 18; }
+                y += p.Height + 8;
+            }
+            if (c == 3)
+            {
+                Button r = Btn(page, "RESET ALL KEYS", x, page.Height - 30, cw[c], 28, false);
+                r.Click += delegate
+                {
+                    ResetKeys(); rebindKey = -1; rebindGame = null; SaveSettings(); GuiRefresh();
+                    guiHelp.Text = "> every key back to its default (the tool's: H U J F7 F6)";
+                };
+            }
+        }
+    }
+
+    static void ShowPage(bool keys)
+    {
+        foreach (Control c in setPage) c.Visible = !keys;
+        kbPage.Visible = keys;
+        tabSet.BackColor = keys ? TPanel : TTab; tabSet.ForeColor = keys ? TDim : Color.White;
+        tabKeys.BackColor = keys ? TTab : TPanel; tabKeys.ForeColor = keys ? Color.White : TDim;
+        rebindKey = -1; rebindGame = null; GuiRefresh();
+        guiHelp.Text = keys ? "> the game's keys: click one, then press the new key, alone or with Alt, Ctrl or Shift. Active in missions only."
+                            : "> point at a setting to read what it does";
     }
     static readonly string[] SPEED_NAMES = { "500000", "700000", "1000000", "1200000", "1400000", "GAME'S OWN" };
     static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed, cbObj, cbFov, cbWide;
@@ -134,6 +215,7 @@ static partial class TNPlus
         TFont = Pick(new[] { "Bahnschrift", "Segoe UI" }, 10.5f, FontStyle.Regular);
         TSmall = Pick(new[] { "Bahnschrift Light", "Bahnschrift", "Segoe UI" }, 9f, FontStyle.Regular);
         TBold = Pick(new[] { "Bahnschrift SemiBold", "Bahnschrift", "Segoe UI" }, 10.5f, FontStyle.Bold);
+        TKey = Pick(new[] { "Bahnschrift SemiBold", "Bahnschrift", "Segoe UI" }, 9f, FontStyle.Bold);
         TTitle = Pick(new[] { "Bahnschrift SemiBold Condensed", "Bahnschrift SemiBold", "Impact", "Segoe UI" }, 30f, FontStyle.Bold);
         TTitle2 = Pick(new[] { "Bahnschrift SemiBold Condensed", "Bahnschrift SemiBold", "Segoe UI" }, 12f, FontStyle.Bold);
         TMono = Pick(new[] { "Consolas", "Courier New" }, 9.5f, FontStyle.Regular);
@@ -168,7 +250,10 @@ static partial class TNPlus
         };
 
         // panels: picture / sound / controls on the left, fixes / cheats / launch on the right
-        int y0 = 124, lx = 20, rx = 400, pw = 360;
+        tabSet = Tab(f, "SETTINGS", 20, 124); tabKeys = Tab(f, "KEYBOARD", tabSet.Right + 6, 124);
+        tabSet.Cursor = Cursors.Hand; tabKeys.Cursor = Cursors.Hand;
+        tabSet.Click += delegate { ShowPage(false); }; tabKeys.Click += delegate { ShowPage(true); };
+        int y0 = 156, lx = 20, rx = 400, pw = 360;
         Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(6));
         cbDisplay = Combo(pPic, "Display", 0, DisplayLabels(), "BETA", "");
         cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, "BETA", "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. Needs the game launched from here.");
@@ -195,6 +280,9 @@ static partial class TNPlus
 
         // help and warnings: a readout strip like the cockpit's message line
         int yb = Math.Max(pCtl.Bottom, pLaunch.Bottom) + 14;
+        setPage.Clear(); setPage.AddRange(new Control[] { pPic, pSnd, pCtl, pFix, pCheat, pLaunch });
+        kbPage = new Panel(); kbPage.Location = new Point(20, y0); kbPage.Size = new Size(740, yb - 10 - y0); kbPage.BackColor = TBack;
+        kbPage.Visible = false; f.Controls.Add(kbPage);
         Panel strip = new Panel(); strip.Location = new Point(20, yb); strip.Size = new Size(740, 56); strip.BackColor = TField; f.Controls.Add(strip);
         strip.Paint += delegate(object s, PaintEventArgs e) { Bevel(e.Graphics, strip.Size, true); };
         guiHelp = Lbl(strip, "> point at a setting to read what it does", 12, 8, TMono, TLed); guiHelp.AutoSize = false; guiHelp.Size = new Size(716, 30);
@@ -236,12 +324,14 @@ static partial class TNPlus
         cbPreset.CycleMax = 2;
         cbPreset.Changed += delegate { if (!guiBusy && cbPreset.Index < 3) { ApplyPreset(cbPreset.Index); GuiRefresh(); } };
         guiRedrawGame = drawGame;
+        BuildKeysPage(kbPage);
+        ShowPage(false);
         GuiRefresh();
         KeyCatcher catcher = new KeyCatcher();
         Application.AddMessageFilter(catcher);
         Application.Run(f);
         Application.RemoveMessageFilter(catcher);
-        rebindKey = -1; keyBadges.Clear();
+        rebindKey = -1; rebindGame = null; keyBadges.Clear(); gameBadges.Clear();
         guiRedrawGame = null;
         return result;
     }
@@ -265,6 +355,16 @@ static partial class TNPlus
             kb.Key.Text = wait ? "?" : KeyName(GetKey(kb.Value));
             kb.Key.BackColor = wait ? TAmber : Color.FromArgb(118, 48, 160); kb.Key.ForeColor = wait ? Color.FromArgb(40, 30, 0) : Color.White;
             kb.Key.Width = Math.Max(TextRenderer.MeasureText(kb.Key.Text, kb.Key.Font).Width + 12, 26);
+            if (kb.Key.Parent != null && kb.Key.Parent.Parent == kbPage) kb.Key.Left = kb.Key.Parent.Width - 10 - kb.Key.Width;
+        }
+        foreach (KeyValuePair<Label, GameKey> gb in gameBadges)
+        {
+            GameKey g = gb.Value; Label b = gb.Key; bool wait = g == rebindGame;
+            b.Text = wait ? "?" : ChordName(g.Sc, g.Mod);
+            b.BackColor = wait ? TAmber : g.Fixed ? Color.FromArgb(40, 64, 58) : Color.FromArgb(118, 48, 160);
+            b.ForeColor = wait ? Color.FromArgb(40, 30, 0) : g.Fixed ? TDim : g.Changed ? TAmber : Color.White;
+            b.Width = Math.Max(TextRenderer.MeasureText(b.Text, b.Font).Width + 10, 26);
+            b.Left = b.Parent.Width - 10 - b.Width;
         }
         cbDisplay.Set(Display); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov);
         ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix;
@@ -328,7 +428,7 @@ static partial class TNPlus
         parent.Controls.Add(l); return l;
     }
 
-    static Panel Pane(Form f, string name, int x, int y, int w, int h)
+    static Panel Pane(Control f, string name, int x, int y, int w, int h)
     {
         Panel p = new Panel(); p.Location = new Point(x, y); p.Size = new Size(w, h); p.BackColor = TPanel; f.Controls.Add(p);
         Tab(p, name, 10, 6);

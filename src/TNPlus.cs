@@ -74,8 +74,8 @@ static partial class TNPlus
     static int OptDetail = 2;                       // terrain detail: 0 GAME, 1 SHARP, 2 SHARPER
     static int SensX = 12, SensY = 8;               // heading / pitch units per mouse count
     static bool InvertY = false, Sound = true, HdSmoothing = true;
-    static int ScanFreelook = 0x15, ScanNoclip = 0x16, ScanDistance = 0x24;   // Y U J (physical keys; I is the game's infrared)
-    static int ScanSmoothing = 0x58;                // F12: HD smoothing on / off
+    static int ScanFreelook = 0x23, ScanNoclip = 0x16, ScanDistance = 0x24;   // H U J (physical keys, none of them the game's)
+    static int ScanSmoothing = 0x40;                // F6: HD smoothing on / off
     static int ScanStereo = 0x41;                   // F7: swap the stereo of the sound effects in game
     // the in-game keys the launcher can change (click the purple key, press the new one)
     static readonly string[] KEY_WHAT = { "freelook", "noclip", "view distance", "stereo swap", "HD smoothing" };
@@ -84,9 +84,9 @@ static partial class TNPlus
     {
         if (i == 0) ScanFreelook = s; else if (i == 1) ScanNoclip = s; else if (i == 2) ScanDistance = s; else if (i == 3) ScanStereo = s; else ScanSmoothing = s;
     }
-    // keys the tool or the game need for themselves: Esc, O (options), the noclip moves, Space, Left Ctrl,
-    // Left Shift, I (infrared)
-    static readonly int[] KEY_RESERVED = { 0x01, 0x18, 0x11, 0x1E, 0x1F, 0x20, 0x39, 0x1D, 0x2A, 0x17 };
+    // keys the tool or the game need for themselves: Esc, O (options), noclip up / down / x4 (Space, Left Ctrl,
+    // Left Shift), Right Shift, Alt (the game's own keys are checked against the KEYBOARD tab)
+    static readonly int[] KEY_RESERVED = { 0x01, 0x18, 0x39, 0x1D, 0x2A, 0x36, 0x38 };
     static double NoclipSpeed = 15.0;               // game units per second (a walking PBA ~2.5)
     static int CpuCycles = 1000000;                 // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
     static readonly int[] CYCLE_CHOICES = { 500000, 700000, 1000000, 1200000, 1400000, 0 };
@@ -1325,9 +1325,11 @@ static partial class TNPlus
         int vkSmooth = (int)MapVirtualKey((uint)ScanSmoothing, 1);
         bool prevS = false, prevSt = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
-        double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10;
-        int[] vkFwd = { (int)MapVirtualKey(0x11, 1) }, vkBack = { (int)MapVirtualKey(0x1F, 1) };
-        int[] vkLeft = { (int)MapVirtualKey(0x1E, 1) }, vkRight = { (int)MapVirtualKey(0x20, 1) };
+        double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0;
+        const int VK_MENU = 0x12, VK_CONTROL = 0x11;
+        // noclip moves on the game's Forward / Stop / Turn left / Turn right keys (W S A D unless changed)
+        int[] vkFwd = { (int)MapVirtualKey((uint)PlainKey("fwd", 0x11), 1) }, vkBack = { (int)MapVirtualKey((uint)PlainKey("stop", 0x1F), 1) };
+        int[] vkLeft = { (int)MapVirtualKey((uint)PlainKey("turnl", 0x1E), 1) }, vkRight = { (int)MapVirtualKey((uint)PlainKey("turnr", 0x20), 1) };
         const int VK_ESCAPE = 0x1B, VK_SPACE = 0x20, VK_LCONTROL = 0xA2, VK_LSHIFT = 0xA0;
         RawMouse mouse = new RawMouse();
         timeBeginPeriod(1);                         // 1-2 ms sleeps instead of ~15.6 ms: smoother
@@ -1366,6 +1368,7 @@ static partial class TNPlus
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
                     hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
@@ -1382,9 +1385,12 @@ static partial class TNPlus
                 if (OptDetail > 0 && smoothState == 0 && now - lastPhys > 0.5) TrySmooth();
                 if ((OptFov > 0 || WideActive() || TrueWideActive()) && fovState == 0 && now - lastPhys > 0.5) TryFov();
                 if (objState == 1 && now - lastObj > 0.5) { lastObj = now; ObjDistTable(); }
+                if (keysState == 0 && now - lastPhys > 0.5) TryKeys();
+                if (keysState == 1 && now - lastKeys > 0.25) { lastKeys = now; KeysFollowMission(InMission(PlayerEntry())); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
-                bool s = hdState == 1 && fg && Down(vkSmooth);
+                bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
+                bool s = hdState == 1 && fg && plain && Down(vkSmooth);
                 if (s && !prevS)
                 {
                     HdSmoothing = ReadInt(HdPayload.Smoothing) == 0;
@@ -1392,7 +1398,7 @@ static partial class TNPlus
                     Say("HD smoothing " + (HdSmoothing ? "ON" : "OFF"), HdSmoothing ? 1000 : 600);
                 }
                 prevS = s;
-                bool stk = haveStereo && fg && Down(vkStereo);
+                bool stk = haveStereo && fg && plain && Down(vkStereo);
                 if (stk && !prevSt)
                 {
                     bool rev = Read(aStereo, 1)[0] == 0;
@@ -1402,13 +1408,13 @@ static partial class TNPlus
                 prevSt = stk;
 
                 // --- view distance key + periodic fixes (fog, 320x400, widescreen)
-                bool d = fg && Down(vkDist);
+                bool d = fg && plain && Down(vkDist);
                 bool changed = d && !prevD; prevD = d;
                 if (changed) { distMode = (distMode + 1) % 3; Say("View distance: " + DIST_NAMES[distMode], 700 + 250 * distMode, 90); }
                 if (changed || now - lastFix > 1.0) { lastFix = now; PeriodicFixes(distMode); }
 
                 // --- toggles (rising edges, game in the foreground only)
-                bool f = OptFreelook && fg && Down(vkFree), n = OptNoclip && fg && Down(vkClip);
+                bool f = OptFreelook && fg && plain && Down(vkFree), n = OptNoclip && fg && plain && Down(vkClip);
                 if (f && !prevF)
                 {
                     if (freelook) { freelook = false; Say("Freelook OFF", 500); }
@@ -2187,7 +2193,7 @@ static partial class TNPlus
     {
         if (!File.Exists(IniPath)) { SaveSettings(); return; }
         bool haveDisplay = false, oldForce = false, oldHd = false;
-        int speedVer = 0;
+        int speedVer = 0, keysVer = 0;
         foreach (string line in File.ReadAllLines(IniPath))
         {
             string l = line.Trim();
@@ -2196,6 +2202,7 @@ static partial class TNPlus
             string v = l.Substring(l.IndexOf('=') + 1).Trim();
             try
             {
+                if (k.StartsWith("key_game_")) { ParseGameKey(k.Substring(9), v); continue; }
                 switch (k)
                 {
                     case "freelook": OptFreelook = v != "0"; break;
@@ -2227,6 +2234,7 @@ static partial class TNPlus
                     case "noclip_speed": NoclipSpeed = double.Parse(v, System.Globalization.CultureInfo.InvariantCulture); break;
                     case "cpu_cycles": CpuCycles = int.Parse(v); break;
                     case "speed_version": int.TryParse(v, out speedVer); break;
+                    case "keys_version": int.TryParse(v, out keysVer); break;
                     case "key_freelook": ScanFreelook = Convert.ToInt32(v, 16); break;
                     case "key_noclip": ScanNoclip = Convert.ToInt32(v, 16); break;
                     case "key_distance": ScanDistance = Convert.ToInt32(v, 16); if (ScanDistance == 0x17) ScanDistance = 0x24; break;   // old default I = infrared
@@ -2241,6 +2249,9 @@ static partial class TNPlus
         // cycles, not by the PC (DOSBox used 0.6 core at 700000 in HD on the test PC)
         if (speedVer < 3 && (CpuCycles == 300000 || CpuCycles == 500000)) CpuCycles = 700000;
         if (speedVer < 4 && CpuCycles == 700000) CpuCycles = 1000000;   // the default before the true 16:9 measurements
+        // old defaults Y and F12 are the game's previous target and mission info keys: now H and F6
+        if (keysVer < 2 && ScanFreelook == 0x15) ScanFreelook = 0x23;
+        if (keysVer < 2 && ScanSmoothing == 0x58) ScanSmoothing = 0x40;
         ApplyDisplay();
     }
 
@@ -2275,11 +2286,13 @@ static partial class TNPlus
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
                 "; true 16:9 HD, SHARPER terrain: 700000 = ~40 fps, 1000000 = ~57, 1200000 = ~70 (about one full CPU core).\r\n; DOSBox lowers them when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 4\r\n" +
-                "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
-                "; 29 = key left of 1, 3B..44 = F1..F10 (41 = F7), 58 = F12\r\n" +
+                "; keys as PHYSICAL key scancodes (hex): 23 = H, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
+                "; 29 = key left of 1, 3B..44 = F1..F10 (40 = F6, 41 = F7), 57 = F11, 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
                 "key_distance = " + ScanDistance.ToString("X2") + "\r\nkey_smoothing = " + ScanSmoothing.ToString("X2") + "\r\n" +
-                "key_stereo = " + ScanStereo.ToString("X2") + "\r\n" +
+                "key_stereo = " + ScanStereo.ToString("X2") + "\r\nkeys_version = 2\r\n" +
+                "; the game's commands changed in the KEYBOARD tab (missions only): [SHIFT+|CTRL+|ALT+]scancode\r\n" +
+                GameKeysIni() +
                 "; 0 = no beeps\r\nsound = " + (Sound ? 1 : 0) + "\r\n" +
                 "; game folder (empty = auto-detect GOG / Steam)\r\ngame_dir = " + GameDir + "\r\n");
         }
