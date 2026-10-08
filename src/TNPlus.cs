@@ -1233,7 +1233,9 @@ static partial class TNPlus
         if (OptKeepDos)                             // tests: the DOS window stays after the game, with its last message
             text = Regex.Replace(text, @"(?im)^\s*EXIT\s*$", "REM EXIT");
         string path = Path.Combine(ExeDir, "TNPlus_launch.conf");
-        File.WriteAllText(path, CpuSection(db) + text);
+        // a mouse bind on the middle button: DOSBox would release the captured mouse on that click
+        bool mid = GameKeys.Exists(g => g.Mouse == 1) || Array.IndexOf(ToolMouse, 1) >= 0;
+        File.WriteAllText(path, CpuSection(db) + (mid ? "[mouse]\r\nmouse_middle_release = false\r\n" : "") + text);
         return path;
     }
 
@@ -1326,6 +1328,11 @@ static partial class TNPlus
         bool prevS = false, prevSt = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
         double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0;
+        // mouse binds (by MOUSE_NAMES index): state seen last pass, command pressed, wheel taps
+        bool[] mbPrev = new bool[6], mbPulse = new bool[6];
+        GameKey[] mbSent = new GameKey[6];
+        double[] mbUpAt = new double[6], mbNext = new double[6];
+        int[] mbQ = new int[6];
         const int VK_MENU = 0x12, VK_CONTROL = 0x11;
         // noclip moves on the game's Forward / Turn left / Turn right keys and the one on S (W A S D unless changed)
         int kBack = PlainKey("back", 0x2D) == 0x1F ? 0x1F : PlainKey("stop", 0x1F);   // the key on S: Stop (game), Back (presets)
@@ -1391,7 +1398,33 @@ static partial class TNPlus
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
-                bool s = hdState == 1 && fg && plain && Down(vkSmooth);
+
+                // --- mouse binds: middle / side buttons held, wheel notches as short presses (one at a time)
+                mbQ[4] += mouse.WheelUp; mbQ[5] += mouse.WheelDown; mouse.WheelUp = mouse.WheelDown = 0;
+                if (!fg) mbQ[4] = mbQ[5] = 0;
+                for (int b = 4; b <= 5; b++)
+                {
+                    mbPulse[b] = mbSent[b] == null && mbQ[b] > 0 && now >= mbNext[b];
+                    if (mbPulse[b]) mbQ[b]--;
+                }
+                for (int b = 1; b <= 5; b++)
+                {
+                    bool on = b <= 3 ? mouse.Held[b] : mbPulse[b];
+                    GameKey gk = GameKeys.Find(gq => gq.Mouse == b);
+                    if (gk != null && on && !mbPrev[b] && mbSent[b] == null && fg && InMission(PlayerEntry()))
+                    {
+                        SendChord(gk, true); mbSent[b] = gk;
+                        if (b >= 4) mbUpAt[b] = now + 0.05;
+                    }
+                    if (mbSent[b] != null && (b <= 3 ? !on : now >= mbUpAt[b]))
+                    {
+                        SendChord(mbSent[b], false); mbSent[b] = null;
+                        if (b >= 4) mbNext[b] = now + 0.03;
+                    }
+                    mbPrev[b] = on;
+                }
+                Func<int, bool> toolMouse = t => ToolMouse[t] >= 1 && ToolMouse[t] <= 3 ? mouse.Held[ToolMouse[t]] : ToolMouse[t] >= 4 && mbPulse[ToolMouse[t]];
+                bool s = hdState == 1 && fg && ((plain && Down(vkSmooth)) || toolMouse(4));
                 if (s && !prevS)
                 {
                     HdSmoothing = ReadInt(HdPayload.Smoothing) == 0;
@@ -1399,7 +1432,7 @@ static partial class TNPlus
                     Say("HD smoothing " + (HdSmoothing ? "ON" : "OFF"), HdSmoothing ? 1000 : 600);
                 }
                 prevS = s;
-                bool stk = haveStereo && fg && plain && Down(vkStereo);
+                bool stk = haveStereo && fg && ((plain && Down(vkStereo)) || toolMouse(3));
                 if (stk && !prevSt)
                 {
                     bool rev = Read(aStereo, 1)[0] == 0;
@@ -1409,13 +1442,14 @@ static partial class TNPlus
                 prevSt = stk;
 
                 // --- view distance key + periodic fixes (fog, 320x400, widescreen)
-                bool d = fg && plain && Down(vkDist);
+                bool d = fg && ((plain && Down(vkDist)) || toolMouse(2));
                 bool changed = d && !prevD; prevD = d;
                 if (changed) { distMode = (distMode + 1) % 3; Say("View distance: " + DIST_NAMES[distMode], 700 + 250 * distMode, 90); }
                 if (changed || now - lastFix > 1.0) { lastFix = now; PeriodicFixes(distMode); }
 
                 // --- toggles (rising edges, game in the foreground only)
-                bool f = OptFreelook && fg && plain && Down(vkFree), n = OptNoclip && fg && plain && Down(vkClip);
+                bool f = OptFreelook && fg && ((plain && Down(vkFree)) || toolMouse(0));
+                bool n = OptNoclip && fg && ((plain && Down(vkClip)) || toolMouse(1));
                 if (f && !prevF)
                 {
                     if (freelook) { freelook = false; Say("Freelook OFF", 500); }
@@ -2136,6 +2170,8 @@ static partial class TNPlus
         IntPtr hwnd;
         int dx, dy;
         byte[] buf = new byte[64];
+        public int WheelUp, WheelDown;              // wheel notches not handled yet
+        public readonly bool[] Held = new bool[6];  // by MOUSE_NAMES index: 1 middle, 2 side 4, 3 side 5
 
         public RawMouse()
         {
@@ -2158,6 +2194,15 @@ static partial class TNPlus
                         && BitConverter.ToUInt32(buf, 0) == 0)                  // RIM_TYPEMOUSE
                     {
                         ushort flags = BitConverter.ToUInt16(buf, header);
+                        ushort bf = BitConverter.ToUInt16(buf, header + 4);     // button flags
+                        if ((bf & 0x0400) != 0)                                 // wheel
+                        {
+                            short wd = BitConverter.ToInt16(buf, header + 6);
+                            if (wd > 0) WheelUp += Math.Max(1, wd / 120); else if (wd < 0) WheelDown += Math.Max(1, -wd / 120);
+                        }
+                        if ((bf & 0x0010) != 0) Held[1] = true; if ((bf & 0x0020) != 0) Held[1] = false;
+                        if ((bf & 0x0040) != 0) Held[2] = true; if ((bf & 0x0080) != 0) Held[2] = false;
+                        if ((bf & 0x0100) != 0) Held[3] = true; if ((bf & 0x0200) != 0) Held[3] = false;
                         if ((flags & 1) == 0)                                   // relative movement
                         {
                             dx += BitConverter.ToInt32(buf, header + 12);
@@ -2207,6 +2252,7 @@ static partial class TNPlus
             try
             {
                 if (k.StartsWith("key_game_")) { ParseGameKey(k.Substring(9), v); continue; }
+                if (k.StartsWith("mouse_")) { ParseMouse(k.Substring(6), v); continue; }
                 switch (k)
                 {
                     case "freelook": OptFreelook = v != "0"; break;
@@ -2299,6 +2345,8 @@ static partial class TNPlus
                 (ChosenLayout >= 0 ? "keys_layout = " + LAYOUT_NAMES[ChosenLayout] + "\r\n" : "") +
                 "; the game's commands changed in the KEYBOARD tab (missions only): [SHIFT+|CTRL+|ALT+]scancode\r\n" +
                 GameKeysIni() +
+                "; mouse binds (middle button, side buttons, wheel), a second bind: MID, M4, M5, WHEELUP, WHEELDOWN\r\n" +
+                MouseIni() +
                 "; 0 = no beeps\r\nsound = " + (Sound ? 1 : 0) + "\r\n" +
                 "; game folder (empty = auto-detect GOG / Steam)\r\ngame_dir = " + GameDir + "\r\n");
         }

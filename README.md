@@ -35,6 +35,7 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 - **LAYOUT** presets: GAME (the game's own keys), QWERTY (also UK, Spanish, Italian, Nordic...), AZERTY, QWERTZ, DVORAK and COLEMAK. The keyboard presets move on W A S D as in today's games, Z Q S D on AZERTY (the game reads key positions): S moves back and X stops (the game: S stop, X back), Q / A and D turn. Look and number keys keep their place; the letter shortcuts follow the letters printed on your keyboard (M map to HUD, P pause, G full-screen, T target, the Alt + letter squad orders...). A letter that lands on a key already used keeps the game's place: on AZERTY, M and the Alt+A / Alt+M orders move; on QWERTZ only the moves change.
 - Only during missions: menus and the names you type keep the keyboard as it is. Options (`O`) and Abort mission (`Ctrl+Esc`) stay where they are, and the extended keys (arrows, Page Up...) can't be picked as new keys.
 - Noclip moves on your Forward / Stop / Turn keys.
+- **Mouse binds** (green, next to each key): the middle button, the side buttons (4, 5) and the wheel up / down can also press a command or do a tool action (freelook...). Click the green badge, then the mouse button or a wheel notch; `Del` removes it. One mouse input per command, none by default; the left and right buttons stay the game's (fire, lock target). They work with the game in front, during missions; a wheel notch is a short press. With a bind on the middle button, DOSBox no longer releases the mouse on a middle click (game started from the launcher).
 
 ### HD 640x400
 - The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
@@ -122,6 +123,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `key_freelook`, `key_noclip`, `key_distance` | `23`, `16`, `24` | **physical key scancodes** (hex): `23` = H, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
 | `key_smoothing`, `key_stereo` | `40`, `41` | F6, F7 |
 | `keys_layout` | — | the LAYOUT preset picked last |
+| `mouse_<command>` | — | mouse binds: `MID`, `M4`, `M5`, `WHEELUP`, `WHEELDOWN` (e.g. `mouse_tnext = WHEELUP`, `mouse_freelook = MID`) |
 | `key_game_<command>` | — | written by the KEYBOARD tab for the game's commands you changed: `[SHIFT+\|CTRL+\|ALT+]scancode`, e.g. `key_game_fwd = 25` |
 | `hit_fix` | `1` | `0` = leave the game's projectile hit test as it is (misses above ~30 fps) |
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps) |
