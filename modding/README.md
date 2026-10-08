@@ -108,7 +108,7 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   view, so a value read at a random time can come from that one. Check the canvas width first.
 - **A key held while our key translation switched on stayed down for the game.** The press went through as it was,
   the release was translated, so the game never saw the original key go up (the player kept turning). A key pressed
-  untranslated now stays untranslated until it is released.
+  untranslated (outside a mission, with Alt held...) now stays untranslated until it is released.
 - **DOSBox's dynamic core** (see above): patches written from outside into code that already ran are not seen, and
   variables written into a code page can crash it.
 
