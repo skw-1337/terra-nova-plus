@@ -287,7 +287,12 @@ static partial class TNPlus
     {
         keysState = -1;
         int n = GameKeys.FindAll(g => g.Changed).Count;
-        if (n == 0) return;
+        if (n == 0)
+        {   // nothing changed now, but an earlier run may have left its table in this game: emptied
+            uint st = ReadUInt(KB_STATE);
+            if (st == 1 || st == 2) { WriteInt(KB_ACTIVE, 0); Write(KB_MAP, new byte[1024]); }
+            return;
+        }
         uint site = 0, s0 = ReadUInt(KB_SITE);
         if (s0 > 0x200000 && s0 < 0x340000 && Same(Read(s0, 11), Rel32Call(s0, KB_MAP_FN, 11))) site = s0;   // already in place
         else

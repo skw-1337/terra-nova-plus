@@ -1899,6 +1899,7 @@ static partial class TNPlus
     static void Release()
     {
         try { if (frozen && hProc != IntPtr.Zero) Write(aFreeze, new byte[] { 0 }); } catch { }
+        try { if (keysState == 1 && hProc != IntPtr.Zero) { WriteInt(KB_ACTIVE, 0); keysActive = false; } } catch { }   // the game's keys back as they are
         frozen = false; ClipCursorOff(IntPtr.Zero); clipped = false;
     }
 
