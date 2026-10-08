@@ -74,7 +74,7 @@ static partial class TNPlus
     static int OptDetail = 2;                       // terrain detail: 0 GAME, 1 SHARP, 2 SHARPER
     static int SensX = 12, SensY = 8;               // heading / pitch units per mouse count
     static bool InvertY = false, Sound = true, HdSmoothing = true;
-    static int ScanFreelook = 0x23, ScanNoclip = 0x16, ScanDistance = 0x24;   // H U J (physical keys, none of them the game's)
+    static int ScanFreelook = 0x15, ScanNoclip = 0x16, ScanDistance = 0x24;   // Y U J (physical keys; the game's Y, previous target, goes to K)
     static int ScanSmoothing = 0x40;                // F6: HD smoothing on / off
     static int ScanStereo = 0x41;                   // F7: swap the stereo of the sound effects in game
     // the in-game keys the launcher can change (click the purple key, press the new one)
@@ -2242,7 +2242,7 @@ static partial class TNPlus
 
     static void LoadSettings()
     {
-        if (!File.Exists(IniPath)) { SaveSettings(); return; }
+        if (!File.Exists(IniPath)) { ResolveToolClashes(); SaveSettings(); return; }
         bool haveDisplay = false, oldForce = false, oldHd = false;
         int speedVer = 0, keysVer = 0;
         foreach (string line in File.ReadAllLines(IniPath))
@@ -2302,9 +2302,11 @@ static partial class TNPlus
         // cycles, not by the PC (DOSBox used 0.6 core at 700000 in HD on the test PC)
         if (speedVer < 3 && (CpuCycles == 300000 || CpuCycles == 500000)) CpuCycles = 700000;
         if (speedVer < 4 && CpuCycles == 700000) CpuCycles = 1000000;   // the default before the true 16:9 measurements
-        // old defaults Y and F12 are the game's previous target and mission info keys: now H and F6
-        if (keysVer < 2 && ScanFreelook == 0x15) ScanFreelook = 0x23;
+        // freelook was on H in beta 5 (Y before): back on Y, the game's previous target moves to K.
+        // F12 is the game's mission info key: F6 since beta 5
+        if (keysVer < 3 && ScanFreelook == 0x23) ScanFreelook = 0x15;
         if (keysVer < 2 && ScanSmoothing == 0x58) ScanSmoothing = 0x40;
+        ResolveToolClashes();
         ApplyDisplay();
     }
 
@@ -2343,7 +2345,7 @@ static partial class TNPlus
                 "; 29 = key left of 1, 3B..44 = F1..F10 (40 = F6, 41 = F7), 57 = F11, 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
                 "key_distance = " + ScanDistance.ToString("X2") + "\r\nkey_smoothing = " + ScanSmoothing.ToString("X2") + "\r\n" +
-                "key_stereo = " + ScanStereo.ToString("X2") + "\r\nkeys_version = 2\r\n" +
+                "key_stereo = " + ScanStereo.ToString("X2") + "\r\nkeys_version = 3\r\n" +
                 (ChosenLayout >= 0 ? "keys_layout = " + LAYOUT_NAMES[ChosenLayout] + "\r\n" : "") +
                 "; the game's commands changed in the KEYBOARD tab (missions only): [SHIFT+|CTRL+|ALT+]scancode\r\n" +
                 GameKeysIni() +

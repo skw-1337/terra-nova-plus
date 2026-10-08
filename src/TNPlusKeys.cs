@@ -109,7 +109,19 @@ static partial class TNPlus
         foreach (GameKey g in GameKeys) g.Mouse = 0;
         for (int i = 0; i < ToolMouse.Length; i++) ToolMouse[i] = 0;
         foreach (GameKey g in GameKeys) { g.Sc = g.DefSc; g.Mod = g.DefMod; }
-        ScanFreelook = 0x23; ScanNoclip = 0x16; ScanDistance = 0x24; ScanSmoothing = 0x40; ScanStereo = 0x41;
+        ScanFreelook = 0x15; ScanNoclip = 0x16; ScanDistance = 0x24; ScanSmoothing = 0x40; ScanStereo = 0x41;
+        ResolveToolClashes();
+    }
+
+    // a game command on a plain key the tool uses (the game's previous target on Y, freelook's key) goes to the
+    // first free key of these: K L ; 7 8 9 0
+    static readonly int[] SPARE_KEYS = { 0x25, 0x26, 0x27, 0x08, 0x09, 0x0A, 0x0B };
+    static void ResolveToolClashes()
+    {
+        foreach (GameKey g in GameKeys)
+            if (!g.Fixed && g.Mod == 0 && g.Sc < 0x80 && ToolKeyOwner(g.Sc, -1) >= 0)
+                foreach (int f in SPARE_KEYS)
+                    if (ToolKeyOwner(f, -1) < 0 && GameKeyOwner(f, 0, null) == null) { g.Sc = f; break; }
     }
 
     // ---- mouse binds: the middle button, the side buttons and the wheel can press a command's key (or do a tool
@@ -284,7 +296,21 @@ static partial class TNPlus
         int n = GameKeys.Count;
         int[,] ch = new int[n, 2];
         for (int i = 0; i < n; i++) { ch[i, 0] = GameKeys[i].DefSc; ch[i, 1] = GameKeys[i].DefMod; }
-        if (layout == 0) return ch;
+        if (layout > 0) LayoutMoves(layout, ch);
+        for (int i = 0; i < n; i++)                 // off the tool's keys, like ResolveToolClashes
+            if (ch[i, 1] == 0 && ToolKeyOwner(ch[i, 0], -1) >= 0)
+                foreach (int f in SPARE_KEYS)
+                {
+                    bool used = ToolKeyOwner(f, -1) >= 0;
+                    for (int j = 0; j < n && !used; j++) used = ch[j, 0] == f && ch[j, 1] == 0;
+                    if (!used) { ch[i, 0] = f; break; }
+                }
+        return ch;
+    }
+
+    static void LayoutMoves(int layout, int[,] ch)
+    {
+        int n = GameKeys.Count;
         Func<string, int> at = id => GameKeys.FindIndex(g => g.Id == id);
         ch[at("back"), 0] = 0x1F; ch[at("stop"), 0] = 0x2D;        // S back, X stop
         ch[at("sidel"), 0] = 0x1E; ch[at("sider"), 0] = 0x20;      // A / D sidestep (strafe), the mouse turns
@@ -302,7 +328,6 @@ static partial class TNPlus
                 if (free) { ch[i, 0] = sc; moved = true; }
             }
         }
-        return ch;
     }
 
     static int ChosenLayout = -1;                   // ini keys_layout: the preset picked last (QWERTZ gives QWERTY's keys)
