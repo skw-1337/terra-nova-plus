@@ -77,8 +77,8 @@ static partial class TNPlus
     static int ScanSmoothing = 0x58;                // F12: HD smoothing on / off
     static int ScanStereo = 0x41;                   // F7: swap the stereo of the sound effects in game
     static double NoclipSpeed = 15.0;               // game units per second (a walking PBA ~2.5)
-    static int CpuCycles = 700000;                  // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
-    static readonly int[] CYCLE_CHOICES = { 400000, 500000, 600000, 700000, 800000, 0 };
+    static int CpuCycles = 1000000;                 // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
+    static readonly int[] CYCLE_CHOICES = { 500000, 700000, 1000000, 1200000, 1400000, 0 };
     static string GameDir = "";
 
     static readonly string[] DIST_NAMES = { "NORMAL", "FAR", "MAX" };
@@ -2163,6 +2163,7 @@ static partial class TNPlus
         // old defaults (300000 before beta 3, 500000 before the 48-cell terrain): the game is limited by the
         // cycles, not by the PC (DOSBox used 0.6 core at 700000 in HD on the test PC)
         if (speedVer < 3 && (CpuCycles == 300000 || CpuCycles == 500000)) CpuCycles = 700000;
+        if (speedVer < 4 && CpuCycles == 700000) CpuCycles = 1000000;   // the default before the true 16:9 measurements
         ApplyDisplay();
     }
 
@@ -2194,7 +2195,7 @@ static partial class TNPlus
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
-                "; HD, SHARPER terrain, mission 12: 500000 = ~47 fps, 700000 = ~65. DOSBox lowers them when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 3\r\n" +
+                "; true 16:9 HD, SHARPER terrain: 700000 = ~40 fps, 1000000 = ~57, 1200000 = ~70 (about one full CPU core).\r\n; DOSBox lowers them when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 4\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (41 = F7), 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +

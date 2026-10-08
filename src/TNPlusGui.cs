@@ -21,7 +21,7 @@ static partial class TNPlus
     static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono;
 
     static Label guiHelp, guiWarn, guiPreset;
-    static readonly string[] SPEED_NAMES = { "400000", "500000", "600000", "700000", "800000", "GAME'S OWN" };
+    static readonly string[] SPEED_NAMES = { "500000", "700000", "1000000", "1200000", "1400000", "GAME'S OWN" };
     static Sel cbDisplay, cbDetail, cbDist, cbMusic, cbTarget, cbPreset, cbSpeed, cbObj, cbFov, cbWide;
     const int ROW0 = 46, ROWH = 32, CTL_H = 26, COL_CTL = 156, COL_W = 140, COL_BADGE = 306;
     static int PaneH(int rows) { return ROW0 + rows * ROWH - (ROWH - CTL_H) + 14; }
@@ -147,7 +147,7 @@ static partial class TNPlus
         cbTarget = Combo(pLaunch, "Run", 0, new[] { "FULL GAME", "DEMO 1", "DEMO 2" }, null, "The two 1996 demos shipped with GOG and Steam have missions the full game hasn't. No HD there yet.");
         cbPreset = Combo(pLaunch, "Preset", 1, new[] { "ORIGINAL", "CLASSIC+", "BEST", "CUSTOM" }, null, "Presets set picture and controls at once. Fixes and music are yours to choose.");
         cbSpeed = Combo(pLaunch, "CPU speed", 2, SPEED_NAMES, "BETA",
-            "DOSBox CPU cycles: the game runs as fast as they allow. HD, SHARPER terrain, mission 12: 500000 ~47 fps, 700000 ~65. DOSBox lowers them by itself when your PC cannot keep up.");
+            "DOSBox CPU cycles: the game runs as fast as they allow. True 16:9 HD: 700000 ~40 fps, 1000000 ~57, 1200000 ~70 (one full CPU core). DOSBox lowers them by itself when your PC cannot keep up.");
         guiPreset = Lbl(pLaunch, "", 14, PaneH(3) - 4, TSmall, TDim); guiPreset.AutoSize = false; guiPreset.Size = new Size(pw - 28, 20);
 
         // help and warnings: a readout strip like the cockpit's message line

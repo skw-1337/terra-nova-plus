@@ -73,7 +73,7 @@ Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, ad
 - **Object distance** (beta 4, GAME / FAR / MAX, MAX by default). Bushes, trees and rocks were only drawn within 20 terrain cells whatever the detail setting, and units and buildings within a range per type (20 cells for PBAs). FAR draws scenery up to 30 cells and doubles the ranges, MAX goes to 40 cells and triples them (120 cells at most). The engine's fixed-size object list and the limits of its entity walk are raised first so the extra objects fit. The game has no model LOD to improve: objects are always drawn with the same model. Measured on mission 12 in HD: 24 to 65 objects drawn per frame, 84 to 82 fps.
 
 ### Small stuff
-- The tool starts DOSBox with 700000 CPU cycles since beta 4 (**CPU speed** in the launcher, `cpu_cycles` in `TNPlus.ini`, 0 to keep the edition's setting). The Steam and GOG configs ship with 115000, which makes the game crawl. Measured in HD with SHARPER terrain on mission 12: 47 fps at 500000, 65 at 700000. DOSBox used 0.6 CPU core at 700000. When your PC cannot keep up (the infrared view costs about 25 % more per cycle), DOSBox now lowers the cycles for a moment instead of lagging with choppy sound. Higher speeds are safe for the gameplay thanks to the two fixes above.
+- The tool starts DOSBox with 700000 CPU cycles since beta 4 (**CPU speed** in the launcher, `cpu_cycles` in `TNPlus.ini`, 0 to keep the edition's setting). The Steam and GOG configs ship with 115000, which makes the game crawl. Measured in HD with SHARPER terrain on mission 12: 47 fps at 500000, 65 at 700000. DOSBox used 0.6 CPU core at 700000. In true 16:9 (848 columns of 3D) the default is 1000000 since beta 5: 40 fps at 700000, 57 at 1000000, about 70 at 1200000, where emulation takes one full CPU core (more brings nothing on a typical PC: the game's texture loops rewrite their own code, which is costly for DOSBox's recompiler). Our HD code is about 2 % of the emulated time. When your PC cannot keep up (the infrared view costs about 25 % more per cycle), DOSBox now lowers the cycles for a moment instead of lagging with choppy sound. Higher speeds are safe for the gameplay thanks to the two fixes above.
 - View distance moved from `I` to `J`: `I` is the game's infrared. Old settings files are updated on their own.
 
 ## Download & use
@@ -115,7 +115,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps) |
 | `field_of_view` | `GAME` | `GAME`, `90`, `100` or `110`: horizontal field of view in degrees (GAME = 84.5, or 100.9 in 16:9) |
 | `object_distance` | `MAX` | `GAME`, `FAR` or `MAX`: how far scenery, units and buildings are drawn |
-| `cpu_cycles` | `700000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting (an old default, 300000 or 500000, is moved to 700000 once) |
+| `cpu_cycles` | `1000000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting (an old default, 300000, 500000 or 700000, is moved up once) |
 | `sound` | `1` | `0` = no beeps |
 | `game_dir` | *(auto)* | game folder, if auto-detection does not find it |
 
