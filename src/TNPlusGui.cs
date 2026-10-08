@@ -276,7 +276,7 @@ static partial class TNPlus
             }
         }
     }
-    static CheckBox ckFree, ckClip, ckStereo, ckHit, ckPhys, ckAnti;
+    static CheckBox ckFree, ckClip, ckStereo, ckHit, ckPhys;
     static bool guiBusy;                            // refreshing the controls: ignore their events
     static Action guiRedrawGame;
 
@@ -349,11 +349,10 @@ static partial class TNPlus
         cbMusic = Combo(pSnd, "Music", 0, MUSIC_NAMES, "BETA", "");   // AWE32 always offered: found or not is shown below
         Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(1));
         ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), ""); KeyBadge(lastBadge, 0);
-        Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(4));
+        Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(3));
         ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), ""); KeyBadge(lastBadge, 3);
         ckHit = Switch(pFix, "Projectile hits", 1, "BETA", "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
         ckPhys = Switch(pFix, "Physics speed", 2, "BETA", "The game walks faster the higher the frame rate (+65 % at 76 fps), jumps and falls too. Fixed: same speed at any frame rate.");
-        ckAnti = Switch(pFix, "Anti-flicker (HD)", 3, "BETA", "The game's textures have no mipmaps: far away they flicker and swim as soon as the view moves. Each pixel of the 3D is calmed with the frames before (still pixels keep their colour). Shift+F6 in game switches it on and off. About 10 % fps.");
         Panel pCheat = Pane(f, "CHEATS", rx, pFix.Bottom + 10, pw, PaneH(1));
         ckClip = Switch(pCheat, "Noclip", 0, KeyName(ScanNoclip), ""); KeyBadge(lastBadge, 1);
         Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);
@@ -405,7 +404,6 @@ static partial class TNPlus
         cbMusic.Changed += delegate { if (!guiBusy) { OptMusic = cbMusic.Index; GuiRefresh(); } };
         ckHit.CheckedChanged += delegate { if (!guiBusy) { OptHitFix = ckHit.Checked; GuiRefresh(); } };
         ckPhys.CheckedChanged += delegate { if (!guiBusy) { OptPhysFix = ckPhys.Checked; GuiRefresh(); } };
-        ckAnti.CheckedChanged += delegate { if (!guiBusy) { OptAntiFlicker = ckAnti.Checked; GuiRefresh(); } };
         cbSpeed.Changed += delegate { if (!guiBusy) { CpuCycles = CYCLE_CHOICES[cbSpeed.Index]; GuiRefresh(); } };
         cbTarget.Changed += delegate { if (!guiBusy) { LaunchTarget = cbTarget.Index; GuiRefresh(); } };
         cbPreset.CycleMax = 2;
@@ -430,13 +428,13 @@ static partial class TNPlus
         guiBusy = true;
         if (guiRedrawGame != null) guiRedrawGame();
         string why; bool hdOk = HdAvailable(out why);
-        cbDisplay.Items = DisplayLabels(); cbDisplay.Tag = HdHelp() + ". " + KeyName(ScanSmoothing) + " toggles the smoothing in game.";
+        cbDisplay.Items = DisplayLabels(); cbDisplay.Tag = HdHelp() + ".";
         cbDist.Tag = "View distance at mission start. " + KeyName(ScanDistance) + " cycles it in game (click the purple key to change it).";
         ckFree.Tag = "Look around with the mouse, " + KeyName(ScanFreelook) + " in game (click the purple key to change it). Sensitivity and inverted look in TNPlus.ini.";
         ckStereo.Tag = "Only if your sound is mirrored: under DOSBox the game's SB16 driver swaps left and right. " + KeyName(ScanStereo) + " swaps the sound effects in game, to compare.";
         ckClip.Tag = "Fly through everything, " + KeyName(ScanNoclip) + " in game (click the purple key to change it). Speed in TNPlus.ini.";
         guiKeys.Text = "IN GAME   " + KeyName(ScanFreelook) + " freelook   " + KeyName(ScanNoclip) + " noclip   " + KeyName(ScanDistance) + " view distance   " +
-            KeyName(ScanStereo) + " stereo swap   " + KeyName(ScanSmoothing) + " HD smoothing";
+            KeyName(ScanStereo) + " stereo swap";
         foreach (KeyValuePair<Label, int> kb in keyBadges)
         {
             bool wait = kb.Value == rebindKey;
@@ -465,7 +463,7 @@ static partial class TNPlus
             ? (aweRom ? ". awe32.raw found. Experimental: barely tested, some instruments may sound off."
                       : ". awe32.raw (AWE32 ROM, 1 MB, not included) not found next to TNPlus.exe: ROLAND is played instead, see README.")
             : aweRom ? "." : ". Optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README.");
-        ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; ckAnti.Checked = OptAntiFlicker; cbTarget.Set(LaunchTarget);
+        ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; cbTarget.Set(LaunchTarget);
         int sp = Array.IndexOf(CYCLE_CHOICES, CpuCycles);
         if (sp < 0) { var it = new List<string>(SPEED_NAMES); it.Add(CpuCycles.ToString()); cbSpeed.Items = it.ToArray(); sp = SPEED_NAMES.Length; }
         cbSpeed.CycleMax = SPEED_NAMES.Length - 1; cbSpeed.Set(sp);

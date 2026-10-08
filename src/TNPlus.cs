@@ -65,10 +65,6 @@ static partial class TNPlus
     static readonly string[] SCALING_NAMES = { "GAME'S OWN", "SHARP" };
     static bool OptHitFix = true;                   // projectile hit test fixed for high frame rates (see TryHitFix)
     static bool OptPhysFix = true;                  // physics clock fixed for high frame rates (see PHYSFIX_AT)
-    // HD anti-flicker: each pixel of the 3D is the colour halfway between this frame and the last one. The engine's
-    // textures have no mipmaps: far away they flicker from frame to frame as soon as the view moves. Still pixels
-    // keep their colour. Independent of the HD smoothing; Shift + the smoothing key (F6) switches it in game
-    static bool OptAntiFlicker = true;
     static int OptObjDist = 2;                      // object draw distance: 0 GAME, 1 FAR, 2 MAX (see OBJ_*)
     static readonly string[] OBJDIST_NAMES = { "GAME", "FAR", "MAX" };
     static int OptFov = 0;                          // field of view of the main 3D view: index in FOV_NAMES (see FOV_*)
@@ -83,16 +79,15 @@ static partial class TNPlus
     static readonly string[] TARGET_DIRS = { "TNOVA", "TNDEMO1", "TNDEMO2" };
     static int OptDetail = 2;                       // terrain detail: 0 GAME, 1 SHARP, 2 SHARPER
     static int SensX = 12, SensY = 8;               // heading / pitch units per mouse count
-    static bool InvertY = false, Sound = true, HdSmoothing = true;
+    static bool InvertY = false, Sound = true;
     static int ScanFreelook = 0x15, ScanNoclip = 0x16, ScanDistance = 0x24;   // Y U J (physical keys; the game's Y, previous target, goes to K)
-    static int ScanSmoothing = 0x40;                // F6: HD smoothing on / off
     static int ScanStereo = 0x41;                   // F7: swap the stereo of the sound effects in game
     // the in-game keys the launcher can change (click the purple key, press the new one)
-    static readonly string[] KEY_WHAT = { "freelook", "noclip", "view distance", "stereo swap", "HD smoothing" };
-    static int GetKey(int i) { return i == 0 ? ScanFreelook : i == 1 ? ScanNoclip : i == 2 ? ScanDistance : i == 3 ? ScanStereo : ScanSmoothing; }
+    static readonly string[] KEY_WHAT = { "freelook", "noclip", "view distance", "stereo swap" };
+    static int GetKey(int i) { return i == 0 ? ScanFreelook : i == 1 ? ScanNoclip : i == 2 ? ScanDistance : ScanStereo; }
     static void SetKey(int i, int s)
     {
-        if (i == 0) ScanFreelook = s; else if (i == 1) ScanNoclip = s; else if (i == 2) ScanDistance = s; else if (i == 3) ScanStereo = s; else ScanSmoothing = s;
+        if (i == 0) ScanFreelook = s; else if (i == 1) ScanNoclip = s; else if (i == 2) ScanDistance = s; else ScanStereo = s;
     }
     // keys the tool or the game need for themselves: Esc, O (options), noclip up / down / x4 (Space, Left Ctrl,
     // Left Shift), Right Shift, Alt (the game's own keys are checked against the KEYBOARD tab)
@@ -895,7 +890,7 @@ static partial class TNPlus
             right.Add(Line());
             right.Add(Sec("IN GAME"));
             right.Add(Line(S("  "), B(ScanFreelook), S(" freelook  ", ConsoleColor.DarkGray), B(ScanNoclip), S(" noclip  ", ConsoleColor.DarkGray), B(ScanDistance), S(" view", ConsoleColor.DarkGray)));
-            right.Add(Line(S("  "), B(ScanStereo), S(" stereo swap  ", ConsoleColor.DarkGray), B(ScanSmoothing), S(" HD smoothing", ConsoleColor.DarkGray)));
+            right.Add(Line(S("  "), B(ScanStereo), S(" stereo swap", ConsoleColor.DarkGray)));
             right.Add(Line());
             right.Add(Line(S("  "), S(" BETA ", ConsoleColor.Black, ConsoleColor.DarkYellow), S(" new in 1.1.0  ", ConsoleColor.DarkGray), S(" EXPERIMENTAL ", ConsoleColor.White, ConsoleColor.DarkRed), S(" unfinished", ConsoleColor.DarkGray)));
             for (int i = 0; i < Math.Max(left.Count, right.Count); i++)
@@ -911,7 +906,7 @@ static partial class TNPlus
             if (demoMissing) Warn("demo " + LaunchTarget + " not found in the game folder (see README)");
             switch (lastKey)
             {
-                case '1': Note(HdHelp() + "; " + KeyName(ScanSmoothing) + " toggles the smoothing"); break;
+                case '1': Note(HdHelp()); break;
                 case '2': Note("widescreen: STRETCHED = DOSBox stretches the picture, camera corrected; TRUE (HD) = 848x480, the 3D in real 16:9, HUD stretched (needs launching from here)"); break;
                 case '3': Note("more ground detail far away (steep walls stop looking like a saw); costs 10-20 % fps"); break;
                 case '4': Note("view distance at mission start; " + KeyName(ScanDistance) + " cycles it in game"); break;
@@ -1324,7 +1319,7 @@ static partial class TNPlus
             (OptNoclip ? KeyName(ScanNoclip) + " noclip   " : "") + KeyName(ScanDistance) + " view distance");
         if (OptFreelook) Console.WriteLine("Freelook switches off in menus (O / Esc) and when the mission ends.");
         if (OptNoclip) Console.WriteLine("Noclip: move keys, Space / Left Ctrl up / down, Left Shift x4. Land before switching it off!");
-        if (OptHD) Console.WriteLine(HdNow() + ": missions in 320x400 are shown in HD, " + KeyName(ScanSmoothing) + " toggles the 3D smoothing.");
+        if (OptHD) Console.WriteLine(HdNow() + ": missions in 320x400 are shown in HD.");
         Console.WriteLine("When you are done playing, close this window (anti-cheat note: see README).");
         Console.WriteLine();
         attached = false;
@@ -1335,8 +1330,7 @@ static partial class TNPlus
 
         int vkFree = (int)MapVirtualKey((uint)ScanFreelook, 1), vkClip = (int)MapVirtualKey((uint)ScanNoclip, 1);
         int vkDist = (int)MapVirtualKey((uint)ScanDistance, 1), vkOptions = (int)MapVirtualKey(0x18, 1);
-        int vkSmooth = (int)MapVirtualKey((uint)ScanSmoothing, 1);
-        bool prevS = false, prevSt = false;
+        bool prevSt = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
         double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0;
         // mouse binds (by MOUSE_NAMES index): state seen last pass, command pressed, wheel taps
@@ -1437,23 +1431,6 @@ static partial class TNPlus
                     mbPrev[b] = on;
                 }
                 Func<int, bool> toolMouse = t => ToolMouse[t] >= 1 && ToolMouse[t] <= 3 ? mouse.Held[ToolMouse[t]] : ToolMouse[t] >= 4 && mbPulse[ToolMouse[t]];
-                bool s = hdState == 1 && fg && ((plain && Down(vkSmooth)) || toolMouse(4));
-                if (s && !prevS)
-                {
-                    if (Down(0x10))                         // Shift + the smoothing key: the anti-flicker
-                    {
-                        OptAntiFlicker = ReadInt(HdPayload.AntiFlicker) == 0;
-                        WriteInt(HdPayload.AntiFlicker, OptAntiFlicker ? 1 : 0);
-                        Say("HD anti-flicker " + (OptAntiFlicker ? "ON" : "OFF"), OptAntiFlicker ? 1000 : 600);
-                    }
-                    else
-                    {
-                        HdSmoothing = ReadInt(HdPayload.Smoothing) == 0;
-                        WriteInt(HdPayload.Smoothing, HdSmoothing ? 1 : 0);
-                        Say("HD smoothing " + (HdSmoothing ? "ON" : "OFF"), HdSmoothing ? 1000 : 600);
-                    }
-                }
-                prevS = s;
                 bool stk = haveStereo && fg && ((plain && Down(vkStereo)) || toolMouse(3));
                 if (stk && !prevSt)
                 {
@@ -1825,21 +1802,16 @@ static partial class TNPlus
         {
             byte[] zone = Read(HdPayload.Zone, (int)(HdPayload.End - HdPayload.Zone));
             foreach (byte zb in zone) if (zb != 0) { why = "its memory area is not free"; break; }
-            byte[] c2 = Read(HdPayload.Code2, HdPayload.Code2Bytes.Length);
-            if (why == null && !AllZero(c2) && !Same(c2, HdPayload.Code2Bytes)) why = "its memory area is not free";
         }
         if (why != null) { hdState = -1; Say(HdNow() + " unavailable: " + why, 300, 300); return; }
         Write(HdPayload.Data, HdPayload.DataInit);
         Write(HdPayload.Code, HdPayload.CodeBytes);
-        Write(HdPayload.Code2, HdPayload.Code2Bytes);      // anti-flicker, called by the HD code
         for (int i = 0; i < n; i++) Write(HdPayload.PatchAt[i], HdPayload.PatchNew[i]);
-        WriteInt(HdPayload.Smoothing, HdSmoothing ? 1 : 0);
-        WriteInt(HdPayload.AntiFlicker, OptAntiFlicker ? 1 : 0);
+        WriteInt(HdPayload.Smoothing, 0);               // the HD smoothing: left in the payload, no longer offered
         WriteInt(HdPayload.HudFilter, 0);              // Scale2x HUD: left in the payload, no longer offered
         if (HdPayload.HudStretch != 0) WriteInt(HdPayload.HudStretch, OptWideHud ? 1 : 0);
         hdState = 1;
-        Say(HdNow() + " ready: missions in 320x400 will be in HD (" + KeyName(ScanSmoothing) + " smoothing " +
-            (HdSmoothing ? "ON" : "OFF") + ")", 1000);
+        Say(HdNow() + " ready: missions in 320x400 will be in HD", 1000);
     }
 
     static bool Same(byte[] a, byte[] b)
@@ -2293,10 +2265,8 @@ static partial class TNPlus
                     case "scaling": OptScaling = Math.Max(0, Array.IndexOf(SCALING_NAMES, v.ToUpperInvariant())); break;
                     case "music": OptMusic = Math.Max(0, Array.IndexOf(MUSIC_NAMES, v.ToUpperInvariant())); break;
                     case "hd": oldHd = v != "0"; break;
-                    case "hd_smoothing": HdSmoothing = v != "0"; break;
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
-                    case "anti_flicker": OptAntiFlicker = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
@@ -2304,7 +2274,6 @@ static partial class TNPlus
                     case "edge_objects": OptEdge = v != "0"; break;
                     case "field_of_view": OptFov = Math.Max(0, Array.IndexOf(FOV_NAMES, v.ToUpperInvariant())); break;
                     case "object_distance": OptObjDist = Math.Max(0, Array.IndexOf(OBJDIST_NAMES, v.ToUpperInvariant())); break;
-                    case "key_smoothing": ScanSmoothing = Convert.ToInt32(v, 16); break;
                     case "key_stereo": ScanStereo = Convert.ToInt32(v, 16); break;
                     case "sensitivity_x": SensX = int.Parse(v); break;
                     case "sensitivity_y": SensY = int.Parse(v); break;
@@ -2329,9 +2298,7 @@ static partial class TNPlus
         if (speedVer < 3 && (CpuCycles == 300000 || CpuCycles == 500000)) CpuCycles = 700000;
         if (speedVer < 4 && CpuCycles == 700000) CpuCycles = 1000000;   // the default before the true 16:9 measurements
         // freelook was on H in beta 5 (Y before): back on Y, the game's previous target moves to K.
-        // F12 is the game's mission info key: F6 since beta 5
         if (keysVer < 3 && ScanFreelook == 0x23) ScanFreelook = 0x15;
-        if (keysVer < 2 && ScanSmoothing == 0x58) ScanSmoothing = 0x40;
         ResolveToolClashes();
         ApplyDisplay();
     }
@@ -2355,11 +2322,8 @@ static partial class TNPlus
                 "scaling = " + SCALING_NAMES[OptScaling] + "\r\n" +
                 "; ROLAND, FM, GAME'S OWN or AWE32 (music of the game and demos; AWE32 needs awe32.raw, an AWE32 ROM dump,\r\n" +
                 "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +
-                "; HD smoothing at start (toggled in game with key_smoothing)\r\nhd_smoothing = " + (HdSmoothing ? 1 : 0) + "\r\n" +
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
-                "; 1 = HD anti-flicker: far textures that flicker when the view moves are calmed (Shift+F6 in game)\r\n" +
-                "anti_flicker = " + (OptAntiFlicker ? 1 : 0) + "\r\n" +
                 "; GAME, 90, 100 or 110: horizontal field of view of the 3D view in degrees (the game: 84.5)\r\nfield_of_view = " + FOV_NAMES[OptFov] + "\r\n" +
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
                 "; 1 = terrain and objects up to the screen edges with a wider field of view or true 16:9 (beta)\r\nedge_objects = " + (OptEdge ? 1 : 0) + "\r\n" +
@@ -2374,7 +2338,7 @@ static partial class TNPlus
                 "; keys as PHYSICAL key scancodes (hex): 23 = H, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (40 = F6, 41 = F7), 57 = F11, 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
-                "key_distance = " + ScanDistance.ToString("X2") + "\r\nkey_smoothing = " + ScanSmoothing.ToString("X2") + "\r\n" +
+                "key_distance = " + ScanDistance.ToString("X2") + "\r\n" +
                 "key_stereo = " + ScanStereo.ToString("X2") + "\r\nkeys_version = 3\r\n" +
                 (ChosenLayout >= 0 ? "keys_layout = " + LAYOUT_NAMES[ChosenLayout] + "\r\n" : "") +
                 "; the game's commands changed in the KEYBOARD tab (missions only): [SHIFT+|CTRL+|ALT+]scancode\r\n" +

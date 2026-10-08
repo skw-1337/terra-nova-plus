@@ -622,12 +622,7 @@
    "what": "game keys code"
   },
   {
-   "from": "0x46AE58",
-   "to": "0x46AFF6",
-   "what": "HD anti-flicker code"
-  },
-  {
-   "from": "0x46AFF6",
+   "from": "0x46AE54",
    "to": "0x46B024",
    "what": "free"
   }

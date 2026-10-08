@@ -68,8 +68,7 @@ Terra Nova Plus makes object 3 0x6000 bytes bigger in the exe file. The original
 | 0x46A200 – 0x46A2AB | true 16:9 camera |
 | 0x46A300 – 0x46AA16 | edge objects code |
 | 0x46AA20 – 0x46AE54 | game keys code |
-| 0x46AE58 – 0x46AFF6 | HD anti-flicker code (called by the HD code after each 3D frame) |
-| 0x46AFF6 – 0x46B024 | free |
+| 0x46AE54 – 0x46B024 | free |
 
 Patch sites in the game code are listed in the JSON, with the bytes before and after.
 

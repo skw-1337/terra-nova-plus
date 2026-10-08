@@ -109,7 +109,7 @@ static partial class TNPlus
         foreach (GameKey g in GameKeys) g.Mouse = 0;
         for (int i = 0; i < ToolMouse.Length; i++) ToolMouse[i] = 0;
         foreach (GameKey g in GameKeys) { g.Sc = g.DefSc; g.Mod = g.DefMod; }
-        ScanFreelook = 0x15; ScanNoclip = 0x16; ScanDistance = 0x24; ScanSmoothing = 0x40; ScanStereo = 0x41;
+        ScanFreelook = 0x15; ScanNoclip = 0x16; ScanDistance = 0x24; ScanStereo = 0x41;
         ResolveToolClashes();
     }
 
@@ -129,8 +129,8 @@ static partial class TNPlus
     static readonly string[] MOUSE_NAMES = { "", "MID", "M4", "M5", "WH+", "WH-" };
     static readonly string[] MOUSE_INI = { "", "MID", "M4", "M5", "WHEELUP", "WHEELDOWN" };
     static readonly string[] MOUSE_LONG = { "", "middle click", "side button 4", "side button 5", "wheel up", "wheel down" };
-    static readonly string[] TOOL_IDS = { "freelook", "noclip", "distance", "stereo", "smoothing" };   // KEY_WHAT order
-    static readonly int[] ToolMouse = new int[5];
+    static readonly string[] TOOL_IDS = { "freelook", "noclip", "distance", "stereo" };   // KEY_WHAT order
+    static readonly int[] ToolMouse = new int[4];
 
     static string MouseOwner(int m)
     {
