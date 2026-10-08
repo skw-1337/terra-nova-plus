@@ -228,7 +228,8 @@ static partial class TNPlus
     }
 
     // ---- keyboard layout presets. GAME = the game's own keys. The others: moves on W A S D as in today's games
-    // (Z Q S D on AZERTY: the game reads key positions), so Back takes S and Stop takes X (the game: S stop, X back);
+    // (Z Q S D on AZERTY: the game reads key positions): S back and X stop (the game: S stop, X back), A / D sidestep
+    // and Z / C turn (the game: A / D turn, Z / C sidestep);
     // look and number keys keep their place; the letter shortcuts follow the letter printed on the keyboard, a letter
     // that lands on a key already used keeps the game's place. Other QWERTY countries (UK, ES, IT, Nordic...) have
     // their letters where QWERTY has them.
@@ -284,8 +285,10 @@ static partial class TNPlus
         int[,] ch = new int[n, 2];
         for (int i = 0; i < n; i++) { ch[i, 0] = GameKeys[i].DefSc; ch[i, 1] = GameKeys[i].DefMod; }
         if (layout == 0) return ch;
-        int back = GameKeys.FindIndex(g => g.Id == "back"), stop = GameKeys.FindIndex(g => g.Id == "stop");
-        ch[back, 0] = 0x1F; ch[stop, 0] = 0x2D;    // S back, X stop
+        Func<string, int> at = id => GameKeys.FindIndex(g => g.Id == id);
+        ch[at("back"), 0] = 0x1F; ch[at("stop"), 0] = 0x2D;        // S back, X stop
+        ch[at("sidel"), 0] = 0x1E; ch[at("sider"), 0] = 0x20;      // A / D sidestep (strafe), the mouse turns
+        ch[at("turnl"), 0] = 0x2C; ch[at("turnr"), 0] = 0x2E;      // Z / C turn
         for (bool moved = true; moved; )
         {
             moved = false;

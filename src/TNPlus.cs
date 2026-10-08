@@ -1337,7 +1337,9 @@ static partial class TNPlus
         // noclip moves on the game's Forward / Turn left / Turn right keys and the one on S (W A S D unless changed)
         int kBack = PlainKey("back", 0x2D) == 0x1F ? 0x1F : PlainKey("stop", 0x1F);   // the key on S: Stop (game), Back (presets)
         int[] vkFwd = { (int)MapVirtualKey((uint)PlainKey("fwd", 0x11), 1) }, vkBack = { (int)MapVirtualKey((uint)kBack, 1) };
-        int[] vkLeft = { (int)MapVirtualKey((uint)PlainKey("turnl", 0x1E), 1) }, vkRight = { (int)MapVirtualKey((uint)PlainKey("turnr", 0x20), 1) };
+        // noclip sideways on the keys on A / D: Turn (game) or Sidestep (presets)
+        int kLeft = PlainKey("sidel", 0x2C) == 0x1E ? 0x1E : PlainKey("turnl", 0x1E), kRight = PlainKey("sider", 0x2E) == 0x20 ? 0x20 : PlainKey("turnr", 0x20);
+        int[] vkLeft = { (int)MapVirtualKey((uint)kLeft, 1) }, vkRight = { (int)MapVirtualKey((uint)kRight, 1) };
         const int VK_ESCAPE = 0x1B, VK_SPACE = 0x20, VK_LCONTROL = 0xA2, VK_LSHIFT = 0xA0;
         RawMouse mouse = new RawMouse();
         timeBeginPeriod(1);                         // 1-2 ms sleeps instead of ~15.6 ms: smoother
