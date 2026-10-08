@@ -129,19 +129,24 @@ static partial class TNPlus
     static readonly byte[][] WIDE_C_OLD = { new byte[] { 0xE8, 0x4F, 0xDF, 0x04, 0x00 }, new byte[] { 0xE8, 0x5F, 0xDD, 0x04, 0x00 } };
     static readonly byte[][] WIDE_C_NEW = { new byte[] { 0xE8, 0x31, 0xB9, 0x1C, 0x00 }, new byte[] { 0xE8, 0x21, 0xB9, 0x1C, 0x00 } };
     // True 16:9 (HD): the main view is drawn 848 columns wide, and the engine scales its projection on the canvas
-    // width (the screen centre doubles as the focal length), so the picture came out stretched x848/596 with the
-    // same field of view, while the 3D library (buildings, units) kept its own scale: they slid on the ground.
-    // Same cure as stretched 16:9, for the main camera only: vertical scale x848/596 at its set-up, the library's
-    // pixel ratio x596/848 while the HD view is drawn, effective zoom x596/848: the middle is the 4:3 view again
-    // and the sides show more of the world.
-    const uint TRUE_B = 0x46A0B0, TRUE_C = 0x46A0C8;
-    const double TRUE_F = 596.0 / 848;              // cockpit 3D window (2 x 298 HD columns) / drawn width
-    static readonly string[] TRUE_B_CODE = { "81FED4FB3800750AF72D04A046000FACD01089C2894604C3", "81FE24FB3800750AF72D04A046000FACD01089C2894604C3" };
+    // width (the screen centre doubles as the focal length), so the picture came out stretched x848/(2 x canvas)
+    // with the same field of view, while the 3D library (buildings, units, target box) kept its own scale: they
+    // slid on the ground. Same cure as stretched 16:9, for the main camera only, with F = 2 x canvas width / 848
+    // (298 in the cockpit, 320 in the full view) read by the game code itself: effective zoom x F and vertical
+    // scale x1/F at its set-up, the library's pixel ratio x F while the HD view is drawn. The middle is the 4:3
+    // view again and the sides show more of the world. Code at 0x46A200 (set-up), 0x46A290 (scale), 0x46A2B0 (ratio);
+    // 0x46A00C = zoom factor of the last set-up, 0x46A1F8 = 2 x its canvas width.
+    const uint TRUE_A = 0x46A200, TRUE_B = 0x46A290, TRUE_C = 0x46A2B0;
+    static readonly string[] TRUE_A_CODE = {
+        "50528B44241001C0A3F8A14600F72D00A04600BB50030000F7FBA30CA046005A5851B80000010029C8BA40AF2F00FFD2BF0000020029C7598B1E81FED4FB3800752689C8F72D0CA046000FACD0108944240485DB741289D889C2C1FA10C1E010F73D0CA0460089C385DB7506BD00000100C3B80000010029D8BA40AF2F00FFD2BD0000020029C5C3",
+        "50528B44241001C0A3F8A14600F72D00A04600BB50030000F7FBA30CA046005A5851B80000010029C8BAB0AC2F00FFD2BF0000020029C7598B1E81FE24FB3800752689C8F72D0CA046000FACD0108944240485DB741289D889C2C1FA10C1E010F73D0CA0460089C385DB7506BD00000100C3B80000010029D8BAB0AC2F00FFD2BD0000020029C5C3" };
+    static readonly string[] TRUE_B_CODE = { "81FED4FB3800750DBA50030000F7EAF73DF8A1460089C2894604C3", "81FE24FB3800750DBA50030000F7EAF73DF8A1460089C2894604C3" };
     static readonly string[] TRUE_C_CODE = {
-        "B8A5C62E00FFD081FDD4FB38007521833D046146000074185052A176233600F72D08A046000FACD010A3762336005A58C3",
-        "B8C5C42E00FFD081FD24FB38007521833D046146000074185052A1CE223600F72D08A046000FACD010A3CE2236005A58C3" };
-    static readonly byte[][] TRUE_B_NEW = { new byte[] { 0xE8, 0x4A, 0xB6, 0x1C, 0x00 }, new byte[] { 0xE8, 0x3A, 0xB6, 0x1C, 0x00 } };
-    static readonly byte[][] TRUE_C_NEW = { new byte[] { 0xE8, 0x72, 0xB9, 0x1C, 0x00 }, new byte[] { 0xE8, 0x62, 0xB9, 0x1C, 0x00 } };
+        "B8A5C62E00FFD081FDD4FB38007525833D0461460000741C5052A17861460001C0F72D76233600F73D84614600A3762336005A58C3",
+        "B8C5C42E00FFD081FD24FB38007525833D0461460000741C5052A17861460001C0F72DCE223600F73D84614600A3CE2236005A58C3" };
+    static readonly byte[][] TRUE_A_NEW = { new byte[] { 0xE8, 0xC8, 0xB9, 0x1C, 0x00, 0xEB, 0x2C }, new byte[] { 0xE8, 0xB8, 0xB9, 0x1C, 0x00, 0xEB, 0x2C } };
+    static readonly byte[][] TRUE_B_NEW = { new byte[] { 0xE8, 0x2A, 0xB8, 0x1C, 0x00 }, new byte[] { 0xE8, 0x1A, 0xB8, 0x1C, 0x00 } };
+    static readonly byte[][] TRUE_C_NEW = { new byte[] { 0xE8, 0x5A, 0xBB, 0x1C, 0x00 }, new byte[] { 0xE8, 0x4A, 0xBB, 0x1C, 0x00 } };
     static bool wideHooks = false;                  // 16:9 done by the hooks (else the old pixel ratio way)
     static int fovState = 0;                        // 0 to do, 1 on, -1 off or unavailable
 
@@ -179,23 +184,30 @@ static partial class TNPlus
             byte[] h = Read(FOV_HOOK[lang], 7), c = Read(FOV_CAVE + 0x10, code.Length);
             bool free = true;
             foreach (byte x in c) if (x != 0) { free = false; break; }
-            if (!(Same(h, FOV_HOOK_OLD) || Same(h, FOV_HOOK_NEW[lang])) || !(free || Same(c, code))) continue;
+            if (!(Same(h, FOV_HOOK_OLD) || Same(h, FOV_HOOK_NEW[lang]) || Same(h, TRUE_A_NEW[lang])) || !(free || Same(c, code))) continue;
             byte[] hb = Read(WIDE_HOOK_B[lang], 5), hc = Read(WIDE_HOOK_C[lang], 5);
             bool wideOk = wide && (Same(hb, WIDE_B_OLD) || Same(hb, WIDE_B_NEW[lang])) && (Same(hc, WIDE_C_OLD[lang]) || Same(hc, WIDE_C_NEW[lang]));
             if (wide && !wideOk) { if (deg == 0) return; k /= 0.75; }   // 16:9 left to the old way: plain field of view
             bool trueOk = trueWide && (Same(hb, WIDE_B_OLD) || Same(hb, TRUE_B_NEW[lang])) && (Same(hc, WIDE_C_OLD[lang]) || Same(hc, TRUE_C_NEW[lang]));
-            if (trueOk) k *= TRUE_F;
+            if (trueOk)
+            {
+                byte[] tc = Read(TRUE_A, 0x100);
+                bool tfree = true;
+                foreach (byte x in tc) if (x != 0) { tfree = false; break; }
+                trueOk = tfree || Same(Read(TRUE_A, TRUE_A_CODE[lang].Length / 2), Hex(TRUE_A_CODE[lang]));
+            }
             byte[] data = new byte[16];
             BitConverter.GetBytes((int)Math.Round(65536 * (wideOk || trueOk ? k : (deg > 0 ? k : 1)))).CopyTo(data, 0);
-            BitConverter.GetBytes(wideOk ? 0x15555 : trueOk ? (int)Math.Round(65536 / TRUE_F) : 0x10000).CopyTo(data, 4);
-            BitConverter.GetBytes(wideOk ? 0xC000 : trueOk ? (int)Math.Round(65536 * TRUE_F) : 0x10000).CopyTo(data, 8);
+            BitConverter.GetBytes(wideOk ? 0x15555 : 0x10000).CopyTo(data, 4);
+            BitConverter.GetBytes(wideOk ? 0xC000 : 0x10000).CopyTo(data, 8);
             Write(FOV_CAVE, data);
             Write(FOV_CAVE + 0x10, code);           // the code first, then the call to it
-            Write(FOV_HOOK[lang], FOV_HOOK_NEW[lang]);
+            if (trueOk) Write(TRUE_A, Hex(TRUE_A_CODE[lang]));
+            Write(FOV_HOOK[lang], trueOk ? TRUE_A_NEW[lang] : FOV_HOOK_NEW[lang]);
             if (wideOk) { Write(WIDE_HOOK_B[lang], WIDE_B_NEW[lang]); Write(WIDE_HOOK_C[lang], WIDE_C_NEW[lang]); wideHooks = true; }
             if (trueOk)
             {
-                Write(TRUE_B, Hex(TRUE_B_CODE[lang])); Write(TRUE_C, Hex(TRUE_C_CODE[lang]));
+                Write(TRUE_B, Hex(TRUE_B_CODE[lang])); Write(TRUE_C, Hex(TRUE_C_CODE[lang]));   // before the calls to them
                 Write(WIDE_HOOK_B[lang], TRUE_B_NEW[lang]); Write(WIDE_HOOK_C[lang], TRUE_C_NEW[lang]);
             }
             if (wideOk)
