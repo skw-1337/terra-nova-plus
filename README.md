@@ -6,7 +6,7 @@ One small external tool. Pick your options in its window, click Launch, and the 
 
 | Option | Key in game | What it does |
 |---|---|---|
-| **Mouse freelook** | `H` | Mouse left/right turns your PBA, up/down looks up/down, the aiming reticle stays centred: you fire where you look. Smooth (~500 updates per second), no screen shake, no reticle trails on the cockpit. |
+| **Mouse freelook** | `Y` | Mouse left/right turns your PBA, up/down looks up/down, the aiming reticle stays centred: you fire where you look. Smooth (~500 updates per second), no screen shake, no reticle trails on the cockpit. |
 | **Noclip** | `U` | Free flight: your usual move keys, `Space` / `Left Ctrl` up/down, `Left Shift` ×4 speed. Great to explore the maps and look at the scenery. |
 | **View distance** | `J` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
 | **Display** | — | `ORIGINAL`, `320x400` (the engine's best resolution, applied in every mission: the game normally only keeps it in save files) or `HD`: the 3D drawn at twice the width, 640x400 (848x480 in true 16:9). |
@@ -46,7 +46,7 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 ### Keyboard (beta 5)
 - The **KEYBOARD** tab lists every command of the game's key card (movement, view, weapons, squad orders, map, drone, system) and the tool's own keys. Click a key, then press the new one, alone or with Alt, Ctrl or Shift: any command can take any key or combination, squad orders without Alt included. A key already used by another command swaps with it. **RESET ALL KEYS** brings back the defaults.
 - Keys are shown as printed on the keyboard of the LAYOUT preset you picked (GAME: your Windows keyboard). Shift + move keys (bound) and Ctrl + move or view keys (drone) follow your move and view keys.
-- **LAYOUT** presets: GAME (the game's own keys), QWERTY (also UK, Spanish, Italian, Nordic...), AZERTY, QWERTZ, DVORAK and COLEMAK. The keyboard presets move on W A S D as in today's games, Z Q S D on AZERTY (the game reads key positions): S moves back and X stops, Q / A and D sidestep (strafe) and Z / C turn (W / C on AZERTY): the game has S stop, X back, A / D turn and Z / C sidestep, and the mouse turns with freelook. Look and number keys keep their place; the letter shortcuts follow the letters printed on your keyboard (M map to HUD, P pause, G full-screen, T target, the Alt + letter squad orders...). A letter that lands on a key already used keeps the game's place: on AZERTY, M and the Alt+A / Alt+M orders move; on QWERTZ only the moves change.
+- **LAYOUT** presets: GAME (the game's own keys, previous target on K since Y is freelook), QWERTY (also UK, Spanish, Italian, Nordic...), AZERTY, QWERTZ, DVORAK and COLEMAK. The keyboard presets move on W A S D as in today's games, Z Q S D on AZERTY (the game reads key positions): S moves back and X stops, Q / A and D sidestep (strafe) and Z / C turn (W / C on AZERTY): the game has S stop, X back, A / D turn and Z / C sidestep, and the mouse turns with freelook. Look and number keys keep their place; the letter shortcuts follow the letters printed on your keyboard (M map to HUD, P pause, G full-screen, T target, the Alt + letter squad orders...). A letter that lands on a key already used keeps the game's place: on AZERTY, M and the Alt+A / Alt+M orders move; on QWERTZ only the moves change.
 - Only during missions: menus and the names you type keep the keyboard as it is. Options (`O`) and Abort mission (`Ctrl+Esc`) stay where they are, and the extended keys (arrows, Page Up...) can't be picked as new keys.
 - Noclip moves on your Forward / Stop / Turn keys.
 - **Mouse binds** (green, next to each key): the middle button, the side buttons (4, 5) and the wheel up / down can also press a command or do a tool action (freelook...). Click the green badge, then the mouse button or a wheel notch; `Del` removes it. One mouse input per command, none by default; the left and right buttons stay the game's (fire, lock target). They work with the game in front, during missions; a wheel notch is a short press. With a bind on the middle button, DOSBox no longer releases the mouse on a middle click (game started from the launcher).
@@ -114,10 +114,10 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 
 ## Tips
 
-- **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `H` again when you are back. Switch it off to click the cockpit buttons with the mouse.
+- **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
 - **Noclip**: land before switching it off — switching it off in mid-air means a free fall.
 - **Widescreen STRETCHED** is anamorphic: the engine draws 320 pixels across, so the cockpit and the menus are stretched a little; the 3D keeps correct proportions. **TRUE** needs HD and the game started from the launcher. The cockpit and HUD are stretched like in STRETCHED (`wide_hud = 0` keeps them at their own proportions in the middle, with black above and below the 3D on the sides), the menus are stretched too, and the mouse is captured when you click in the window (DOSBox releases it with its usual key).
-- Keys are **physical key positions**: `H`, `U`, `J` are the same keys on QWERTY and AZERTY. To change one, click its purple key in the launcher and press the new key (`Esc` cancels), or edit `TNPlus.ini`. Beta 5 moved freelook from `Y` (the game's previous target key) to `H`, and the HD smoothing from `F12` to `F6`; an ini still on the old keys is moved once.
+- Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. To change one, click its purple key in the launcher and press the new key (`Esc` cancels), or edit `TNPlus.ini`. Freelook is on `Y`, so the game's own `Y` (previous target) moves to `K`. The HD smoothing moved from `F12` (the game's mission info) to `F6`. An ini still on the old keys is moved once.
 
 ## Settings (`TNPlus.ini`)
 
@@ -133,7 +133,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `sensitivity_x`, `sensitivity_y` | `12`, `8` | mouse speed (heading / pitch units per mouse count) |
 | `invert_y` | `0` | `1` = inverted vertical look |
 | `noclip_speed` | `15` | game units per second (a walking PBA does about 2) |
-| `key_freelook`, `key_noclip`, `key_distance` | `23`, `16`, `24` | **physical key scancodes** (hex): `23` = H, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
+| `key_freelook`, `key_noclip`, `key_distance` | `15`, `16`, `24` | **physical key scancodes** (hex): `15` = Y, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
 | `key_smoothing`, `key_stereo` | `40`, `41` | F6, F7 |
 | `keys_layout` | — | the LAYOUT preset picked last |
 | `mouse_<command>` | — | mouse binds: `MID`, `M4`, `M5`, `WHEELUP`, `WHEELDOWN` (e.g. `mouse_tnext = WHEELUP`, `mouse_freelook = MID`) |
