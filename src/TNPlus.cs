@@ -135,12 +135,13 @@ static partial class TNPlus
     // (298 in the cockpit, 320 in the full view) read by the game code itself: effective zoom x F and vertical
     // scale x1/F at its set-up, the library's pixel ratio x F while the HD view is drawn. The middle is the 4:3
     // view again and the sides show more of the world. Code at 0x46A200 (set-up), 0x46A290 (scale), 0x46A2B0 (ratio);
-    // 0x46A00C = zoom factor of the last set-up, 0x46A1F8 = 2 x its canvas width.
+    // 0x469400 = zoom factor of the last set-up, 0x469404 = 2 x its canvas width (a page without code: DOSBox's
+    // dynamic core recompiles a code page that gets written, which can crash).
     const uint TRUE_A = 0x46A200, TRUE_B = 0x46A290, TRUE_C = 0x46A2B0;
     static readonly string[] TRUE_A_CODE = {
-        "50528B44241001C0A3F8A14600F72D00A04600BB50030000F7FBA30CA046005A5851B80000010029C8BA40AF2F00FFD2BF0000020029C7598B1E81FED4FB3800752689C8F72D0CA046000FACD0108944240485DB741289D889C2C1FA10C1E010F73D0CA0460089C385DB7506BD00000100C3B80000010029D8BA40AF2F00FFD2BD0000020029C5C3",
-        "50528B44241001C0A3F8A14600F72D00A04600BB50030000F7FBA30CA046005A5851B80000010029C8BAB0AC2F00FFD2BF0000020029C7598B1E81FE24FB3800752689C8F72D0CA046000FACD0108944240485DB741289D889C2C1FA10C1E010F73D0CA0460089C385DB7506BD00000100C3B80000010029D8BAB0AC2F00FFD2BD0000020029C5C3" };
-    static readonly string[] TRUE_B_CODE = { "81FED4FB3800750DBA50030000F7EAF73DF8A1460089C2894604C3", "81FE24FB3800750DBA50030000F7EAF73DF8A1460089C2894604C3" };
+        "50528B44241001C0A304944600F72D00A04600BB50030000F7FBA3009446005A5851B80000010029C8BA40AF2F00FFD2BF0000020029C7598B1E81FED4FB3800752689C8F72D009446000FACD0108944240485DB741289D889C2C1FA10C1E010F73D0094460089C385DB7506BD00000100C3B80000010029D8BA40AF2F00FFD2BD0000020029C5C3",
+        "50528B44241001C0A304944600F72D00A04600BB50030000F7FBA3009446005A5851B80000010029C8BAB0AC2F00FFD2BF0000020029C7598B1E81FE24FB3800752689C8F72D009446000FACD0108944240485DB741289D889C2C1FA10C1E010F73D0094460089C385DB7506BD00000100C3B80000010029D8BAB0AC2F00FFD2BD0000020029C5C3" };
+    static readonly string[] TRUE_B_CODE = { "81FED4FB3800750DBA50030000F7EAF73D0494460089C2894604C3", "81FE24FB3800750DBA50030000F7EAF73D0494460089C2894604C3" };
     static readonly string[] TRUE_C_CODE = {
         "B8A5C62E00FFD081FDD4FB38007525833D0461460000741C5052A17861460001C0F72D76233600F73D84614600A3762336005A58C3",
         "B8C5C42E00FFD081FD24FB38007525833D0461460000741C5052A17861460001C0F72DCE223600F73D84614600A3CE2236005A58C3" };
@@ -325,24 +326,27 @@ static partial class TNPlus
     const string EN_SHA_READY3 = "da65ac1bc7542b4819edb48ed52de4cf23d460072ae5dd7bd8a7bd46d9b1a9c6";
     const string HD_SHA_READY4 = "fcf516dc17b13ff0c5c1931b6a8953d189e80bd49f3f56de5cc2f02ae82e1af9";   // object 3 +24 KB
     const string EN_SHA_READY4 = "63aa6a1d72ed81b18be91e8869b69cdef303e7d0021153f54b21dd953b5764c2";
+    const string HD_SHA_READY5 = "40622bfcf3cc486917cd0416ec4c83d96dfbd958ad48be842ce78532415f87b5";   // + 6400 clipping points
+    const string EN_SHA_READY5 = "0d3a21ad4159fa86673e66a21d0d34b0b3dd3ae87e6cbb71410dc083c9f36dca";
     static bool KnownSha(string sha)
     {
-        return sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY || sha == HD_SHA_READY2 || sha == HD_SHA_READY3 || sha == HD_SHA_READY4 ||
-               sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3 || sha == EN_SHA_READY4;
+        return sha == HD_SHA_ORIGINAL || sha == HD_SHA_READY || sha == HD_SHA_READY2 || sha == HD_SHA_READY3 || sha == HD_SHA_READY4 || sha == HD_SHA_READY5 ||
+               sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3 || sha == EN_SHA_READY4 || sha == EN_SHA_READY5;
     }
-    static bool EnglishSha(string sha) { return sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3 || sha == EN_SHA_READY4; }
+    static bool EnglishSha(string sha) { return sha == EN_SHA || sha == EN_SHA_READY || sha == EN_SHA_READY2 || sha == EN_SHA_READY3 || sha == EN_SHA_READY4 || sha == EN_SHA_READY5; }
 
     // Far smooth terrain. The polygons of the near ground are joined through a map of shared vertices that the
     // engine indexes with 6 bits per axis (64x64, so 31 cells at most), and its buffers are allocated every
     // frame from a 312 KB render pool. In the exe: the map goes to 7 bits per axis (128x128: masks 0x3F -> 0x7F,
     // shifts 6 -> 7, at all its writers and the quad builder; the rasterizer reads it unmasked), the buffers
-    // are sized for 48 cells with a 2x margin (4096 quads, 4608 vertices, 1600 clipping points) and the pool to 1 MB (the game
+    // are sized for 48 cells with a 2x margin (4096 quads, 4608 vertices, 6400 clipping points) and the pool to 1.5 MB (the game
     // runs with 30 MB). The pool has to be set before the game allocates it at start-up, hence the file.
     // Addresses are the game's (file offset = address - 0x1AAB5C), French then English.
     struct ExePatch
     {
-        public uint Fr, En; public string Old, New;
-        public ExePatch(uint fr, uint en, string o, string n) { Fr = fr; En = en; Old = o; New = n; }
+        public uint Fr, En; public string Old, New, Prev;   // Prev: what an earlier TNPlus wrote there (upgrade)
+        public ExePatch(uint fr, uint en, string o, string n) { Fr = fr; En = en; Old = o; New = n; Prev = null; }
+        public ExePatch(uint fr, uint en, string o, string p, string n) { Fr = fr; En = en; Old = o; New = n; Prev = p; }
     }
     static readonly ExePatch[] TERRAIN_EXE = {
         new ExePatch(0x2AA2EB, 0x2AA2FB, "80E33F", "80E37F"), new ExePatch(0x2AA2EE, 0x2AA2FE, "80E13F", "80E17F"), new ExePatch(0x2AA2F5, 0x2AA305, "C1E306", "C1E307"),
@@ -361,18 +365,18 @@ static partial class TNPlus
         new ExePatch(0x2AB0C4, 0x2AB0D4, "B8C03E0000", "B840000200"),   // quads 500 -> 4096
         new ExePatch(0x2ADEFF, 0x2ADF0F, "B842720000", "B800BE0200"),   // vertices 750 -> 4608
         new ExePatch(0x2ADF0E, 0x2ADF1E, "B8007D0000", "B800000400"),   // triangles 1000 -> 8192
-        new ExePatch(0x2B0511, 0x2B0521, "B8E0790000", "B8C0F30000"),   // clipping points 800 -> 1600
-        new ExePatch(0x2B0C7C, 0x2B0C8C, "81FB20030000", "81FB40060000"),   // its limit
-        new ExePatch(0x2B0DC1, 0x2B0DD1, "81FB20030000", "81FB40060000"),   // its limit
-        new ExePatch(0x2B0EE5, 0x2B0EF5, "81FB20030000", "81FB40060000"),   // its limit
-        new ExePatch(0x2B1012, 0x2B1022, "81FB20030000", "81FB40060000"),   // its limit
-        new ExePatch(0x2B1136, 0x2B1146, "81FB20030000", "81FB40060000"),   // its limit
+        new ExePatch(0x2B0511, 0x2B0521, "B8E0790000", "B8C0F30000", "B800CF0300"),   // clipping points 800 -> 6400 (*)
+        new ExePatch(0x2B0C7C, 0x2B0C8C, "81FB20030000", "81FB40060000", "81FB00190000"),   // its limit
+        new ExePatch(0x2B0DC1, 0x2B0DD1, "81FB20030000", "81FB40060000", "81FB00190000"),   // its limit
+        new ExePatch(0x2B0EE5, 0x2B0EF5, "81FB20030000", "81FB40060000", "81FB00190000"),   // its limit
+        new ExePatch(0x2B1012, 0x2B1022, "81FB20030000", "81FB40060000", "81FB00190000"),   // its limit
+        new ExePatch(0x2B1136, 0x2B1146, "81FB20030000", "81FB40060000", "81FB00190000"),   // its limit
         // N (end of the polygon ring) read where the builder takes it, clamped to 48: each zoom step multiplies
         // all the ring distances (x1.29, x1.58, x1.81), 48 became 62-87 and overran the engine's tables at once
         new ExePatch(0x2A8980, 0x2A8990, "8D14850000000029C28B5C243CC1E20201DA31C0668B425F89453C",
                                          "6BD00C0354243C0FB7425F83F8307605B83000000089453C909090"),
-        new ExePatch(0x2C4F71, 0x2C4EE1, "B800E00400", "B800001000"),   // render pool 312 KB -> 1 MB (malloc)
-        new ExePatch(0x2C4F76, 0x2C4EE6, "BA00E00400", "BA00001000"),   // and its recorded size
+        new ExePatch(0x2C4F71, 0x2C4EE1, "B800E00400", "B800001000", "B800001800"),   // render pool 312 KB -> 1.5 MB (malloc)
+        new ExePatch(0x2C4F76, 0x2C4EE6, "BA00E00400", "BA00001000", "BA00001800"),   // and its recorded size
     };
     static readonly uint[] TERRAIN_SHIFT = { 0x2AA2F5, 0x2AA305 };   // its first "shl ebx,6", French / English
     const uint EXE_CODE_DELTA = 0x1AAB5C;
@@ -1497,7 +1501,7 @@ static partial class TNPlus
         if (!File.Exists(exe)) { msg = "TNOVA\\__FF.EXE not found"; return false; }
         byte[] d = File.ReadAllBytes(exe);
         string sha = Sha256(d);
-        if (sha == HD_SHA_READY4 || sha == EN_SHA_READY4) { msg = "ready"; return true; }
+        if (sha == HD_SHA_READY5 || sha == EN_SHA_READY5) { msg = "ready"; return true; }
         if (!KnownSha(sha)) { msg = "unknown __FF.EXE (GOG French, GOG English and Steam are supported)"; return false; }
         bool english = EnglishSha(sha);
         uint size = english ? OBJ3_SIZE_EN : OBJ3_SIZE, hd = english ? OBJ3_HD_EN : OBJ3_HD;
@@ -1515,12 +1519,13 @@ static partial class TNPlus
             int o = (int)((english ? p.En : p.Fr) - EXE_CODE_DELTA);
             byte[] c = new byte[old.Length];
             Array.Copy(d, o, c, 0, c.Length);
-            if (!Same(c, old) && !Same(c, nw)) { msg = "unexpected bytes in __FF.EXE"; return false; }   // new: earlier beta 4
+            if (!Same(c, old) && !Same(c, nw) && !(p.Prev != null && Same(c, Hex(p.Prev))))
+            { msg = "unexpected bytes in __FF.EXE"; return false; }   // new / Prev: earlier betas
             nw.CopyTo(d, o);
             old.CopyTo(orig, o);
         }
         if (Sha256(orig) != (english ? EN_SHA : HD_SHA_ORIGINAL)) { msg = "unexpected __FF.EXE content"; return false; }
-        if (Sha256(d) != (english ? EN_SHA_READY4 : HD_SHA_READY4)) { msg = "__FF.EXE update failed"; return false; }
+        if (Sha256(d) != (english ? EN_SHA_READY5 : HD_SHA_READY5)) { msg = "__FF.EXE update failed"; return false; }
         string backup = exe + ".tnplus-original";
         try
         {
@@ -1528,7 +1533,7 @@ static partial class TNPlus
             File.WriteAllBytes(exe, d);
         }
         catch (Exception e) { msg = "cannot update __FF.EXE (" + e.Message + ")"; return false; }
-        if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY4 : HD_SHA_READY4)) { msg = "__FF.EXE update failed"; return false; }
+        if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY5 : HD_SHA_READY5)) { msg = "__FF.EXE update failed"; return false; }
         msg = "prepared (HD memory, far smooth terrain; original kept as __FF.EXE.tnplus-original)";
         return true;
     }
