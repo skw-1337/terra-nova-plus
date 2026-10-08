@@ -9,15 +9,21 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **Mouse freelook** | `H` | Mouse left/right turns your PBA, up/down looks up/down, the aiming reticle stays centred: you fire where you look. Smooth (~500 updates per second), no screen shake, no reticle trails on the cockpit. |
 | **Noclip** | `U` | Free flight: your usual move keys, `Space` / `Left Ctrl` up/down, `Left Shift` ×4 speed. Great to explore the maps and look at the scenery. |
 | **View distance** | `J` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
-| **Force 320×400** | — | The engine's best resolution, applied automatically in every mission (the game normally only keeps it in save files). |
+| **Display** | — | `ORIGINAL`, `320x400` (the engine's best resolution, applied in every mission: the game normally only keeps it in save files) or `HD`: the 3D drawn at twice the width, 640x400 (848x480 in true 16:9). |
 | **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD, beta): the 3D is drawn in a real 16:9 picture (848 columns, sharper than STRETCHED), the cockpit and HUD are stretched to the full width like in STRETCHED. |
 | **Field of view** | — | `GAME` / `90` / `100` / `110` degrees for the 3D view, cockpit and full view, at every zoom level (the game: 84.5). The small cockpit cameras keep theirs. Works in 4:3 and in 16:9. |
+| **Terrain and object distance** | — | More ground detail far away, and scenery, units and buildings drawn farther. |
+| **Keyboard** | — | Every game command on the key you want, layout presets (WASD, ZQSD...), mouse buttons and wheel. |
+| **Fixes** | `F7` | Projectiles hit at any frame rate, physics at the same speed at any frame rate, no black screen at the end of a mission, reversed stereo under DOSBox (`F7` compares). |
+| **Music** | — | Roland / General MIDI, Sound Blaster FM, or the game's own AWE32 bank (you bring the AWE32 ROM). |
 
 Everything happens in memory while you play, except one thing: for HD, terrain detail, field of view and 16:9 TNPlus patches `TNOVA\__FF.EXE` once, and keeps the untouched file as `__FF.EXE.tnplus-original`.
 
 ## 1.1.0 beta
 
-![Terra Nova Plus launcher](docs/launcher.png)
+**Latest: [beta 5](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.1.0-beta5)**: true 16:9, field of view, the KEYBOARD tab and mouse binds.
+
+![Terra Nova Plus launcher, beta 5](docs/launcher_beta5.png)
 
 This is a big one. I rewrote the launcher and added a bunch of things people asked for on TTLG, thanks to [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813). It's a beta, so tell me what breaks.
 
@@ -29,6 +35,14 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 - Settings are grouped: Picture, Sound, Controls, Fixes (things that are only needed if you have the problem), Cheats and Launch. In-game keys are shown in purple next to each option.
 - A yellow **BETA** badge marks what is new in 1.1.0, and a red **EXPERIMENTAL** one what is still rough.
 
+### True 16:9 and field of view (beta 5)
+- **Widescreen TRUE** (with HD): the game runs in an 848x480 mode and the 3D is drawn 848 pixels wide, so you see more on the sides, not a stretched picture. The cockpit and HUD are stretched to the full width (`wide_hud = 0` keeps them centred).
+- **Field of view** 90, 100 or 110 degrees, in 4:3 and 16:9, at every zoom level.
+
+![True 16:9](docs/beta5_true169_small.png)
+
+![Field of view](docs/beta5_fov_small.png)
+
 ### Keyboard (beta 5)
 - The **KEYBOARD** tab lists every command of the game's key card (movement, view, weapons, squad orders, map, drone, system) and the tool's own keys. Click a key, then press the new one, alone or with Alt, Ctrl or Shift: any command can take any key or combination, squad orders without Alt included. A key already used by another command swaps with it. **RESET ALL KEYS** brings back the defaults.
 - Keys are shown as printed on the keyboard of the LAYOUT preset you picked (GAME: your Windows keyboard). Shift + move keys (bound) and Ctrl + move or view keys (drone) follow your move and view keys.
@@ -36,6 +50,8 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 - Only during missions: menus and the names you type keep the keyboard as it is. Options (`O`) and Abort mission (`Ctrl+Esc`) stay where they are, and the extended keys (arrows, Page Up...) can't be picked as new keys.
 - Noclip moves on your Forward / Stop / Turn keys.
 - **Mouse binds** (green, next to each key): the middle button, the side buttons (4, 5) and the wheel up / down can also press a command or do a tool action (freelook...). Click the green badge, then the mouse button or a wheel notch; `Del` removes it. One mouse input per command, none by default; the left and right buttons stay the game's (fire, lock target). They work with the game in front, during missions; a wheel notch is a short press. With a bind on the middle button, DOSBox no longer releases the mouse on a middle click (game started from the launcher).
+
+![KEYBOARD tab](docs/beta5_keyboard_small.png)
 
 ### HD 640x400
 - The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
@@ -89,7 +105,7 @@ Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, ad
 1. Download the latest zip from the [Releases](../../releases) page and unzip it anywhere.
 2. Run **`TNPlus.exe`**. A window opens:
 
-   ![Terra Nova Plus launcher](docs/launcher_beta3.png)
+   ![Terra Nova Plus launcher](docs/launcher_beta5.png)
 
    Pick a preset or set things one by one, then click **Launch**. Your choices are saved in `TNPlus.ini`.
 3. The window closes and a small console stays minimized in the taskbar. Play! When the game closes, the window comes back.
@@ -107,14 +123,16 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 
 | Key | Default | Meaning |
 |---|---|---|
-| `freelook`, `noclip`, `force_320x400` | `1`, `0`, `1` | the menu options |
+| `display` | `HD` | `ORIGINAL`, `320X400` or `HD` (640x400, 848x480 in true 16:9) |
+| `freelook`, `noclip` | `1`, `0` | the launcher options |
+| `terrain_detail` | `SHARPER` | `GAME`, `SHARP` or `SHARPER` |
 | `widescreen` | `0` | `0` off, `1` stretched, `2` true 16:9 (HD) |
 | `wide_hud` | `1` | true 16:9: `1` cockpit and HUD stretched to the full width, `0` centred at their own proportions |
 | `edge_objects` | `1` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta) |
 | `view_distance` | `MAX` | `NORMAL`, `FAR` or `MAX` at start |
 | `sensitivity_x`, `sensitivity_y` | `12`, `8` | mouse speed (heading / pitch units per mouse count) |
 | `invert_y` | `0` | `1` = inverted vertical look |
-| `noclip_speed` | `15` | game units per second (a walking PBA does about 2.5) |
+| `noclip_speed` | `15` | game units per second (a walking PBA does about 2) |
 | `key_freelook`, `key_noclip`, `key_distance` | `23`, `16`, `24` | **physical key scancodes** (hex): `23` = H, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
 | `key_smoothing`, `key_stereo` | `40`, `41` | F6, F7 |
 | `keys_layout` | — | the LAYOUT preset picked last |
@@ -125,22 +143,27 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `field_of_view` | `GAME` | `GAME`, `90`, `100` or `110`: horizontal field of view in degrees (GAME = 84.5, or 100.9 in 16:9) |
 | `object_distance` | `MAX` | `GAME`, `FAR` or `MAX`: how far scenery, units and buildings are drawn |
 | `cpu_cycles` | `1000000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting |
+| `music` | `ROLAND` | `ROLAND`, `FM`, `GAME'S OWN` or `AWE32` (needs `awe32.raw`) |
+| `stereo_fix` | `0` | `1` = swap the Sound Blaster stereo back in DOSBox |
+| `hd_smoothing` | `1` | HD smoothing at start (`F6` in game) |
+| `launch` | `GAME` | `GAME`, `DEMO 1` or `DEMO 2` |
 | `sound` | `1` | `0` = no beeps |
 | `game_dir` | *(auto)* | game folder, if auto-detection does not find it |
 
 ## Compatibility
 
-No fixed memory addresses: the game is located inside the emulator through **code signatures** (instruction patterns with wildcarded addresses) and the real addresses are read from the game's own instructions. It works with any DOSBox-family emulator and any memory setting; launching (and therefore widescreen) uses the DOSBox Staging bundled with the Steam and GOG releases.
+Freelook, noclip, view distance and 320x400 find the game inside the emulator through **code signatures** (instruction patterns with wildcarded addresses), so they work with any DOSBox-family emulator and any memory setting. HD, true 16:9, field of view, terrain and object distance, the keyboard and the fixes patch known places of the v1.09 executables and check the original bytes before writing. Launching (and therefore widescreen, stereo fix and music) uses the DOSBox Staging bundled with the Steam and GOG releases.
 
-- **Tested live:** GOG "Nightdive" build (DOSBox Staging), every option including widescreen.
+- **Tested live:** Steam (English v1.09, the same exe as GOG) and French v1.09, every option.
 - **All signatures verified** (exactly one match each, consistent with each other) in: English v1.09 (Steam and GOG executables), French v1.09, English v1.08 (CD image).
+- Modding notes for the English v1.09 exe (addresses, every patch, bugs found on the way): [modding/](modding/).
 - The freelook core is the same as [Terra Nova Mouse Freelook](https://github.com/skw-1337/terra-nova-freelook) v1.1, tested live on the Steam version.
 
 Feedback welcome, especially from Steam players and DOSBox-X users.
 
 ## Safety
 
-- It only changes, in the running game, values located from the game's own code: heading, head pitch, mouse cursor, the player's physics state (noclip), the fog table, the resolution setting and the 3D view scale.
+- It only opens DOSBox processes. In the running game it writes values and code at places found from the game's own code or checked byte for byte first. On disk it only changes `TNOVA\__FF.EXE` (once, for HD, terrain detail, field of view and 16:9) and `TN.CFG` (music), and keeps the originals as `*.tnplus-original`.
 - Freelook and noclip only start inside the 3D view of a mission and switch off by themselves when you leave it, so nothing is written into stale memory.
 - Because it reads/writes another program's memory, some antivirus software may flag it, like any game trainer: see below.
 
@@ -152,7 +175,7 @@ The full source is in `src/`: you can read it and build the exe yourself with `b
 
 ## Anti-cheat note
 
-The tool only opens DOSBox processes and never touches any other program. Still, it edits another process's memory, which is what game trainers do, and some anti-cheat systems (especially kernel-level ones) watch the whole PC. **Quit Terra Nova Plus (`Q` in its menu, or close its window) before playing online games protected by an anti-cheat.**
+The tool only opens DOSBox processes and never touches any other program. Still, it edits another process's memory, which is what game trainers do, and some anti-cheat systems (especially kernel-level ones) watch the whole PC. **Quit Terra Nova Plus (`QUIT` in its window, or close its console) before playing online games protected by an anti-cheat.**
 
 ## Build from source
 
