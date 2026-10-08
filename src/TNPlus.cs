@@ -2235,6 +2235,7 @@ static partial class TNPlus
                     case "cpu_cycles": CpuCycles = int.Parse(v); break;
                     case "speed_version": int.TryParse(v, out speedVer); break;
                     case "keys_version": int.TryParse(v, out keysVer); break;
+                    case "keys_layout": ChosenLayout = Array.IndexOf(LAYOUT_NAMES, v.ToUpperInvariant()); if (ChosenLayout > 4) ChosenLayout = -1; break;
                     case "key_freelook": ScanFreelook = Convert.ToInt32(v, 16); break;
                     case "key_noclip": ScanNoclip = Convert.ToInt32(v, 16); break;
                     case "key_distance": ScanDistance = Convert.ToInt32(v, 16); if (ScanDistance == 0x17) ScanDistance = 0x24; break;   // old default I = infrared
@@ -2291,6 +2292,7 @@ static partial class TNPlus
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
                 "key_distance = " + ScanDistance.ToString("X2") + "\r\nkey_smoothing = " + ScanSmoothing.ToString("X2") + "\r\n" +
                 "key_stereo = " + ScanStereo.ToString("X2") + "\r\nkeys_version = 2\r\n" +
+                (ChosenLayout >= 0 ? "keys_layout = " + LAYOUT_NAMES[ChosenLayout] + "\r\n" : "") +
                 "; the game's commands changed in the KEYBOARD tab (missions only): [SHIFT+|CTRL+|ALT+]scancode\r\n" +
                 GameKeysIni() +
                 "; 0 = no beeps\r\nsound = " + (Sound ? 1 : 0) + "\r\n" +

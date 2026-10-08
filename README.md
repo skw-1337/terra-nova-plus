@@ -32,6 +32,7 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 ### Keyboard (beta 5)
 - The **KEYBOARD** tab lists every command of the game's key card (movement, view, weapons, squad orders, map, drone, system) and the tool's own keys. Click a key, then press the new one, alone or with Alt, Ctrl or Shift: any command can take any key or combination, squad orders without Alt included. A key already used by another command swaps with it. **RESET ALL KEYS** brings back the defaults.
 - Keys are shown with the letters of your keyboard layout. Shift + move keys (bound) and Ctrl + move or view keys (drone) follow your move and view keys.
+- **LAYOUT** presets: QWERTY (also UK, Spanish, Italian, Nordic...), AZERTY, QWERTZ, DVORAK and COLEMAK. Move, look and number keys keep their place (the game reads key positions: W A S D are Z Q S D on AZERTY); the letter shortcuts follow the letters printed on your keyboard (M map to HUD, P pause, G full-screen, T target, the Alt + letter squad orders...). A letter that lands on a key already used keeps the game's place: on AZERTY, M and the Alt+A / Alt+M orders move; on QWERTZ nothing needs to.
 - Only during missions: menus and the names you type keep the keyboard as it is. Options (`O`) and Abort mission (`Ctrl+Esc`) stay where they are, and the extended keys (arrows, Page Up...) can't be picked as new keys.
 - Noclip moves on your Forward / Stop / Turn keys.
 
@@ -120,6 +121,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 | `noclip_speed` | `15` | game units per second (a walking PBA does about 2.5) |
 | `key_freelook`, `key_noclip`, `key_distance` | `23`, `16`, `24` | **physical key scancodes** (hex): `23` = H, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
 | `key_smoothing`, `key_stereo` | `40`, `41` | F6, F7 |
+| `keys_layout` | — | the LAYOUT preset picked last |
 | `key_game_<command>` | — | written by the KEYBOARD tab for the game's commands you changed: `[SHIFT+\|CTRL+\|ALT+]scancode`, e.g. `key_game_fwd = 25` |
 | `hit_fix` | `1` | `0` = leave the game's projectile hit test as it is (misses above ~30 fps) |
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps) |

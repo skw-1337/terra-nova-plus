@@ -28,6 +28,7 @@ static partial class TNPlus
     static readonly List<KeyValuePair<Label, GameKey>> gameBadges = new List<KeyValuePair<Label, GameKey>>();
     static readonly List<Control> setPage = new List<Control>();
     static Panel kbPage;
+    static Sel cbLayout;
     static Label tabSet, tabKeys;
     [DllImport("user32.dll")] static extern short GetKeyState(int vk);
 
@@ -124,8 +125,25 @@ static partial class TNPlus
                 else foreach (GameKey g in keys) { GameBadge(KeyRow(p, g.Name, ry), g); ry += 18; }
                 y += p.Height + 8;
             }
-            if (c == 3)
+            if (c == 2)                             // under SQUAD, the shortest column
             {
+                int ly = page.Height - 64;
+                Lbl(page, "LAYOUT", x + 2, ly + 6, TSmall, TAmber);
+                cbLayout = new Sel(); cbLayout.Items = LAYOUT_NAMES; cbLayout.CycleMax = 4;
+                cbLayout.Location = new Point(x + 64, ly); cbLayout.Size = new Size(cw[c] - 64, CTL_H); page.Controls.Add(cbLayout);
+                cbLayout.MouseEnter += delegate
+                {
+                    guiHelp.Text = "> letter shortcuts (M map, P pause, ALT+A attack...) follow the letters of your keyboard, move, look and number keys keep their place. Yours: " + LAYOUT_NAMES[DetectLayout()];
+                };
+                cbLayout.Changed += delegate
+                {
+                    if (guiBusy || cbLayout.Index > 4) return;
+                    int l = cbLayout.Index;
+                    ApplyLayout(l); rebindKey = -1; rebindGame = null; SaveSettings(); GuiRefresh();
+                    List<string> moved = new List<string>();
+                    foreach (GameKey g in GameKeys) if (g.Changed) moved.Add(g.Name.ToLowerInvariant() + " " + ChordName(g.Sc, g.Mod));
+                    guiHelp.Text = "> " + LAYOUT_NAMES[l] + ": " + (moved.Count == 0 ? "the game's own keys" : string.Join(", ", moved.ToArray()));
+                };
                 Button r = Btn(page, "RESET ALL KEYS", x, page.Height - 30, cw[c], 28, false);
                 r.Click += delegate
                 {
@@ -357,6 +375,7 @@ static partial class TNPlus
             kb.Key.Width = Math.Max(TextRenderer.MeasureText(kb.Key.Text, kb.Key.Font).Width + 12, 26);
             if (kb.Key.Parent != null && kb.Key.Parent.Parent == kbPage) kb.Key.Left = kb.Key.Parent.Width - 10 - kb.Key.Width;
         }
+        if (cbLayout != null) cbLayout.Set(CurrentLayout());
         foreach (KeyValuePair<Label, GameKey> gb in gameBadges)
         {
             GameKey g = gb.Value; Label b = gb.Key; bool wait = g == rebindGame;

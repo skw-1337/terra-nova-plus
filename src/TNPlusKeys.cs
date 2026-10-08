@@ -104,6 +104,7 @@ static partial class TNPlus
     }
     static void ResetKeys()
     {
+        ChosenLayout = -1;
         foreach (GameKey g in GameKeys) { g.Sc = g.DefSc; g.Mod = g.DefMod; }
         ScanFreelook = 0x23; ScanNoclip = 0x16; ScanDistance = 0x24; ScanSmoothing = 0x40; ScanStereo = 0x41;
     }
@@ -152,6 +153,90 @@ static partial class TNPlus
         if (o != null) { o.Sc = GetKey(k); o.Mod = 0; msg += ", " + o.Name.ToLowerInvariant() + " moved to " + ScanName(o.Sc); }
         SetKey(k, sc);
         return msg;
+    }
+
+    // ---- keyboard layout presets: move, look and number keys keep their place (the game reads key positions,
+    // W A S D are Z Q S D on AZERTY), the letter shortcuts follow the letter printed on the keyboard; a letter that
+    // lands on a key already used keeps the game's place. Other QWERTY countries (UK, ES, IT, Nordic...) have their
+    // letters where QWERTY has them.
+    static readonly string[] LAYOUT_NAMES = { "QWERTY", "AZERTY", "QWERTZ", "DVORAK", "COLEMAK", "CUSTOM" };
+    static readonly string[][] LAYOUT_ROWS = {      // letter rows from scancodes 0x10, 0x1E, 0x2C
+        new[] { "QWERTYUIOP", "ASDFGHJKL;", "ZXCVBNM" },
+        new[] { "AZERTYUIOP", "QSDFGHJKLM", "WXCVBN" },
+        new[] { "QWERTZUIOP", "ASDFGHJKL", "YXCVBNM" },
+        new[] { "',.PYFGCRL", "AOEUIDHTNS", ";QJKXBMWVZ" },
+        new[] { "QWFPGJLUY;", "ARSTDHNEIO", "ZXCVBKM" } };
+    static readonly string[,] LETTER_KEYS = {
+        { "full", "G" }, { "ir", "I" }, { "recentre", "N" }, { "v360", "B" }, { "maphud", "M" }, { "pause", "P" },
+        { "tnext", "T" }, { "tprev", "Y" }, { "o_attack", "A" }, { "o_cover", "C" }, { "o_caution", "D" }, { "o_form", "F" },
+        { "o_hold", "H" }, { "o_follow", "M" }, { "o_nav", "N" }, { "o_pickup", "P" }, { "o_retreat", "R" },
+        { "o_status", "S" }, { "o_target", "T" }, { "exit", "X" } };
+
+    static int LetterSc(int layout, char c)
+    {
+        int[] start = { 0x10, 0x1E, 0x2C };
+        for (int r = 0; r < 3; r++) { int i = LAYOUT_ROWS[layout][r].IndexOf(c); if (i >= 0) return start[r] + i; }
+        return 0;
+    }
+
+    // the chords a preset gives: game defaults, then the letters, as long as they land on a free key
+    static int[,] LayoutChords(int layout)
+    {
+        int n = GameKeys.Count;
+        int[,] ch = new int[n, 2];
+        for (int i = 0; i < n; i++) { ch[i, 0] = GameKeys[i].DefSc; ch[i, 1] = GameKeys[i].DefMod; }
+        for (bool moved = true; moved; )
+        {
+            moved = false;
+            for (int k = 0; k < LETTER_KEYS.GetLength(0); k++)
+            {
+                int i = GameKeys.FindIndex(g => g.Id == LETTER_KEYS[k, 0]);
+                int sc = LetterSc(layout, LETTER_KEYS[k, 1][0]);
+                if (i < 0 || sc == 0 || sc == ch[i, 0]) continue;
+                bool free = !(ch[i, 1] == 0 && ToolKeyOwner(sc, -1) >= 0);
+                for (int j = 0; j < n && free; j++) if (j != i && ch[j, 0] == sc && ch[j, 1] == ch[i, 1]) free = false;
+                if (free) { ch[i, 0] = sc; moved = true; }
+            }
+        }
+        return ch;
+    }
+
+    static int ChosenLayout = -1;                   // ini keys_layout: the preset picked last (QWERTZ gives QWERTY's keys)
+
+    static void ApplyLayout(int layout)
+    {
+        ChosenLayout = layout;
+        int[,] ch = LayoutChords(layout);
+        for (int i = 0; i < GameKeys.Count; i++) { GameKeys[i].Sc = ch[i, 0]; GameKeys[i].Mod = ch[i, 1]; }
+    }
+
+    // the preset the game keys match (the detected layout first), or CUSTOM
+    static int CurrentLayout()
+    {
+        int det = DetectLayout();
+        List<int> order = new List<int>();
+        if (ChosenLayout >= 0 && ChosenLayout < 5) order.Add(ChosenLayout);
+        if (!order.Contains(det)) order.Add(det);
+        for (int l = 0; l < 5; l++) if (!order.Contains(l)) order.Add(l);
+        foreach (int l in order)
+        {
+            int[,] ch = LayoutChords(l);
+            bool same = true;
+            for (int i = 0; i < GameKeys.Count && same; i++) same = GameKeys[i].Sc == ch[i, 0] && GameKeys[i].Mod == ch[i, 1];
+            if (same) return l;
+        }
+        return 5;
+    }
+
+    // the Windows keyboard layout, from where its letters are
+    static int DetectLayout()
+    {
+        Func<char, uint> sc = c => MapVirtualKey((uint)c, 0);
+        if (sc('A') == 0x10) return 1;
+        if (sc('Z') == 0x15) return 2;
+        if (sc('P') == 0x13) return 3;
+        if (sc('F') == 0x12) return 4;
+        return 0;
     }
 
     // ---- in the game (addresses: _MODS/re/kb_cave.json)
