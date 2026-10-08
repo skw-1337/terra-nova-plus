@@ -1204,6 +1204,8 @@ static partial class TNPlus
         else
             text = "# Terra Nova Plus: " + TARGET_NAMES[target] + "\r\n[autoexec]\r\n" + mixer +
                 "mount C \"..\"\r\nC:\r\nCD \\" + TARGET_DIRS[target] + "\r\nCLS\r\nCALL TNDEMO.BAT\r\nEXIT\r\n";
+        if (OptKeepDos)                             // tests: the DOS window stays after the game, with its last message
+            text = Regex.Replace(text, @"(?im)^\s*EXIT\s*$", "REM EXIT");
         string path = Path.Combine(ExeDir, "TNPlus_launch.conf");
         File.WriteAllText(path, CpuSection(db) + text);
         return path;
@@ -1867,6 +1869,7 @@ static partial class TNPlus
     // ------------------------------------------------------------------ attach / signature scan
     static bool attached;                          // a game was found (attach mode messages)
 
+    static bool OptKeepDos = false;                // ini keep_dos (tests): no EXIT after the game
     static int OnlyPid = 0;                         // --pid N: attach to that DOSBox only (tests next to a game)
 
     static void TryAttach()
@@ -2178,6 +2181,7 @@ static partial class TNPlus
                     case "phys_fix": OptPhysFix = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
+                    case "keep_dos": OptKeepDos = v != "0"; break;
                     case "edge_objects": OptEdge = v != "0"; break;
                     case "field_of_view": OptFov = Math.Max(0, Array.IndexOf(FOV_NAMES, v.ToUpperInvariant())); break;
                     case "object_distance": OptObjDist = Math.Max(0, Array.IndexOf(OBJDIST_NAMES, v.ToUpperInvariant())); break;
@@ -2229,6 +2233,7 @@ static partial class TNPlus
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
                 "; 1 = terrain and objects up to the screen edges with a wider field of view or true 16:9 (beta)\r\nedge_objects = " + (OptEdge ? 1 : 0) + "\r\n" +
                 (OptWideAttach ? "wide_attach = 1\r\n" : "") +
+                (OptKeepDos ? "keep_dos = 1\r\n" : "") +
                 (OptSmoothCells > 0 ? "; tests: forced end of the smooth terrain (cells)\r\nsmooth_cells = " + OptSmoothCells + "\r\n" : "") +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
