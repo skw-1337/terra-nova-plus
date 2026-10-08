@@ -11,6 +11,7 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **View distance** | `J` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
 | **Display** | — | `ORIGINAL`, `320x400` (the engine's best resolution, applied in every mission: the game normally only keeps it in save files) or `HD`: the 3D drawn at twice the width, 640x400 (848x480 in true 16:9). |
 | **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD, beta): the 3D is drawn in a real 16:9 picture (848 columns, sharper than STRETCHED), the cockpit and HUD are stretched to the full width like in STRETCHED. |
+| **Scaling** | — | `SHARP` (default): DOSBox draws with OpenGL and its sharp shader, every pixel the same size on screen, less shimmer when the view moves. `GAME'S OWN`: the edition's setting. |
 | **Field of view** | — | `GAME` / `90` / `100` / `110` degrees for the 3D view, cockpit and full view, at every zoom level (the game: 84.5). The small cockpit cameras keep theirs. Works in 4:3 and in 16:9. |
 | **Terrain and object distance** | — | More ground detail far away, and scenery, units and buildings drawn farther. |
 | **Keyboard** | — | Every game command on the key you want, layout presets (WASD, ZQSD...), mouse buttons and wheel. |
@@ -56,7 +57,6 @@ This is a big one. I rewrote the launcher and added a bunch of things people ask
 ### HD 640x400
 - The 3D view is drawn at twice the width, in the cockpit and in the full-screen view (`G` in game).
 - With Widescreen TRUE the screen is 848x480 and the 3D view 848 columns wide (still 199 rows in the cockpit: the height is the game's 400-line screen, one row in five doubled to reach 480).
-- `F6` toggles the 3D smoothing (`F12` before beta 5: that one is the game's mission info key). Since beta 4 it only smooths real edges (hill against sky, water against land, objects), horizontally and vertically, and leaves the grain of the textures alone. It costs a few fps.
 - Works with the GOG and Steam games, French and English. Not in the demos yet.
 
 ### Terrain detail
@@ -117,7 +117,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 - **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
 - **Noclip**: land before switching it off — switching it off in mid-air means a free fall.
 - **Widescreen STRETCHED** is anamorphic: the engine draws 320 pixels across, so the cockpit and the menus are stretched a little; the 3D keeps correct proportions. **TRUE** needs HD and the game started from the launcher. The cockpit and HUD are stretched like in STRETCHED (`wide_hud = 0` keeps them at their own proportions in the middle, with black above and below the 3D on the sides), the menus are stretched too, and the mouse is captured when you click in the window (DOSBox releases it with its usual key).
-- Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. To change one, click its purple key in the launcher and press the new key (`Esc` cancels), or edit `TNPlus.ini`. Freelook is on `Y`, so the game's own `Y` (previous target) moves to `K`. The HD smoothing moved from `F12` (the game's mission info) to `F6`. An ini still on the old keys is moved once.
+- Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. To change one, click its purple key in the launcher and press the new key (`Esc` cancels), or edit `TNPlus.ini`. Freelook is on `Y`, so the game's own `Y` (previous target) moves to `K`. An ini still on the old keys is moved once.
 
 ## Settings (`TNPlus.ini`)
 
@@ -134,7 +134,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `invert_y` | `0` | `1` = inverted vertical look |
 | `noclip_speed` | `15` | game units per second (a walking PBA does about 2) |
 | `key_freelook`, `key_noclip`, `key_distance` | `15`, `16`, `24` | **physical key scancodes** (hex): `15` = Y, `16` = U, `24` = J, `29` = key left of 1, `3B`–`44` = F1–F10 |
-| `key_smoothing`, `key_stereo` | `40`, `41` | F6, F7 |
+| `key_stereo` | `41` | F7 |
 | `keys_layout` | — | the LAYOUT preset picked last |
 | `mouse_<command>` | — | mouse binds: `MID`, `M4`, `M5`, `WHEELUP`, `WHEELDOWN` (e.g. `mouse_tnext = WHEELUP`, `mouse_freelook = MID`) |
 | `key_game_<command>` | — | written by the KEYBOARD tab for the game's commands you changed: `[SHIFT+\|CTRL+\|ALT+]scancode`, e.g. `key_game_fwd = 25` |
@@ -145,7 +145,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `cpu_cycles` | `1000000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting |
 | `music` | `ROLAND` | `ROLAND`, `FM`, `GAME'S OWN` or `AWE32` (needs `awe32.raw`) |
 | `stereo_fix` | `0` | `1` = swap the Sound Blaster stereo back in DOSBox |
-| `hd_smoothing` | `1` | HD smoothing at start (`F6` in game) |
+| `scaling` | `SHARP` | `SHARP` (OpenGL, sharp shader: pixels of equal size) or `GAME'S OWN` |
 | `launch` | `GAME` | `GAME`, `DEMO 1` or `DEMO 2` |
 | `sound` | `1` | `0` = no beeps |
 | `game_dir` | *(auto)* | game folder, if auto-detection does not find it |
