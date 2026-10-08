@@ -10,7 +10,7 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **Noclip** | `U` | Free flight: your usual move keys, `Space` / `Left Ctrl` up/down, `Left Shift` ×4 speed. Great to explore the maps and look at the scenery. |
 | **View distance** | `J` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
 | **Force 320×400** | — | The engine's best resolution, applied automatically in every mission (the game normally only keeps it in save files). |
-| **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD, beta): missions in a real 16:9 picture, cockpit and HUD at their own proportions in the middle and the 3D world on the sides. |
+| **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD, beta): the 3D is drawn in a real 16:9 picture (848 columns, sharper than STRETCHED), the cockpit and HUD are stretched to the full width like in STRETCHED. |
 | **Field of view** | — | `GAME` / `90` / `100` / `110` degrees for the 3D view, cockpit and full view, at every zoom level (the game: 84.5). The small cockpit cameras keep theirs. Works in 4:3 and in 16:9. |
 
 Everything happens in memory while you play, except one thing: for HD, terrain detail, field of view and 16:9 TNPlus patches `TNOVA\__FF.EXE` once, and keeps the untouched file as `__FF.EXE.tnplus-original`.
@@ -96,7 +96,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 
 - **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
 - **Noclip**: land before switching it off — switching it off in mid-air means a free fall.
-- **Widescreen STRETCHED** is anamorphic: the engine draws 320 pixels across, so the cockpit and the menus are stretched a little; the 3D keeps correct proportions. **TRUE** needs HD and the game started from the launcher. Above and below the 3D window the sides stay black, the menus are still stretched, and the mouse is captured when you click in the window (DOSBox releases it with its usual key).
+- **Widescreen STRETCHED** is anamorphic: the engine draws 320 pixels across, so the cockpit and the menus are stretched a little; the 3D keeps correct proportions. **TRUE** needs HD and the game started from the launcher. The cockpit and HUD are stretched like in STRETCHED (`wide_hud = 0` keeps them at their own proportions in the middle, with black above and below the 3D on the sides), the menus are stretched too, and the mouse is captured when you click in the window (DOSBox releases it with its usual key).
 - Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. They can be changed in `TNPlus.ini`.
 
 ## Settings (`TNPlus.ini`)
@@ -105,6 +105,7 @@ v1.0.1 adds version info and an icon to the exe (fewer antivirus false alarms). 
 |---|---|---|
 | `freelook`, `noclip`, `force_320x400` | `1`, `1`, `1` | the menu options |
 | `widescreen` | `0` | `0` off, `1` stretched, `2` true 16:9 (HD) |
+| `wide_hud` | `1` | true 16:9: `1` cockpit and HUD stretched to the full width, `0` centred at their own proportions |
 | `edge_objects` | `1` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta) |
 | `view_distance` | `MAX` | `NORMAL`, `FAR` or `MAX` at start |
 | `sensitivity_x`, `sensitivity_y` | `12`, `8` | mouse speed (heading / pitch units per mouse count) |

@@ -320,6 +320,9 @@ static partial class TNPlus
                 foreach (byte x in tc) if (x != 0) { tfree = false; break; }
                 trueOk = tfree || Same(Read(TRUE_A, TRUE_A_CODE[lang].Length / 2), Hex(TRUE_A_CODE[lang]));
             }
+            // HUD stretched: the cockpit window is 848/640 wider on screen and shows that much more of the 3D, the
+            // chosen field of view is the window's (GAME stays the game's zoom: 100.6 deg across, like STRETCHED)
+            if (trueOk && deg > 0 && OptWideHud) k *= 848.0 / 640;
             byte[] data = new byte[16];
             BitConverter.GetBytes((int)Math.Round(65536 * (wideOk || trueOk ? k : (deg > 0 ? k : 1)))).CopyTo(data, 0);
             BitConverter.GetBytes(wideOk ? 0x15555 : 0x10000).CopyTo(data, 4);
@@ -678,8 +681,10 @@ static partial class TNPlus
     static int WideMode() { return OptWide ? (OptWideTrue ? 2 : 1) : 0; }
     static void SetWideMode(int m) { OptWide = m > 0; OptWideTrue = m == 2; }
 
-    // true 16:9 (HD only): the game's HD screen is a VESA 848x480 mode of DOSBox, cockpit and HUD at their own
-    // proportions in the middle, the 3D view drawn across the whole width (HdPayload*Wide)
+    // true 16:9 (HD only): the game's HD screen is a VESA 848x480 mode of DOSBox, the 3D view drawn across the whole
+    // width in its own columns (HdPayload*Wide); the cockpit and HUD stretched to the full width (wide_hud = 1) or
+    // centred at their own proportions, black above and below the 3D on the sides (wide_hud = 0)
+    static bool OptWideHud = true;                  // ini wide_hud
     static bool TrueWideActive()
     {
         return OptWide && OptWideTrue && OptHD && ((launchedTrue && launched != null && gamePid == launched.Id) || OptWideAttach);
@@ -1743,6 +1748,7 @@ static partial class TNPlus
         for (int i = 0; i < n; i++) Write(HdPayload.PatchAt[i], HdPayload.PatchNew[i]);
         WriteInt(HdPayload.Smoothing, HdSmoothing ? 1 : 0);
         WriteInt(HdPayload.HudFilter, 0);              // Scale2x HUD: left in the payload, no longer offered
+        if (HdPayload.HudStretch != 0) WriteInt(HdPayload.HudStretch, OptWideHud ? 1 : 0);
         hdState = 1;
         Say("HD 640x400 ready: missions in 320x400 will be in HD (" + KeyName(ScanSmoothing) + " smoothing " +
             (HdSmoothing ? "ON" : "OFF") + ")", 1000);
@@ -2184,6 +2190,7 @@ static partial class TNPlus
                     case "phys_fix": OptPhysFix = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
+                    case "wide_hud": OptWideHud = v != "0"; break;
                     case "keep_dos": OptKeepDos = v != "0"; break;
                     case "edge_objects": OptEdge = v != "0"; break;
                     case "field_of_view": OptFov = Math.Max(0, Array.IndexOf(FOV_NAMES, v.ToUpperInvariant())); break;
@@ -2225,7 +2232,8 @@ static partial class TNPlus
                 "noclip = " + (OptNoclip ? 1 : 0) + "\r\n" +
                 "; NORMAL, FAR or MAX\r\nview_distance = " + DIST_NAMES[OptDistance] + "\r\n" +
                 "; GAME, SHARP or SHARPER (more terrain detail in the distance)\r\nterrain_detail = " + DETAIL_NAMES[OptDetail] + "\r\n" +
-                "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: cockpit at its proportions, 3D on the sides)\r\nwidescreen = " + WideMode() + "\r\n" +
+                "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: the 3D drawn in 848 columns)\r\nwidescreen = " + WideMode() + "\r\n" +
+                "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
                 "; ROLAND, FM, GAME'S OWN or AWE32 (music of the game and demos; AWE32 needs awe32.raw, an AWE32 ROM dump,\r\n" +
                 "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +

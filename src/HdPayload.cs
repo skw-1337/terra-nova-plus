@@ -5,7 +5,7 @@ using System;
 
 static class HdPayload
 {
-    public static uint Zone, End, PoolBase, Code, Data, Smoothing, HudFilter, Frames, PoolMax, DriverMode, Valid, HdWidth, HdHeight, PoolVar;
+    public static uint Zone, End, PoolBase, Code, Data, Smoothing, HudFilter, Frames, PoolMax, DriverMode, Valid, HdWidth, HdHeight, PoolVar, HudStretch;
     public static byte[] CodeBytes, DataInit;
     public static uint[] PatchAt;
     public static byte[][] PatchOld, PatchNew;
@@ -20,7 +20,7 @@ static class HdPayload
             Smoothing = HdPayloadEnWide.Smoothing; HudFilter = HdPayloadEnWide.HudFilter; Frames = HdPayloadEnWide.Frames;
             PoolMax = HdPayloadEnWide.PoolMax; DriverMode = HdPayloadEnWide.DriverMode; Valid = HdPayloadEnWide.Valid;
             HdWidth = HdPayloadEnWide.HdWidth; HdHeight = HdPayloadEnWide.HdHeight; PoolVar = HdPayloadEnWide.PoolVar;
-            CodeBytes = HdPayloadEnWide.CodeBytes; DataInit = HdPayloadEnWide.DataInit;
+            HudStretch = HdPayloadEnWide.HudStretch; CodeBytes = HdPayloadEnWide.CodeBytes; DataInit = HdPayloadEnWide.DataInit;
             PatchAt = HdPayloadEnWide.PatchAt; PatchOld = HdPayloadEnWide.PatchOld; PatchNew = HdPayloadEnWide.PatchNew;
         }
         else if (wide)
@@ -29,7 +29,7 @@ static class HdPayload
             Smoothing = HdPayloadFrWide.Smoothing; HudFilter = HdPayloadFrWide.HudFilter; Frames = HdPayloadFrWide.Frames;
             PoolMax = HdPayloadFrWide.PoolMax; DriverMode = HdPayloadFrWide.DriverMode; Valid = HdPayloadFrWide.Valid;
             HdWidth = HdPayloadFrWide.HdWidth; HdHeight = HdPayloadFrWide.HdHeight; PoolVar = HdPayloadFrWide.PoolVar;
-            CodeBytes = HdPayloadFrWide.CodeBytes; DataInit = HdPayloadFrWide.DataInit;
+            HudStretch = HdPayloadFrWide.HudStretch; CodeBytes = HdPayloadFrWide.CodeBytes; DataInit = HdPayloadFrWide.DataInit;
             PatchAt = HdPayloadFrWide.PatchAt; PatchOld = HdPayloadFrWide.PatchOld; PatchNew = HdPayloadFrWide.PatchNew;
         }
         else if (english)
@@ -38,7 +38,7 @@ static class HdPayload
             Smoothing = HdPayloadEn.Smoothing; HudFilter = HdPayloadEn.HudFilter; Frames = HdPayloadEn.Frames;
             PoolMax = HdPayloadEn.PoolMax; DriverMode = HdPayloadEn.DriverMode; Valid = HdPayloadEn.Valid;
             HdWidth = HdPayloadEn.HdWidth; HdHeight = HdPayloadEn.HdHeight; PoolVar = HdPayloadEn.PoolVar;
-            CodeBytes = HdPayloadEn.CodeBytes; DataInit = HdPayloadEn.DataInit;
+            HudStretch = 0; CodeBytes = HdPayloadEn.CodeBytes; DataInit = HdPayloadEn.DataInit;
             PatchAt = HdPayloadEn.PatchAt; PatchOld = HdPayloadEn.PatchOld; PatchNew = HdPayloadEn.PatchNew;
         }
         else
@@ -47,7 +47,7 @@ static class HdPayload
             Smoothing = HdPayloadFr.Smoothing; HudFilter = HdPayloadFr.HudFilter; Frames = HdPayloadFr.Frames;
             PoolMax = HdPayloadFr.PoolMax; DriverMode = HdPayloadFr.DriverMode; Valid = HdPayloadFr.Valid;
             HdWidth = HdPayloadFr.HdWidth; HdHeight = HdPayloadFr.HdHeight; PoolVar = HdPayloadFr.PoolVar;
-            CodeBytes = HdPayloadFr.CodeBytes; DataInit = HdPayloadFr.DataInit;
+            HudStretch = 0; CodeBytes = HdPayloadFr.CodeBytes; DataInit = HdPayloadFr.DataInit;
             PatchAt = HdPayloadFr.PatchAt; PatchOld = HdPayloadFr.PatchOld; PatchNew = HdPayloadFr.PatchNew;
         }
     }

@@ -7,6 +7,7 @@ static class HdPayloadFr
     public const uint Code = 0x465100, Data = 0x466100;
     public const uint Smoothing = 0x466154, HudFilter = 0x4661bc, Frames = 0x466124, PoolMax = 0x35d03c, DriverMode = 0x35f978;
     public const uint Valid = 0x466134, HdWidth = 0x4661b8, HdHeight = 0x4661b4;   // last 3D frame: drawn in HD, its width (2x) and height
+    public const uint HudStretch = 0x466218;               // true 16:9: 1 = HUD stretched to the full width, 0 = centred
     public const uint PoolVar = 0x43e360;                  // the game's pool base pointer
     public static readonly byte[] CodeBytes = new byte[] {
             0x83, 0x3d, 0x78, 0xf9, 0x35, 0x00, 0x13, 0x74, 0x01, 0xc3, 0xa1, 0x2c, 0x61, 0x46, 0x00, 0x85,
