@@ -128,6 +128,20 @@ static partial class TNPlus
     static readonly byte[][] WIDE_B_NEW = { new byte[] { 0xE8, 0x11, 0xB6, 0x1C, 0x00 }, new byte[] { 0xE8, 0x01, 0xB6, 0x1C, 0x00 } };
     static readonly byte[][] WIDE_C_OLD = { new byte[] { 0xE8, 0x4F, 0xDF, 0x04, 0x00 }, new byte[] { 0xE8, 0x5F, 0xDD, 0x04, 0x00 } };
     static readonly byte[][] WIDE_C_NEW = { new byte[] { 0xE8, 0x31, 0xB9, 0x1C, 0x00 }, new byte[] { 0xE8, 0x21, 0xB9, 0x1C, 0x00 } };
+    // True 16:9 (HD): the main view is drawn 848 columns wide, and the engine scales its projection on the canvas
+    // width (the screen centre doubles as the focal length), so the picture came out stretched x848/596 with the
+    // same field of view, while the 3D library (buildings, units) kept its own scale: they slid on the ground.
+    // Same cure as stretched 16:9, for the main camera only: vertical scale x848/596 at its set-up, the library's
+    // pixel ratio x596/848 while the HD view is drawn, effective zoom x596/848: the middle is the 4:3 view again
+    // and the sides show more of the world.
+    const uint TRUE_B = 0x46A0B0, TRUE_C = 0x46A0C8;
+    const double TRUE_F = 596.0 / 848;              // cockpit 3D window (2 x 298 HD columns) / drawn width
+    static readonly string[] TRUE_B_CODE = { "81FED4FB3800750AF72D04A046000FACD01089C2894604C3", "81FE24FB3800750AF72D04A046000FACD01089C2894604C3" };
+    static readonly string[] TRUE_C_CODE = {
+        "B8A5C62E00FFD081FDD4FB38007521833D046146000074185052A176233600F72D08A046000FACD010A3762336005A58C3",
+        "B8C5C42E00FFD081FD24FB38007521833D046146000074185052A1CE223600F72D08A046000FACD010A3CE2236005A58C3" };
+    static readonly byte[][] TRUE_B_NEW = { new byte[] { 0xE8, 0x4A, 0xB6, 0x1C, 0x00 }, new byte[] { 0xE8, 0x3A, 0xB6, 0x1C, 0x00 } };
+    static readonly byte[][] TRUE_C_NEW = { new byte[] { 0xE8, 0x72, 0xB9, 0x1C, 0x00 }, new byte[] { 0xE8, 0x62, 0xB9, 0x1C, 0x00 } };
     static bool wideHooks = false;                  // 16:9 done by the hooks (else the old pixel ratio way)
     static int fovState = 0;                        // 0 to do, 1 on, -1 off or unavailable
 
@@ -148,9 +162,11 @@ static partial class TNPlus
 
     static void TryFov()
     {
+        bool wide = WideActive(), trueWide = TrueWideActive();
+        if (trueWide && hdState == 0) return;      // true 16:9 needs the HD view: wait for it
+        if (hdState != 1) trueWide = false;
         fovState = -1; wideHooks = false;
         int deg = FovDegrees();
-        bool wide = WideActive(), trueWide = TrueWideActive();
         if (deg == 0 && !wide && !trueWide) return;
         // GAME in stretched 16:9 = the view widened x4/3 as before (100.9 deg); in true 16:9 the HD view is simply
         // wider than the cockpit window, the centre keeps the chosen field of view
@@ -167,14 +183,21 @@ static partial class TNPlus
             byte[] hb = Read(WIDE_HOOK_B[lang], 5), hc = Read(WIDE_HOOK_C[lang], 5);
             bool wideOk = wide && (Same(hb, WIDE_B_OLD) || Same(hb, WIDE_B_NEW[lang])) && (Same(hc, WIDE_C_OLD[lang]) || Same(hc, WIDE_C_NEW[lang]));
             if (wide && !wideOk) { if (deg == 0) return; k /= 0.75; }   // 16:9 left to the old way: plain field of view
+            bool trueOk = trueWide && (Same(hb, WIDE_B_OLD) || Same(hb, TRUE_B_NEW[lang])) && (Same(hc, WIDE_C_OLD[lang]) || Same(hc, TRUE_C_NEW[lang]));
+            if (trueOk) k *= TRUE_F;
             byte[] data = new byte[16];
-            BitConverter.GetBytes((int)Math.Round(65536 * (wideOk ? k : (deg > 0 ? k : 1)))).CopyTo(data, 0);
-            BitConverter.GetBytes(wideOk ? 0x15555 : 0x10000).CopyTo(data, 4);
-            BitConverter.GetBytes(wideOk ? 0xC000 : 0x10000).CopyTo(data, 8);
+            BitConverter.GetBytes((int)Math.Round(65536 * (wideOk || trueOk ? k : (deg > 0 ? k : 1)))).CopyTo(data, 0);
+            BitConverter.GetBytes(wideOk ? 0x15555 : trueOk ? (int)Math.Round(65536 / TRUE_F) : 0x10000).CopyTo(data, 4);
+            BitConverter.GetBytes(wideOk ? 0xC000 : trueOk ? (int)Math.Round(65536 * TRUE_F) : 0x10000).CopyTo(data, 8);
             Write(FOV_CAVE, data);
             Write(FOV_CAVE + 0x10, code);           // the code first, then the call to it
             Write(FOV_HOOK[lang], FOV_HOOK_NEW[lang]);
             if (wideOk) { Write(WIDE_HOOK_B[lang], WIDE_B_NEW[lang]); Write(WIDE_HOOK_C[lang], WIDE_C_NEW[lang]); wideHooks = true; }
+            if (trueOk)
+            {
+                Write(TRUE_B, Hex(TRUE_B_CODE[lang])); Write(TRUE_C, Hex(TRUE_C_CODE[lang]));
+                Write(WIDE_HOOK_B[lang], TRUE_B_NEW[lang]); Write(WIDE_HOOK_C[lang], TRUE_C_NEW[lang]);
+            }
             if (wideOk)
             {   // the old way may already have changed the global pixel ratio: back to stock, the hooks do it now
                 uint rp = ReadUInt(aRatioRef);
@@ -345,6 +368,7 @@ static partial class TNPlus
     const uint OBJ3_SIZE_EN = 0x10F900, OBJ3_HD_EN = 0x10F900 + 0x6000;       // English
     // (24 KB since the true 16:9: the HD tables for 848 columns, then the field of view hooks; 16 KB before)
     static int hdState = 0;                         // 0 waiting, 1 active, -1 unavailable (reason said)
+    static int hdEarly = 0;                         // checks that found the code still loading (attach right at start-up)
 
     // Projectile hits above ~30 fps. Every frame the game casts a ray from each projectile over the distance it
     // travels in that frame, walked in steps of 2.0 (engine units) through the entity grid, and the number of
@@ -1167,6 +1191,7 @@ static partial class TNPlus
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
                     hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
@@ -1551,6 +1576,7 @@ static partial class TNPlus
         string why = null;
         uint pool = allOld ? ReadUInt(HdPayload.PoolVar) : 0;
         if (allOld && pool == 0) return;               // the game has not allocated its pool yet: wait
+        if (!allOld && ++hdEarly < 20) return;         // just loaded: DOS/4GW may still be relocating it, look again
         if (!allOld) why = "unsupported game version";
         else if (pool != HdPayload.PoolBase)
             why = "__FF.EXE not prepared (start the game from this tool with option 6 on)";
