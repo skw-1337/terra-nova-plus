@@ -599,7 +599,7 @@
   {
    "from": "0x465024",
    "to": "0x46B024",
-   "what": "the 24 KB added to object 3 (zero at load, the game's heap starts at 0x46B024)"
+   "what": "the 24 KB added to object 3 (zero at load). The game's heap starts at 0x46B024, its headers take 0x46B000-0x46B023"
   },
   {
    "from": "0x465100",
@@ -658,8 +658,13 @@
   },
   {
    "from": "0x46AE54",
-   "to": "0x46B024",
+   "to": "0x46B000",
    "what": "free"
+  },
+  {
+   "from": "0x46B000",
+   "to": "0x46B024",
+   "what": "heap headers (the game's): not free"
   }
  ],
  "features": {

@@ -53,7 +53,8 @@ The game reads the keyboard through its own IRQ1 handler at **0x31AAE0**.
 ## Memory used by Terra Nova Plus
 
 Terra Nova Plus makes object 3 0x6000 bytes bigger in the exe file. The original file is kept as
-`__FF.EXE.tnplus-original`. That gives a zero-filled area at **0x465024 – 0x46B024**, and the heap starts after it.
+`__FF.EXE.tnplus-original`. That gives a zero-filled area at **0x465024 – 0x46B000**. The game's heap starts at 0x46B024, its headers take
+0x46B000 – 0x46B023.
 
 | Range | Use |
 |---|---|
@@ -68,7 +69,8 @@ Terra Nova Plus makes object 3 0x6000 bytes bigger in the exe file. The original
 | 0x46A200 – 0x46A2AB | true 16:9 camera |
 | 0x46A300 – 0x46AA16 | edge objects code |
 | 0x46AA20 – 0x46AE54 | game keys code |
-| 0x46AE54 – 0x46B024 | free |
+| 0x46AE54 – 0x46B000 | free |
+| 0x46B000 – 0x46B024 | heap headers (the game's, not ours) |
 
 Patch sites in the game code are listed in the JSON, with the bytes before and after.
 
