@@ -132,3 +132,8 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
 One entry per patch: `address`, `old` (hex), `new` (hex), plus a `feature` name. A tool checks `old` before
 writing `new`, so two tools can see when they touch the same bytes. Code caves are entries too, written before the
 hook that calls them.
+
+The JSON also has a `features` section: for each feature, what it `requires` (other features, the prepared exe,
+HD in true 16:9), the `memory` it takes in our area, the write `order` (code before the hooks that call it) and where
+its code bytes come from (`code_from`). Features with no requirements and no memory can be applied on their own.
+Every file patch is labelled with its `feature` too.

@@ -1,7 +1,7 @@
 {
  "game": "Terra Nova: Strike Force Centauri, English v1.09 __FF.EXE (Steam and GOG ship the same file)",
  "exe_sha256": "B762C54509F1716282C4D357A72013B8D84BA25F17B0483B733678FF81E63DD1",
- "tool": "Terra Nova Plus 1.1.0 beta 5 - https://github.com/skw-1337/terra-nova-plus",
+ "tool": "Terra Nova Plus 1.1.0 beta 5 + fixes on the beta branch (no patch changed since) - https://github.com/skw-1337/terra-nova-plus",
  "addresses": "linear addresses in DOSBox guest memory while the game runs (object 1 code = file offset + 0x1AAB5C)",
  "memory_patches": [
   {
@@ -319,245 +319,280 @@
    "file_offset": "0x037C51",
    "old": "F910",
    "new": "5911",
-   "what": "LE object table: object 3 virtual size 0x10F900 -> 0x115900 (+24 KB for the tool's code and data)"
+   "what": "LE object table: object 3 virtual size 0x10F900 -> 0x115900 (+24 KB for the tool's code and data)",
+   "feature": "prepared exe"
   },
   {
    "file_offset": "0x0FDE34",
    "old": "8D14850000000029C28B5C243CC1E20201DA31C0668B425F89453C",
    "new": "6BD00C0354243C0FB7425F83F8307605B83000000089453C909090",
    "address": "0x2A8990",
-   "what": "zoom: far terrain rings capped at 48 cells"
+   "what": "zoom: far terrain rings capped at 48 cells",
+   "feature": "zoom ring cap"
   },
   {
    "file_offset": "0x0FF7A1",
    "old": "3F80E13F",
    "new": "7F80E17F",
    "address": "0x2AA2FD",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x0FF7AB",
    "old": "06",
    "new": "07",
    "address": "0x2AA307",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x0FF7BE",
    "old": "3F",
    "new": "7F",
    "address": "0x2AA31A",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x0FF7C4",
    "old": "0680E33F",
    "new": "0780E37F",
    "address": "0x2AA320",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x0FF7DD",
    "old": "3F80E13F",
    "new": "7F80E17F",
    "address": "0x2AA339",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x0FF7E7",
    "old": "06",
    "new": "07",
    "address": "0x2AA343",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x0FF7FC",
    "old": "3F80E33F",
    "new": "7F80E37F",
    "address": "0x2AA358",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x0FF806",
    "old": "06",
    "new": "07",
    "address": "0x2AA362",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x100579",
    "old": "C03E00",
    "new": "400002",
    "address": "0x2AB0D5",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x1033A6",
    "old": "4000",
    "new": "0001",
    "address": "0x2ADF02",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x1033B4",
    "old": "427200",
    "new": "00BE02",
    "address": "0x2ADF10",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x1033C4",
    "old": "7D00",
    "new": "0004",
    "address": "0x2ADF20",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x103B2C",
    "old": "3F83E03FC1E206",
    "new": "7F83E07FC1E207",
    "address": "0x2AE688",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x103C3E",
    "old": "3F83E23F",
    "new": "7F83E27F",
    "address": "0x2AE79A",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x103C48",
    "old": "06",
    "new": "07",
    "address": "0x2AE7A4",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x103E6C",
    "old": "3F83E03FC1E206",
    "new": "7F83E07FC1E207",
    "address": "0x2AE9C8",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x104034",
    "old": "3F",
    "new": "7F",
    "address": "0x2AEB90",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x104039",
    "old": "0683E03F",
    "new": "0783E07F",
    "address": "0x2AEB95",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x10424F",
    "old": "3FC1E006",
    "new": "7FC1E007",
    "address": "0x2AEDAB",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x10426C",
    "old": "3F",
    "new": "7F",
    "address": "0x2AEDC8",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x10450E",
    "old": "3F83E23FC1E006",
    "new": "7F83E27FC1E007",
    "address": "0x2AF06A",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x104658",
    "old": "3F",
    "new": "7F",
    "address": "0x2AF1B4",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x104664",
    "old": "0683E03F",
    "new": "0783E07F",
    "address": "0x2AF1C0",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x104845",
    "old": "3F",
    "new": "7F",
    "address": "0x2AF3A1",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x10484A",
    "old": "0683E03F",
    "new": "0783E07F",
    "address": "0x2AF3A6",
-   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)"
+   "what": "terrain detail: vertex grid 64x64 -> 128x128 (masks 3F -> 7F, shifts 6 -> 7)",
+   "feature": "terrain detail"
   },
   {
    "file_offset": "0x1059C6",
    "old": "E07900",
    "new": "00CF03",
    "address": "0x2B0522",
-   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")",
+   "feature": "clipping points"
   },
   {
    "file_offset": "0x106132",
    "old": "2003",
    "new": "0019",
    "address": "0x2B0C8E",
-   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")",
+   "feature": "clipping points"
   },
   {
    "file_offset": "0x106277",
    "old": "2003",
    "new": "0019",
    "address": "0x2B0DD3",
-   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")",
+   "feature": "clipping points"
   },
   {
    "file_offset": "0x10639B",
    "old": "2003",
    "new": "0019",
    "address": "0x2B0EF7",
-   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")",
+   "feature": "clipping points"
   },
   {
    "file_offset": "0x1064C8",
    "old": "2003",
    "new": "0019",
    "address": "0x2B1024",
-   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")",
+   "feature": "clipping points"
   },
   {
    "file_offset": "0x1065EC",
    "old": "2003",
    "new": "0019",
    "address": "0x2B1148",
-   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")"
+   "what": "clipping points 800 -> 6400 (\"back_intersect: Too many temporary points\")",
+   "feature": "clipping points"
   },
   {
    "file_offset": "0x11A387",
    "old": "E004",
    "new": "0018",
    "address": "0x2C4EE3",
-   "what": "render pool 0x4E000 -> 1.5 MB"
+   "what": "render pool 0x4E000 -> 1.5 MB",
+   "feature": "render pool"
   },
   {
    "file_offset": "0x11A38C",
    "old": "E004",
    "new": "0018",
    "address": "0x2C4EE8",
-   "what": "render pool 0x4E000 -> 1.5 MB"
+   "what": "render pool 0x4E000 -> 1.5 MB",
+   "feature": "render pool"
   }
  ],
  "tool_areas": [
@@ -626,5 +661,111 @@
    "to": "0x46B024",
    "what": "free"
   }
- ]
+ ],
+ "features": {
+  "prepared exe": {
+   "where": "the file, once, before the game starts (original kept as __FF.EXE.tnplus-original)",
+   "requires": [],
+   "memory": [
+    "0x465024-0x46B024: zero-filled area added to object 3 (+0x6000), the heap starts after it"
+   ],
+   "file_patches": [
+    "prepared exe",
+    "zoom ring cap",
+    "terrain detail",
+    "clipping points",
+    "render pool"
+   ],
+   "note": "zoom ring cap, terrain detail (vertex grid 128x128), clipping points and render pool go together: the bigger grid needs the other three"
+  },
+  "HD": {
+   "where": "memory, before the first mission (DOSBox caches code that already ran)",
+   "requires": [
+    "prepared exe"
+   ],
+   "memory": [
+    "0x465100-0x466100 code",
+    "0x466100-0x469390 data and per-column tables"
+   ],
+   "order": "code and data first, then the hooks",
+   "code_from": "src/HdPayloadEn.cs (HdPayloadEnWide.cs in true 16:9), rebuilt byte for byte by tools/hd_mod.py"
+  },
+  "16:9": {
+   "where": "memory",
+   "requires": [
+    "field of view"
+   ],
+   "requires_true_16_9": [
+    "HD"
+   ],
+   "memory": [
+    "0x469400-0x469408 true 16:9 variables",
+    "0x46A200-0x46A2AB true 16:9 camera code"
+   ],
+   "note": "stretched 16:9 calls into the field of view code (0x46A0xx); true 16:9 also needs HD and the VESA table entry listed under HD"
+  },
+  "field of view": {
+   "where": "memory",
+   "requires": [
+    "prepared exe"
+   ],
+   "requires_true_16_9": [
+    "HD"
+   ],
+   "memory": [
+    "0x46A000-0x46A0A7 field of view data + code",
+    "0x46A100-0x46A19E terrain sectors code (hook 0x2AA3C2)"
+   ],
+   "order": "code first, then the call at 0x29E843",
+   "code_from": "FOV_CODE in src/TNPlus.cs; terrain sectors from tools/strips_cave.py"
+  },
+  "edge objects": {
+   "where": "memory",
+   "requires": [
+    "field of view"
+   ],
+   "memory": [
+    "0x469410-0x469A00 data",
+    "0x46A300-0x46AA16 code"
+   ],
+   "order": "data and code first, then the hooks",
+   "code_from": "EDGE_CAVES in src/TNPlus.cs",
+   "note": "only applied when the view is wider than the game's (field of view above GAME, or 16:9)"
+  },
+  "game keys": {
+   "where": "memory",
+   "requires": [
+    "prepared exe"
+   ],
+   "memory": [
+    "0x469A10-0x469F30 data (key map 0x469B30)",
+    "0x46A1A0-0x46A1F7 stuck key sweep",
+    "0x46AA20-0x46AE54 code"
+   ],
+   "order": "code first, then the installer call at 0x29E838",
+   "code_from": "src/TNPlusKeys.cs, tools/kb_cave.py",
+   "note": "the keyboard handler patch at 0x31AB4B is written by the game itself, from the installer, not from outside"
+  },
+  "projectile hit fix": {
+   "where": "memory",
+   "requires": [],
+   "memory": []
+  },
+  "physics speed fix": {
+   "where": "memory",
+   "requires": [],
+   "memory": []
+  },
+  "end-of-mission freeze guard": {
+   "where": "memory",
+   "requires": [],
+   "memory": []
+  },
+  "object distance": {
+   "where": "memory",
+   "requires": [],
+   "memory": [],
+   "note": "the object list is made bigger on the game's heap, no area of ours"
+  }
+ }
 }
