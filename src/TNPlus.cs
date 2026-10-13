@@ -1264,7 +1264,7 @@ static partial class TNPlus
         // a mouse bind on the middle button: DOSBox would release the captured mouse on that click
         bool mid = GameKeys.Exists(g => g.Mouse == 1) || Array.IndexOf(ToolMouse, 1) >= 0;
         string scale = OptScaling == 1 ? "[sdl]\r\noutput = opengl\r\n[render]\r\nglshader = sharp\r\n" : "";
-        File.WriteAllText(path, CpuSection(db) + scale + (mid ? "[mouse]\r\nmouse_middle_release = false\r\n" : "") + text);
+        File.WriteAllText(path, CpuSection(db) + scale + LaunchMapper(db) + (mid ? "[mouse]\r\nmouse_middle_release = false\r\n" : "") + text);
         return path;
     }
 
@@ -2019,6 +2019,7 @@ static partial class TNPlus
                     (OptWide && !haveWide ? " - widescreen unavailable" : "") +
                     (OptWide && haveWide && (launched == null || p.Id != launched.Id) ? " - widescreen off (game not started from this tool)" : ""), 0);
                 attached = true;
+                if (launched == null || p.Id != launched.Id) WarnAttachedMapper(h);   // started elsewhere: its key map
                 ShowWindow(GetConsoleWindow(), 6);  // minimize: never steal the game's focus
                 return;
             }
