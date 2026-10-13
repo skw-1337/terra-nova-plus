@@ -31,16 +31,38 @@ They stay the same from one run to the next with the usual DOSBox setup.
 | Video driver mode | dword at 0x35F8D0 | |
 | Projectile hit test | 0x311553 | step count rounded down: misses above ~30 fps |
 | Physics clock | 0x311F5A, 0x311F77 | leftover time added again every frame |
+| Entity's PBA number | entry + 0x03 (word) | index of its PBA struct |
+| PBA structs | 0x3A5608 + 0x582 × n | n = entry + 0x03; a second view of the same data starts at 0x3A59D0 |
+| AI soldier brains | 0x3832F0 + 0x14E × s | the player has none; word +0x0B = entity id |
+| Physics objects | 0x44E0DD + 0x30 × i (position), 0x44F2EC + 0xA0 × i | up to 96 |
 
 ## Keyboard
 
 The game reads the keyboard through its own IRQ1 handler at **0x31AAE0**.
-- **Its structure (kb)**: the instruction at 0x31AAEE loads a pointer to it.
+- **Its structure (kb)**: pointer in the dword at 0x45D62C (the instruction at 0x31AAEE reads it).
 - **Event queue**: 16-bit words `scancode | pressed << 8`, from kb+0x10 to kb+0x410. The write index is the dword at [kb].
 - **Key state**: bytes at kb+0x410+scancode, bit 0 = down. E0 keys use 0x80 + scancode.
 - **Reading**: 0x30504C reads the next event, 0x305020 peeks at it.
 - **Alt / Ctrl / Shift**: the game follows them from the queue events (0x301CE0), not from the state array. Putting
   modifier events in the queue gives any combination. The address of its flag word isn't confirmed yet.
+- **Key bitmap**: every frame 0x2F2B30 turns the key states into a 256-bit bitmap at 0x44C5B0. The game reads
+  keys through the pointer at 0x44C5D0, not the bitmap directly. The game has an input recording / playback
+  mode that just points it elsewhere (flags 0x35C02C / 0x35C02D).
+
+## Controls
+
+- 0x2F2C2C runs every frame: key bitmap (0x2F2B30), clear the control slots (0x2D7910), keyboard (0x2D7F2C),
+  joystick (0x2D8138), then 0x2D828C.
+- 3 control slots of 0x28 bytes at 0x446690 (a second group at 0x446618 is used with Ctrl). Fields, 16.16:
+  +0x00 forward (W +1.0, S +0.5, X -1.0), +0x04 strafe (Z / C ±1.0), +0x08 turn (A / D ±0.5), +0x10 look up / down,
+  +0x24 flags.
+- 0x2D7960 adds the slots into 0x4465F0, clamps each value to ±1.0 and applies it to the player's PBA: heading,
+  movement (0x28ABE0), head look. It is called once per frame, at 0x2D390B.
+- Writing another PBA's entity id into 0x441350 moves the camera, the cockpit and the controls to it. The AI
+  leaves alone whatever PBA is the player.
+- AI: the loop at 0x249EA2 walks the squads and calls 0x24DF10 for each soldier (call at 0x249EFC).
+- Firing: 0x292248 (eax = entity id) is shared by the player and the AI. It does nothing while the dword at
+  PBA struct + 9 is 0.
 
 ## DOSBox pitfalls
 
@@ -49,6 +71,11 @@ The game reads the keyboard through its own IRQ1 handler at **0x31AAE0**.
   Terra Nova Plus does that for the keyboard handler: a hook in the camera set-up writes the call with `cli`.
 - **Keep variables out of code pages.** Writing data into a 4 KB page that holds code makes DOSBox recompile it,
   and it can crash ("INT: Gate Selector points to illegal descriptor"). Keep data and code on separate pages.
+- **Self-modifying texture loops.** The 3D lib's texture loops patch their own instructions on every scanline
+  (destination pointer, texture steps): the sprite loop at 0x3316A0, the terrain tile loop at 0x3311F0, plus code the
+  game generates at 0x34E300. DOSBox's dynamic core retranslates them each time. That's why the infrared view costs
+  about a third of the frame rate (63 -> ~40 fps here). With core = normal it costs nothing extra, but that core is
+  much slower overall.
 
 ## Memory used by Terra Nova Plus
 
@@ -128,6 +155,10 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   falls back to the Windows sound set.
 - **Remapped keys**: extended keys (arrows, Page Up...) can't be picked as new keys yet (the E0 path of the keyboard
   handler isn't translated).
+- **Shots go through turrets** (particle beam, mission 26 with the pirate one; seen once with the multipulsar). An
+  original bug, also in the stock game. Cause found by Callemann: a flag that keeps a turret's own shots from
+  hitting it is shared by incoming shots and not always cleared when our shots hit. The shot's ray test is
+  0x2F074C -> 0x311283 -> 0x311848 (physics objects per grid cell).
 
 ## A shared patch format
 
