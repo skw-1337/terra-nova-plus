@@ -559,6 +559,20 @@ static partial class TNPlus
     static readonly byte[] PHYSFIX2_OLD = { 0x81, 0xFD, 0x8F, 0x02, 0x00, 0x00 }, PHYSFIX2_NEW = { 0x81, 0xFD, 0x00, 0x00, 0x00, 0x00 };
     static int physFixState = 0;
 
+    // Idle gestures of the AI suits ran faster at high frame rates (a soldier standing still: 0.012 game units per
+    // second of joint movement at 16 fps, 0.052 at 60). In the soldier animation (0x280A84), at rest, every call (one
+    // per frame) rolled a 1 in 32 chance of a new torso direction, then turned the torso by at most 0x222 per call.
+    // Both now follow the frame time the routine receives ([esp+0x3C], seconds in 16.16), tuned on 20 fps:
+    //   0x280C58: chance = time * 5/16 out of 0x7FFF (was rand % 32 < 1)
+    //   0x280CB4: turn step = time * 0x2AA8 >> 16 (was 0x222)
+    // Same place in the French and English exe.
+    static readonly uint[] IDLEFIX_AT = { 0x280C58 };
+    static readonly byte[] IDLEFIX_OLD = { 0x89, 0xC2, 0xBB, 0x20, 0x00, 0x00, 0x00, 0xC1, 0xFA, 0x1F, 0xF7, 0xFB, 0x83, 0xFA, 0x01, 0x7D, 0x2A };
+    static readonly byte[] IDLEFIX_NEW = { 0x8B, 0x54, 0x24, 0x3C, 0x8D, 0x14, 0x92, 0xC1, 0xEA, 0x04, 0x39, 0xD0, 0x7D, 0x2D, 0x90, 0x90, 0x90 };
+    static readonly uint[] IDLEFIX2_AT = { 0x280CB4 };
+    static readonly byte[] IDLEFIX2_OLD = { 0x3D, 0x22, 0x02, 0x00, 0x00, 0x7E, 0x07, 0xB8, 0x22, 0x02, 0x00, 0x00, 0xEB, 0x0C, 0x3D, 0xDE, 0xFD, 0xFF, 0xFF, 0x7D, 0x05, 0xB8, 0xDE, 0xFD, 0xFF, 0xFF };
+    static readonly byte[] IDLEFIX2_NEW = { 0x69, 0x5C, 0x24, 0x3C, 0xA8, 0x2A, 0x00, 0x00, 0xC1, 0xFB, 0x10, 0x39, 0xD8, 0x7E, 0x02, 0x89, 0xD8, 0xF7, 0xDB, 0x39, 0xD8, 0x7D, 0x02, 0x89, 0xD8, 0x90 };
+
     // Black screen at the end of a mission: the game frees the cockpit's click zones but keeps testing the
     // mouse against them for a moment; the routine that walks a zone's shape (a list of spans per row) then
     // follows freed memory and can loop forever. The routine is rewritten in place, same size, to stop after
@@ -1764,6 +1778,8 @@ static partial class TNPlus
     {
         physFixState = TryFix(PHYSFIX_AT, PHYSFIX_OLD, PHYSFIX_NEW, "Physics speed fix", "walking speed no longer depends on the frame rate");
         if (physFixState == 1) TryFix(PHYSFIX2_AT, PHYSFIX2_OLD, PHYSFIX2_NEW, "Physics smoothing", "movement on every frame");
+        if (physFixState == 1 && TryFix(IDLEFIX2_AT, IDLEFIX2_OLD, IDLEFIX2_NEW, "Idle turn speed", "soldiers turn at the original pace") == 1)
+            TryFix(IDLEFIX_AT, IDLEFIX_OLD, IDLEFIX_NEW, "Idle animation fix", "soldiers fidget at the original pace");
     }
 
     static void TryZoomFix()
@@ -2363,7 +2379,7 @@ static partial class TNPlus
                 "; ROLAND, FM, GAME'S OWN or AWE32 (music of the game and demos; AWE32 needs awe32.raw, an AWE32 ROM dump,\r\n" +
                 "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
-                "; 1 = physics (walking, jumps, falls) at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
+                "; 1 = physics (walking, jumps, falls) and the soldiers' idle gestures at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
                 "; GAME, 90, 100 or 110: horizontal field of view of the 3D view in degrees (the game: 84.5)\r\nfield_of_view = " + FOV_NAMES[OptFov] + "\r\n" +
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
                 "; 1 = terrain and objects up to the screen edges with a wider field of view or true 16:9 (beta)\r\nedge_objects = " + (OptEdge ? 1 : 0) + "\r\n" +

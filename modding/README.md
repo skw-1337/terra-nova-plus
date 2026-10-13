@@ -129,6 +129,12 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   the next zoom step jumps. The call at 0x26BB89 goes to a 12-byte cave at 0x46A0B0 that loads the current level
   first (`movsx ebx, word [0x38FBE2]` / `jmp 0x2AC7A0`).
 
+- **Soldiers fidget too fast at high frame rates.** Standing still, an AI suit picks a new torso direction with a
+  1 in 32 chance on every frame, then turns toward it by at most 0x222 per frame (soldier animation 0x280A84, at
+  0x280C58 and 0x280CB4): at 60 fps the idle gestures were about 4 times faster than at 16 fps. Both now use the
+  frame time the routine already receives (`[esp+0x3C]`, seconds in 16.16), tuned on 20 fps. Part of the physics
+  speed fix.
+
 ### Traps we fell into while patching
 
 - **A constant shifted like an address.** Our French-to-English address map also moved the cursor size 32x64

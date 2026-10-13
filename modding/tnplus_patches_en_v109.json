@@ -248,6 +248,22 @@
    "checked": "in memory"
   },
   {
+   "feature": "physics speed fix",
+   "address": "0x280CB4",
+   "old": "3D220200007E07B822020000EB0C3DDEFDFFFF7D05B8DEFDFFFF",
+   "new": "695C243CA82A0000C1FB1039D87E0289D8F7DB39D87D0289D890",
+   "checked": "in memory",
+   "note": "idle torso turn step: time * 0x2AA8 >> 16 instead of 0x222 per frame"
+  },
+  {
+   "feature": "physics speed fix",
+   "address": "0x280C58",
+   "old": "89C2BB20000000C1FA1FF7FB83FA017D2A",
+   "new": "8B54243C8D1492C1EA0439D07D2D909090",
+   "checked": "in memory",
+   "note": "idle gesture roll: rand < time * 5/16 instead of rand % 32 < 1 per frame"
+  },
+  {
    "feature": "end-of-mission freeze guard",
    "address": "0x2F249C",
    "old": "5589E583EC04895DFC8B5DFE6685DB7C2F6639DA7E2A8B55FCC1FA108B00C1E20301D0741B8B55FC663B107C0C663B50027F06B00189EC5DC38B400485C075E830C089EC5DC38BC0",
