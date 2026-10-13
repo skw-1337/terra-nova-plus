@@ -312,6 +312,22 @@
    "new": "E842FF1400909090909090",
    "note": "keyboard interrupt handler; written by the game itself (from the installer), not from outside: DOSBox keeps that code compiled",
    "checked": "in memory"
+  },
+  {
+   "feature": "zoom fix",
+   "address": "0x26BB89",
+   "old": "E8120C0400",
+   "new": "E822E51F00",
+   "checked": "in memory",
+   "note": "call to the cave at 0x46A0B0 instead of the camera init 0x2AC7A0"
+  },
+  {
+   "feature": "zoom fix",
+   "address": "0x46A0B0",
+   "old": "000000000000000000000000",
+   "new": "0FBF1DE2FB3800E9E426E4FF",
+   "checked": "in memory",
+   "note": "cave: movsx ebx, word [0x38FBE2] / jmp 0x2AC7A0"
   }
  ],
  "file_patches": [
@@ -665,6 +681,11 @@
    "from": "0x46B000",
    "to": "0x46B024",
    "what": "heap headers (the game's): not free"
+  },
+  {
+   "from": "0x46A0B0",
+   "to": "0x46A0BC",
+   "what": "zoom fix cave"
   }
  ],
  "features": {
@@ -771,6 +792,17 @@
    "requires": [],
    "memory": [],
    "note": "the object list is made bigger on the game's heap, no area of ours"
+  },
+  "zoom fix": {
+   "where": "memory",
+   "requires": [
+    "prepared exe"
+   ],
+   "memory": [
+    "0x46A0B0-0x46A0BC cave"
+   ],
+   "order": "cave first, then the call at 0x26BB89",
+   "code_from": "TryZoomFix in src/TNPlus.cs (found by signature, French and English)"
   }
  }
 }

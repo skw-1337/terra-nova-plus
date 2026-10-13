@@ -124,6 +124,11 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
 - **The ground stops short of the screen edges** with a view wider than about 90°: the terrain is only built in 3
   sectors of 45° around the heading. A hook on the builder (0x2AA3C2) and extra strips fix most of it.
 
+- **Zoom lost after the Options screen.** Back in the mission, the view reset (0x26BB70) calls the camera init
+  0x2AC7A0 with zoom level 0 while the zoom level (word at 0x38FBE2) keeps its value: the view looks unzoomed and
+  the next zoom step jumps. The call at 0x26BB89 goes to a 12-byte cave at 0x46A0B0 that loads the current level
+  first (`movsx ebx, word [0x38FBE2]` / `jmp 0x2AC7A0`).
+
 ### Traps we fell into while patching
 
 - **A constant shifted like an address.** Our French-to-English address map also moved the cursor size 32x64

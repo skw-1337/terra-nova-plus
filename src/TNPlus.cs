@@ -568,6 +568,15 @@ static partial class TNPlus
     static readonly byte[] UIFIX_NEW = { 0x55, 0x89, 0xE5, 0x83, 0xEC, 0x04, 0x89, 0x5D, 0xFC, 0x8B, 0x5D, 0xFE, 0x66, 0x85, 0xDB, 0x7C, 0x33, 0x66, 0x39, 0xDA, 0x7E, 0x2E, 0x8B, 0x55, 0xFC, 0xC1, 0xFA, 0x10, 0x8B, 0x00, 0xC1, 0xE2, 0x03, 0x01, 0xD0, 0x74, 0x1F, 0x8B, 0x55, 0xFC, 0xB3, 0xFF, 0x66, 0x3B, 0x10, 0x7C, 0x0A, 0x66, 0x3B, 0x50, 0x02, 0x7F, 0x04, 0xB0, 0x01, 0xEB, 0x0D, 0x8B, 0x40, 0x04, 0x85, 0xC0, 0x74, 0x04, 0xFE, 0xCB, 0x75, 0xE6, 0x30, 0xC0, 0xC9, 0xC3 };
     static int uiFixState = 0;
 
+    // Zoom lost after the Options screen (original bug): back in the mission the view is reset with the camera
+    // init 0x2AC7A0 at zoom level 0 (xor ebx, ebx) while the zoom level variable keeps its value, so the view looks
+    // unzoomed and the next zoom step jumps. The call (in the view reset at 0x26BB70 EN) is sent to a 12-byte cave
+    // that loads the current level first: movsx ebx, word [camera + 0xBE] / jmp 0x2AC7A0. Found by signature
+    // (French and English), the camera address tells them apart; the cave sits in our free area.
+    static readonly byte[] ZOOMFIX_SIG = { 0xBA, 0x04, 0x00, 0x00, 0x00, 0x8B, 0x1D };   // mov edx, 4 / mov ebx, [mode]
+    const uint ZOOMFIX_CAVE = 0x46A0B0;
+    static int zoomFixState = 0;
+
     // Object draw distance. The engine has no model LOD: objects simply pop in and out. Scenery (bushes, trees,
     // rocks) is only collected within 20 terrain cells, whatever the game's detail setting, and units and
     // buildings have a range per type loaded with each mission (20 cells for PBAs and units, up to 90 for some
@@ -1382,7 +1391,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
@@ -1404,6 +1413,7 @@ static partial class TNPlus
                 if (keysState == 1 && now - lastKeys > 0.25) { lastKeys = now; KeysFollowMission(InMission(PlayerEntry())); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
+                if (zoomFixState == 0 && now - lastPhys > 0.5) TryZoomFix();
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
                 // --- mouse binds: middle / side buttons held, wheel notches as short presses (one at a time)
@@ -1754,6 +1764,36 @@ static partial class TNPlus
     {
         physFixState = TryFix(PHYSFIX_AT, PHYSFIX_OLD, PHYSFIX_NEW, "Physics speed fix", "walking speed no longer depends on the frame rate");
         if (physFixState == 1) TryFix(PHYSFIX2_AT, PHYSFIX2_OLD, PHYSFIX2_NEW, "Physics smoothing", "movement on every frame");
+    }
+
+    static void TryZoomFix()
+    {
+        zoomFixState = -1;
+        byte[] mem = Read(0x240000, 0x40000);
+        if (mem == null) return;
+        for (int i = IndexOf(mem, ZOOMFIX_SIG, 0); i >= 0; i = IndexOf(mem, ZOOMFIX_SIG, i + 1))
+        {
+            // mov edx,4 / mov ebx,[mode] / mov eax,camera / sub edx,ebx / xor ebx,ebx / xor ecx,ecx / call init
+            if (i + 27 > mem.Length || mem[i + 11] != 0xB8 || mem[i + 16] != 0x29 || mem[i + 18] != 0x31 || mem[i + 20] != 0x31 || mem[i + 22] != 0xE8) continue;
+            uint cam = BitConverter.ToUInt32(mem, i + 12), mode = BitConverter.ToUInt32(mem, i + 7);
+            if ((cam != 0x38FB24 && cam != 0x38FBD4) || mode != cam - 0xB4) continue;
+            uint hook = 0x240000 + (uint)i + 22;
+            uint init = (uint)((int)hook + 5 + BitConverter.ToInt32(mem, i + 23));
+            if (init == ZOOMFIX_CAVE) { zoomFixState = 1; return; }        // already in place
+            if (ReadUInt(HdPayload.PoolVar) != HdPayload.PoolBase) return;  // __FF.EXE not prepared: no free area
+            byte[] cave = new byte[12];
+            cave[0] = 0x0F; cave[1] = 0xBF; cave[2] = 0x1D; BitConverter.GetBytes(cam + 0xBE).CopyTo(cave, 3);
+            cave[7] = 0xE9; BitConverter.GetBytes((int)init - (int)(ZOOMFIX_CAVE + 12)).CopyTo(cave, 8);
+            byte[] cur = Read(ZOOMFIX_CAVE, 12);
+            if (!AllZero(cur) && !Same(cur, cave)) { Say("Zoom fix unavailable: its memory area is not free", 300, 300); return; }
+            Write(ZOOMFIX_CAVE, cave);
+            byte[] call = new byte[5]; call[0] = 0xE8; BitConverter.GetBytes((int)ZOOMFIX_CAVE - (int)(hook + 5)).CopyTo(call, 1);
+            Write(hook, call);
+            if (!Same(Read(hook, 5), call)) return;
+            Say("Zoom fix ON: the zoom stays after the Options screen", 0);
+            zoomFixState = 1;
+            return;
+        }
     }
 
     static int TryFix(uint[] ats, byte[] old, byte[] nw, string name, string what)
