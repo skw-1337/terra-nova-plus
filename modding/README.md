@@ -135,6 +135,14 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   frame time the routine already receives (`[esp+0x3C]`, seconds in 16.16), tuned on 20 fps. Part of the physics
   speed fix.
 
+- **Descrambler text too fast to read at high frame rates** (mission 26). The panel (0x26E834) scrolls the decoded
+  text one character per frame (index at 0x35B180) and redraws its scrambled noise every frame, so at 60-90 fps it
+  ran 3 to 5 times faster than the game's ~20 fps. Both now step every 50 ms on the game's timer (0x446AE8): hooks
+  at 0x26EADA and 0x26EB42, code at 0x46A0C0 and 0x46A2AC, clocks at 0x4693A0. A weak-signal frame still clears
+  the panel state (0x35B184), so the decode (50 s of readable signal in a row, 0x26F094) is unchanged. After
+  Callemann's clock in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved) (which also slows the
+  noise further on purpose); `tools/descrambler_fix.py`. Part of the physics speed fix.
+
 - **Shots go through turrets** (particle beam in mission 26, sometimes the multipulsar). Three original bugs,
   found and fixed by Callemann in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved),
   ported to the DOSBox game in `tools/turret_fix.py`:

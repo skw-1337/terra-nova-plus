@@ -400,6 +400,38 @@
    "new": "E9AFF3180090",
    "checked": "in memory",
    "note": "hook: cylinder test entry"
+  },
+  {
+   "feature": "descrambler fix",
+   "address": "0x46A0C0",
+   "old": "00000000000000000000000000000000000000000000000000000000000000",
+   "new": "B9A0934600E80C0200008B1580B1350072088D4201A380B13500E9094AE0FF",
+   "checked": "in memory",
+   "note": "code: readable text, one character per 50 ms"
+  },
+  {
+   "feature": "descrambler fix",
+   "address": "0x46A2AC",
+   "old": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "new": "81F9008000007E1DB9A4934600E818000000730CC60584B1350000E91749E0FFE97948E0FFE9D648E0FFA1E86A44002B013DFA000000770A83F8327204830132F8C3A1E86A44008901F8C3",
+   "checked": "in memory",
+   "note": "code: scrambled noise, one line per 50 ms (+ shared clock)"
+  },
+  {
+   "feature": "descrambler fix",
+   "address": "0x26EADA",
+   "old": "8B1580B135008D4201A380B13500",
+   "new": "E9E1B51F00909090909090909090",
+   "checked": "in memory",
+   "note": "hook: readable text step"
+  },
+  {
+   "feature": "descrambler fix",
+   "address": "0x26EB42",
+   "old": "81F9008000007E62",
+   "new": "E965B71F00909090",
+   "checked": "in memory",
+   "note": "hook: weak signal"
   }
  ],
  "file_patches": [
@@ -710,6 +742,11 @@
    "what": "turret fix flag (projectile ray)"
   },
   {
+   "from": "0x4693A0",
+   "to": "0x4693A8",
+   "what": "descrambler fix clocks"
+  },
+  {
    "from": "0x469400",
    "to": "0x469408",
    "what": "true 16:9 variables"
@@ -735,6 +772,11 @@
    "what": "zoom fix cave"
   },
   {
+   "from": "0x46A0C0",
+   "to": "0x46A0DF",
+   "what": "descrambler fix code (readable text)"
+  },
+  {
    "from": "0x46A100",
    "to": "0x46A19E",
    "what": "terrain sectors code"
@@ -748,6 +790,11 @@
    "from": "0x46A200",
    "to": "0x46A2AB",
    "what": "true 16:9 camera code"
+  },
+  {
+   "from": "0x46A2AC",
+   "to": "0x46A2F7",
+   "what": "descrambler fix code (noise, clock)"
   },
   {
    "from": "0x46A300",
@@ -904,6 +951,20 @@
    "order": "code first, then the three hooks",
    "code_from": "tools/turret_fix.py",
    "note": "ported from TNova Native (Callemann, MIT); part of the projectile hit fix in the tool"
+  },
+  "descrambler fix": {
+   "where": "memory",
+   "requires": [
+    "prepared exe"
+   ],
+   "memory": [
+    "0x46A0C0-0x46A0DF",
+    "0x46A2AC-0x46A2F7",
+    "0x4693A0-0x4693A8"
+   ],
+   "order": "code first, then the two hooks",
+   "code_from": "tools/descrambler_fix.py",
+   "note": "after TNova Native (Callemann, MIT); part of the physics speed fix in the tool"
   }
  }
 }
