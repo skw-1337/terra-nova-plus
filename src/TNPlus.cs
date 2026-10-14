@@ -45,12 +45,12 @@ using System.Reflection;
 [assembly: AssemblyCopyright("Copyright (c) 2026 skw-1337 - MIT License - github.com/skw-1337/terra-nova-plus")]
 [assembly: AssemblyVersion("1.1.0.0")]
 [assembly: AssemblyFileVersion("1.1.0.0")]
-[assembly: AssemblyInformationalVersion("1.1.0-rc3")]
+[assembly: AssemblyInformationalVersion("1.1.0")]
 [assembly: ComVisible(false)]
 
 static partial class TNPlus
 {
-    const string VERSION = "1.1.0-rc3";
+    const string VERSION = "1.1.0";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)

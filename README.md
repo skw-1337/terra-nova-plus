@@ -15,18 +15,28 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **Field of view** | — | `GAME` / `90` / `100` / `110` degrees for the 3D view, cockpit and full view, at every zoom level (the game: 84.5). The small cockpit cameras keep theirs. Works in 4:3 and in 16:9. |
 | **Terrain and object distance** | — | More ground detail far away, and scenery, units and buildings drawn farther. |
 | **Keyboard** | — | Every game command on the key you want, layout presets (WASD, ZQSD...), mouse buttons and wheel. |
-| **Fixes** | `F7` | Projectiles hit at any frame rate, physics at the same speed at any frame rate, no black screen at the end of a mission, reversed stereo under DOSBox (`F7` compares). |
+| **Fixes** | `F7` | Projectiles hit at any frame rate (and no longer go through turrets), physics at the same speed at any frame rate, a smooth infrared view, the zoom kept after the Options screen, no black screen at the end of a mission, reversed stereo under DOSBox (`F7` compares). |
 | **Music** | — | Roland / General MIDI, Sound Blaster FM, or the game's own AWE32 bank (you bring the AWE32 ROM). |
 
 Everything happens in memory while you play, except one thing: for HD, terrain detail, field of view and 16:9 TNPlus patches `TNOVA\__FF.EXE` once, and keeps the untouched file as `__FF.EXE.tnplus-original`.
 
-## 1.1.0 beta
+## 1.1.0
 
-**Latest: [beta 5](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.1.0-beta5)**: true 16:9, field of view, the KEYBOARD tab and mouse binds.
+**Latest: [1.1.0](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.1.0)**: everything from the five betas, plus the fixes below.
 
-![Terra Nova Plus launcher, beta 5](docs/launcher_beta5.png)
+![Terra Nova Plus launcher](docs/launcher_beta5.png)
 
-This is a big one. I rewrote the launcher and added a bunch of things people asked for on TTLG, thanks to [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813). It's a beta, so tell me what breaks.
+This is a big one. I rewrote the launcher and added a bunch of things people asked for on TTLG, thanks to [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813). Tell me what breaks.
+
+### Since beta 5
+- **Infrared view**: as smooth as the normal view (it dropped to about 35 fps when turning fast).
+- **Shots no longer go through turrets** (particle beam in mission 26, sometimes the multipulsar).
+- **The zoom stays** after the Options screen.
+- **Mission 26**: the descrambler text scrolls at the original pace, readable again, and in true 16:9 the pirate cockpit no longer lets bits of the 3D through its frame.
+- **Soldiers standing still** fidget at the original pace, not 4 times faster.
+- **Key maps**: if your DOSBox already remaps the keyboard, it no longer stacks with the KEYBOARD tab.
+
+The turret, descrambler and infrared fixes come from Callemann's [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved), ported to the DOSBox game.
 
 ### New launcher
 - Since beta 3 it's a real window, in the colours of the game's cockpit. Hover a setting to read what it does at the bottom. `TNPlus.exe --console` keeps the old text menu.
@@ -90,10 +100,11 @@ If your install has no `TNDEMO1` / `TNDEMO2` folder (CD version): get the demos 
 
 Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, add `mixer sb reverse /noshow` at the top of your DOSBox `[autoexec]` instead, or use ripsaw8080's `SB16.DIG` patch (thanks to rfnagel and zjorz for pointing it out).
 
-### Gameplay (beta 3 and 4)
+### Gameplay
 - **Projectile hit fix** (on by default). Known bug since the 90s: with fast CPU cycles the multipulsar can't hit moving targets and drones become nearly immortal. Nightdive even dropped the Steam config to 115000 cycles because of it. Cause found in the game code: every frame a projectile checks the distance it just travelled against the entity grid, in steps of a fixed size, and the number of steps is rounded *down*. Above ~30 fps a pulsar bolt travels less than one step per frame, so the count is 0 and the bolt tests nothing: it can only hit the ground. The fix rounds the count up, and projectiles hit at any frame rate, yours and the enemies' alike (yes, the game gets a bit harder: that's how it was meant to play). Needed at the CPU speed the tool sets. It also fixes shots going through turrets (three original bugs found by Callemann for [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved), ported here).
 - **Physics speed fix** (beta 4, on by default). The game also walked faster the higher the frame rate: 2.0 game units per second at 37 fps, 3.3 at 76 fps, jumps and falls too. The physics engine kept a few milliseconds of leftover time that it added again on every frame. Cleared now: about 1.9 units per second at any frame rate. The soldiers' idle gestures and the descrambler text (mission 26) also keep their original pace.
 - **End-of-mission freeze guard** (beta 4, always on). The game frees the cockpit's click zones when a mission ends but keeps testing the mouse against them for a moment, and could get stuck there forever on a black screen. The routine that walks those zones now gives up after 255 steps, and freelook stops writing the cursor as soon as the game stops running frames.
+- **Zoom fix** (1.1, always on). Back from the Options screen the view came back unzoomed while the game kept its zoom level, so the next zoom step jumped. The view is now set up at the current level.
 - **Infrared speed fix** (1.1, with HD). In infrared the game writes texture steps into the code of its terrain routines many times a frame, and DOSBox has to translate that code again each time: turning fast in IR dropped to about 35 fps, uneven. Those two routines now read the values as data (Callemann's fix for [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved), ported here): IR runs as fast as the normal view. The routines are rebuilt from your own game files at run time, nothing of the game is shipped.
 - **Smoother walking** (beta 4, part of the physics fix). The physics skipped any frame shorter than 10 ms; above ~80 fps DOSBox gives 8 ms frames, so one frame in six had no movement and walking stuttered. Every frame is simulated now.
 - **Object distance** (beta 4, GAME / FAR / MAX, MAX by default). Bushes, trees and rocks were only drawn within 20 terrain cells whatever the detail setting, and units and buildings within a range per type (20 cells for PBAs). FAR draws scenery up to 30 cells and doubles the ranges, MAX goes to 40 cells and triples them (120 cells at most). The engine's fixed-size object list and the limits of its entity walk are raised first so the extra objects fit. The game has no model LOD to improve: objects are always drawn with the same model.
@@ -205,9 +216,10 @@ or manually:
 | 320×400 | goes through the same path as the options screen's "Accept" button; the game applies it on the next mission frame |
 | Field of view | every camera is set up by one routine from its zoom (focal lengths, culling angles, view matrix, the 3D library's projection); the stock view is 2·atan(1 / 1.1·zoom) = 84.5°. A hook gives the main camera an effective zoom = zoom × 1 / (1.1·tan(FOV/2)), so every zoom level follows; the terrain rings keep the raw zoom. The polygon terrain is built in 3 sectors of 45° around the heading: a second hook lowers the angle that builder sees to what its window covers, otherwise views wider than 90° facing a diagonal lost most of the ground. |
 | Widescreen | DOSBox is started with `aspect = stretch`. Every camera's vertical scale ×4/3 and the 3D library's pixel ratio ×3/4 (hooks in the camera setup and the renderer): correct proportions in every view, small cockpit cameras included. The main view gets 33 % more width through its effective zoom, so the terrain culling follows the screen edges (the old way, a global pixel ratio, left the polygon terrain short of the edges; it is kept as a fallback). |
-| True 16:9 | the game's driver sets its 640x400 mode through a table of VESA modes: that entry is switched to DOSBox's 848x480 (`vesa_modes = all`), and the scan line set to 848 right after the game switches (its own call asks for 640). The HD composition stretches the 320x400 game screen to 848 columns (one row in five doubled, 400 to 480 rows) and, wherever the game shows the 3D, takes the pixel of the main view, drawn 848 columns wide, at the same column (`wide_hud = 0`: game screen in the middle at x2, black above and below the 3D on the sides). The engine takes its horizontal scale from the drawing width, so on its own that only stretched the picture (and buildings, drawn by the 3D library with their own scale, slid on the ground); the main camera gets the same correction as stretched 16:9 with F = 2 x its canvas width / 848 (298 in the cockpit, 320 in the full view): vertical scale x1/F at its set-up, the library's pixel ratio x F while it draws, zoom x F, so the centre is the usual HD view and the sides show more of the world (the polygon terrain builder is limited to its 135° window). The engine's per-column tables are enlarged to 848 columns, which is why `__FF.EXE` gets 24 KB of extra memory now (16 KB before). |
+| True 16:9 | the game's driver sets its 640x400 mode through a table of VESA modes: that entry is switched to DOSBox's 848x480 (`vesa_modes = all`), and the scan line set to 848 right after the game switches (its own call asks for 640). The HD composition stretches the 320x400 game screen to 848 columns (one row in five doubled, 400 to 480 rows) and, wherever the game shows the 3D, takes the pixel of the main view, drawn 848 columns wide, at the same column (`wide_hud = 0`: game screen in the middle at x2, black above and below the 3D on the sides). The engine takes its horizontal scale from the drawing width, so on its own that only stretched the picture (and buildings, drawn by the 3D library with their own scale, slid on the ground); the main camera gets the same correction as stretched 16:9 with F = 2 x its canvas width / 848 (298 in the cockpit, 320 in the full view): vertical scale x1/F at its set-up and zoom x F, while the library's pixel ratio stays the game's (its horizontal object scale works out from the canvas height, so objects sit right on the terrain), so the centre is the usual HD view and the sides show more of the world (the polygon terrain builder is limited to its 135° window). The engine's per-column tables are enlarged to 848 columns, which is why `__FF.EXE` gets 24 KB of extra memory now (16 KB before). |
 
 ## Credits
 
 Made by skw-1337. The game is © its respective owners (Looking Glass Technologies / Night Dive Studios); this tool contains no game data.
+The turret, descrambler and infrared fixes are ported from Callemann's [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved) (MIT); the infrared routines are rebuilt at run time from your own copy of the game.
 Released under the MIT license, except `src/AweBank.cs` (AWE32 music), whose SoundFont 1 conversion follows [awesfx](https://github.com/tiwai/awesfx) by Takashi Iwai and is under the GPL v2 or later (`GPL-2.0.txt`). `TNPlus.exe` includes that file, so the program as a whole is distributed under the GPL; the source is in the zip and in this repository.
