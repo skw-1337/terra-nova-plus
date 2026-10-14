@@ -1355,7 +1355,7 @@ static partial class TNPlus
         int vkDist = (int)MapVirtualKey((uint)ScanDistance, 1), vkOptions = (int)MapVirtualKey(0x18, 1);
         bool prevSt = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
-        double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0;
+        double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0, lastCave = -10;
         // mouse binds (by MOUSE_NAMES index): state seen last pass, command pressed, wheel taps
         bool[] mbPrev = new bool[6], mbPulse = new bool[6];
         GameKey[] mbSent = new GameKey[6];
@@ -1427,9 +1427,13 @@ static partial class TNPlus
                 if (keysState == 1 && now - lastKeys > 0.25) { lastKeys = now; KeysFollowMission(InMission(PlayerEntry())); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
-                if (zoomFixState == 0 && now - lastPhys > 0.5) TryZoomFix();
-                if (OptHitFix && turretFixState == 0 && now - lastPhys > 0.5) TryTurretFix();
-                if (OptPhysFix && descrFixState == 0 && now - lastPhys > 0.5) TryDescramblerFix();
+                if (now - lastCave > 0.5 && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) || (OptPhysFix && descrFixState == 0)))
+                {
+                    lastCave = now;
+                    if (zoomFixState == 0) TryZoomFix();
+                    if (OptHitFix && turretFixState == 0) TryTurretFix();
+                    if (OptPhysFix && descrFixState == 0) TryDescramblerFix();
+                }
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
                 // --- mouse binds: middle / side buttons held, wheel notches as short presses (one at a time)
@@ -1786,6 +1790,7 @@ static partial class TNPlus
 
     static void TryZoomFix()
     {
+        if (!FreeAreaReady()) return;                                       // zoomFixState stays 0: look again
         zoomFixState = -1;
         byte[] mem = Read(0x240000, 0x40000);
         if (mem == null) return;
@@ -1798,7 +1803,6 @@ static partial class TNPlus
             uint hook = 0x240000 + (uint)i + 22;
             uint init = (uint)((int)hook + 5 + BitConverter.ToInt32(mem, i + 23));
             if (init == ZOOMFIX_CAVE) { zoomFixState = 1; return; }        // already in place
-            if (ReadUInt(HdPayload.PoolVar) != HdPayload.PoolBase) return;  // __FF.EXE not prepared: no free area
             byte[] cave = new byte[12];
             cave[0] = 0x0F; cave[1] = 0xBF; cave[2] = 0x1D; BitConverter.GetBytes(cam + 0xBE).CopyTo(cave, 3);
             cave[7] = 0xE9; BitConverter.GetBytes((int)init - (int)(ZOOMFIX_CAVE + 12)).CopyTo(cave, 8);
@@ -1833,11 +1837,20 @@ static partial class TNPlus
         descrFixState = TryPieces(DescramblerFix.At, DescramblerFix.Old, DescramblerFix.New, "Descrambler fix", "its text scrolls at the original pace");
     }
 
+    // The code patches with a cave need the free area of the prepared exe (24 KB after object 3, where the game then
+    // puts its pool) and the game code relocated: both are true once the game has allocated its pool there. Attached
+    // right at start-up (the tool launches DOSBox), DOS/4GW may still be relocating the code and the pool is not there
+    // yet: they wait instead of giving up for the whole session. With an exe that is not prepared they keep waiting.
+    static bool FreeAreaReady()
+    {
+        return ReadUInt(HdPayloadFr.PoolVar) == HdPayloadFr.PoolBase || ReadUInt(HdPayloadEn.PoolVar) == HdPayloadEn.PoolBase;
+    }
+
     // Code pieces for the English or the French exe (told apart by the bytes): all applied, the code in free areas
     // first and the hooks last, or none. 1 = on, 0 = memory not readable yet (try again), -1 = unavailable.
     static int TryPieces(uint[][] ats, string[][] olds, string[][] news, string name, string what)
     {
-        if (ReadUInt(HdPayload.PoolVar) != HdPayload.PoolBase) return -1;   // __FF.EXE not prepared: no free area
+        if (!FreeAreaReady()) return 0;
         for (int l = 0; l < ats.Length; l++)
         {
             uint[] at = ats[l];
