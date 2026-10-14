@@ -135,6 +135,18 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   frame time the routine already receives (`[esp+0x3C]`, seconds in 16.16), tuned on 20 fps. Part of the physics
   speed fix.
 
+- **Shots go through turrets** (particle beam in mission 26, sometimes the multipulsar). Three original bugs,
+  found and fixed by Callemann in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved),
+  ported to the DOSBox game in `tools/turret_fix.py`:
+  - a shared "object to ignore" slot (word 0x4464B8) keeps the last object an impact trace hit, so a later
+    projectile ray with no source body could ignore that turret for good. The ray routine (0x2F074C) empties
+    the slot for projectile rays (return address 0x2D96DA, no source body) and puts it back afterwards;
+  - the cell walk (0x2DA91D) skips a cell when the shot barely moves in XY, so a shot falling almost
+    vertically never tested it: during a projectile ray, a segment that changes height now does;
+  - the cylinder test (0x2DBAA0) rejects segments whose squared XY length is under 8 (16.16): short
+    segments always missed. They are now intersected in floating point (x87: DOSBox has no SSE2).
+  Code at 0x465024 and 0x46AE54, flag at 0x469390. Part of the projectile hit fix.
+
 ### Traps we fell into while patching
 
 - **A constant shifted like an address.** Our French-to-English address map also moved the cursor size 32x64
@@ -166,10 +178,6 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   falls back to the Windows sound set.
 - **Remapped keys**: extended keys (arrows, Page Up...) can't be picked as new keys yet (the E0 path of the keyboard
   handler isn't translated).
-- **Shots go through turrets** (particle beam, mission 26 with the pirate one; seen once with the multipulsar). An
-  original bug, also in the stock game. Cause found by Callemann: a flag that keeps a turret's own shots from
-  hitting it is shared by incoming shots and not always cleared when our shots hit. The shot's ray test is
-  0x2F074C -> 0x311283 -> 0x311848 (physics objects per grid cell).
 
 ## A shared patch format
 

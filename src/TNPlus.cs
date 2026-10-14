@@ -45,12 +45,12 @@ using System.Reflection;
 [assembly: AssemblyCopyright("Copyright (c) 2026 skw-1337 - MIT License - github.com/skw-1337/terra-nova-plus")]
 [assembly: AssemblyVersion("1.1.0.0")]
 [assembly: AssemblyFileVersion("1.1.0.0")]
-[assembly: AssemblyInformationalVersion("1.1.0-rc1")]
+[assembly: AssemblyInformationalVersion("1.1.0-rc2")]
 [assembly: ComVisible(false)]
 
 static partial class TNPlus
 {
-    const string VERSION = "1.1.0-rc1";
+    const string VERSION = "1.1.0-rc2";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
@@ -1405,7 +1405,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
@@ -1428,6 +1428,7 @@ static partial class TNPlus
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (zoomFixState == 0 && now - lastPhys > 0.5) TryZoomFix();
+                if (OptHitFix && turretFixState == 0 && now - lastPhys > 0.5) TryTurretFix();
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
                 // --- mouse binds: middle / side buttons held, wheel notches as short presses (one at a time)
@@ -1810,6 +1811,37 @@ static partial class TNPlus
             zoomFixState = 1;
             return;
         }
+    }
+
+    // Shots through turrets: three original bugs (a stale "object to ignore" slot, shots falling almost vertically,
+    // short segments against cylinders), found and fixed by Callemann in TNova Native and ported to the
+    // DOSBox game by tools/turret_fix.py. Code in two free areas of the prepared exe first, then three hooks; English
+    // or French told apart by the bytes at the hooks.
+    static int turretFixState = 0;
+    static void TryTurretFix()
+    {
+        turretFixState = -1;
+        if (ReadUInt(HdPayload.PoolVar) != HdPayload.PoolBase) return;      // __FF.EXE not prepared: no free area
+        for (int l = 0; l < 2; l++)
+        {
+            uint[] at = TurretFix.At[l];
+            bool allNew = true, ready = true;
+            for (int i = 0; i < at.Length; i++)
+            {
+                byte[] nw = Hex(TurretFix.New[l][i]), cur = Read(at[i], nw.Length);
+                if (cur == null) { turretFixState = 0; return; }
+                bool isNew = Same(cur, nw), isOld = Same(cur, Hex(TurretFix.Old[l][i]));
+                if (!isNew) allNew = false;
+                if (!isNew && !isOld) ready = false;
+            }
+            if (allNew) { turretFixState = 1; return; }
+            if (!ready) continue;
+            for (int i = 0; i < at.Length; i++) Write(at[i], Hex(TurretFix.New[l][i]));   // the code first, then the hooks
+            Say("Turret fix ON: shots no longer go through turrets", 0);
+            turretFixState = 1;
+            return;
+        }
+        Say("Turret fix unavailable: unexpected game code or memory", 300, 300);
     }
 
     static int TryFix(uint[] ats, byte[] old, byte[] nw, string name, string what)
