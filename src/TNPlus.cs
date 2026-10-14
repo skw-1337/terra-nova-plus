@@ -1427,7 +1427,7 @@ static partial class TNPlus
                 if (keysState == 1 && now - lastKeys > 0.25) { lastKeys = now; KeysFollowMission(InMission(PlayerEntry())); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
-                if (now - lastCave > 0.5 && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) || (OptPhysFix && descrFixState == 0)))
+                if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) || (OptPhysFix && descrFixState == 0)))
                 {
                     lastCave = now;
                     if (zoomFixState == 0) TryZoomFix();
@@ -1837,6 +1837,8 @@ static partial class TNPlus
         descrFixState = TryPieces(DescramblerFix.At, DescramblerFix.Old, DescramblerFix.New, "Descrambler fix", "its text scrolls at the original pace");
     }
 
+    // (With HD on they also wait for the HD injection: the turret fix code sits at the start of the HD zone, which
+    // the injection wants empty.)
     // The code patches with a cave need the free area of the prepared exe (24 KB after object 3, where the game then
     // puts its pool) and the game code relocated: both are true once the game has allocated its pool there. Attached
     // right at start-up (the tool launches DOSBox), DOS/4GW may still be relocating the code and the pool is not there

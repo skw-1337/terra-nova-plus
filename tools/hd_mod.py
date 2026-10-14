@@ -73,7 +73,7 @@ V = {k: DATA + 4 * i for i, k in enumerate(
     'SBUF LFB VALID RATIO_OK COPIES S_ROW S_CLIP CAM_R RHALF BTAB LISSE PALSUM PALVU PALSTAB TR TG TB CALCULS '
     'S_CANVAS S_W0 S_H0 S_CX W_CUR ROWK CXK CXSUM DLT S_V1_8 S_V2_8 S_V1_10 S_V2_10 '
     'FX0 FY0 FW FH FWW HUDF HUDON LSON ROWN HX0 HX1 HROW '
-    'WM1 PREVB SHADB FORCE SIG SEGEND LROW SROW TRIED VUP R5 SIDE FSIDE S_V1_18 SIDEOK HDR HSTR CHG'.split())}
+    'WM1 PREVB SHADB FORCE SIG SEGEND LROW SROW TRIED VUP R5 SIDE FSIDE S_V1_18 SIDEOK HDR HSTR CHG HUDW HCROW'.split())}
 assert max(V.values()) < DATA + 0x500
 CXTAB, ROWTAB = DATA + 0x500, DATA + 0x900
 DIRTYP, OUTROW = DATA + 0x1000, DATA + 0x1200     # lignes modifiees (2 o de marge de chaque cote), ligne composee
@@ -597,6 +597,7 @@ fl_l0:
     mov eax, {640 * 400:#x}
     call dword ptr [0x35f54c]
     mov dword ptr [{v('SHADB')}], eax
+WIDE_ALLOC
     mov dword ptr [{v('FORCE')}], 1
 fl_bufs:
     mov eax, dword ptr [{v('VALID')}]
@@ -613,6 +614,7 @@ fl_bufs:
     je fl_sig_ok
     mov dword ptr [{v('SIG')}], eax
     mov dword ptr [{v('FORCE')}], 1
+WIDE_CLR
 fl_sig_ok:
     mov edi, dword ptr [{v('PREVB')}]
     test edi, edi
@@ -676,6 +678,7 @@ fl_row:
     sub edx, ecx
 WIDE_ADDFSIDE_EDX
     mov dword ptr [{v('HROW')}], edx
+WIDE_HC
     mov edx, dword ptr [{v('ROWN')}]
     sub edx, dword ptr [{v('FY0')}]
     mov dword ptr [{v('VUP')}], edx
@@ -831,6 +834,7 @@ sh_plain:
     jmp sh_next
 sh_filter:
 WIDE_M0
+sh_fhud:
     mov ah, al
     mov dl, byte ptr [esi+ecx-1]
     cmp dl, byte ptr [esi+ecx+1]
@@ -1044,8 +1048,51 @@ hw_s:
 hw_w:
     mov dword ptr [0x36238a], ecx""",
     # ligne de 848 colonnes : HUD etire (x 640/848, OUTROW) et, la ou le jeu montre la 3D, pixel HD de la meme colonne
-    'WIDE_M1': f"    mov byte ptr [ecx+{MASK:#x}], 1",
-    'WIDE_M0': f"    mov byte ptr [ecx+{MASK:#x}], 0",
+    # Un pixel du jeu egal a la 3D HD est de la 3D... sauf si c'est la couleur du HUD vu a cet endroit : le cadre du
+    # cockpit (fixe) dessine DANS le rectangle de la vue (lunettes du cockpit pirate, mission 26) peut avoir par hasard
+    # la couleur de la 3D derriere lui ; pris pour de la 3D, il montrait la vue elargie d'une autre colonne (fuites
+    # aux bords en HUD etire). HUDW : par pixel du jeu, mot (1 << 8) | couleur du HUD vu la, oublie des que la 3D
+    # montre une autre couleur a cet endroit. Efface a chaque changement de fenetre (cockpit, vue entiere...).
+    'WIDE_M1': f"""    mov edx, dword ptr [{v('HCROW')}]
+    test edx, edx
+    jz m1_3d
+    cmp byte ptr [edx+ecx*2+1], 0
+    je m1_3d
+    cmp byte ptr [edx+ecx*2], al
+    je m1_hud
+    mov byte ptr [edx+ecx*2+1], 0
+m1_3d:
+    mov byte ptr [ecx+{MASK:#x}], 1
+    jmp m1_end
+m1_hud:
+    mov byte ptr [ecx+{MASK:#x}], 0
+    jmp sh_fhud
+m1_end:""",
+    'WIDE_M0': f"""    mov byte ptr [ecx+{MASK:#x}], 0
+    mov edx, dword ptr [{v('HCROW')}]
+    test edx, edx
+    jz m0_x
+    mov byte ptr [edx+ecx*2], al
+    mov byte ptr [edx+ecx*2+1], 1
+m0_x:""",
+    'WIDE_ALLOC': f"""    mov eax, {320 * 400 * 2}
+    call dword ptr [0x35f54c]
+    mov dword ptr [{v('HUDW')}], eax
+WIDE_CLR""",
+    'WIDE_CLR': f"""    mov edi, dword ptr [{v('HUDW')}]
+    test edi, edi
+    jz LBL
+    mov ecx, {320 * 400 * 2 // 4}
+    xor eax, eax
+    rep stosd dword ptr es:[edi], eax
+LBL:""",
+    'WIDE_HC': f"""    xor edx, edx
+    cmp dword ptr [{v('HUDW')}], edx
+    je hc_set
+    imul edx, dword ptr [{v('ROWN')}], 640
+    add edx, dword ptr [{v('HUDW')}]
+hc_set:
+    mov dword ptr [{v('HCROW')}], edx""",
     # plages de la ligne du jeu (HUD / 3D, d'apres MASK) ; colonne d'ecran de debut du pixel g = (1696 g + 319) / 640 ;
     # 3D : copie de la ligne HD (colonne d'ecran = colonne HD), HUD : OUTROW etire (u = (640 X + 320) / 848)
     'WIDE_SROW': f"""stretch_row:
@@ -1210,7 +1257,8 @@ ws_out:""",
                 'WIDE_W': None, 'WIDE_ADDSIDE_EBX': None, 'WIDE_ADDSIDE_EAX': None, 'WIDE_ADDSIDE_ESI': None,
                 'WIDE_ADDSIDE_ECX': None, 'WIDE_ANGLE': None, 'WIDE_ANGLE_BACK': None, 'WIDE_HALFW': None,
                 'WIDE_RECT': """    sar word ptr [esi], 1
-    sar word ptr [esi+4], 1""", 'WIDE_FSIDE': None, 'WIDE_ADDFSIDE_EDX': None, 'WIDE_HDR': None, 'WIDE_SIDES': None, 'WIDE_STR': None, 'WIDE_SROW': None, 'WIDE_M1': None, 'WIDE_M0': None}
+    sar word ptr [esi+4], 1""", 'WIDE_FSIDE': None, 'WIDE_ADDFSIDE_EDX': None, 'WIDE_HDR': None, 'WIDE_SIDES': None, 'WIDE_STR': None, 'WIDE_SROW': None, 'WIDE_M1': None, 'WIDE_M0': None,
+                'WIDE_ALLOC': None, 'WIDE_CLR': None, 'WIDE_HC': None}
 if WIDE:   # routines ajoutees en tete de code (les etiquettes sont calculees sur le code qui precede)
     ASM = f"""
 rect_clamp:
@@ -1250,7 +1298,13 @@ side_row:
     ret
 """ + ASM
 for k, t in WIDE_TXT.items():
-    ASM = ASM.replace(k + '\n', '' if t is None else t + '\n')
+    if k != 'WIDE_CLR':
+        ASM = ASM.replace(k + '\n', '' if t is None else t + '\n')
+_n = 0
+while 'WIDE_CLR\n' in ASM:   # WIDE_ALLOC en contient un : une etiquette par exemplaire
+    t = WIDE_TXT['WIDE_CLR']
+    ASM = ASM.replace('WIDE_CLR\n', '' if t is None else t.replace('LBL', 'hw_clr%d' % _n) + '\n', 1)
+    _n += 1
 assert 'WIDE_' not in ASM
 ASM = re.sub(r'0x[0-9a-fA-F]{5,6}', lambda m: '0x%x' % M(int(m.group(), 16)), ASM)   # adresses du jeu selon la version
 
