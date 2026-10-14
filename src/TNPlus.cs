@@ -1405,7 +1405,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; irFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
@@ -1427,12 +1427,14 @@ static partial class TNPlus
                 if (keysState == 1 && now - lastKeys > 0.25) { lastKeys = now; KeysFollowMission(InMission(PlayerEntry())); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
-                if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) || (OptPhysFix && descrFixState == 0)))
+                if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
+                    (OptPhysFix && descrFixState == 0) || irFixState == 0 || irFixState == 1))
                 {
                     lastCave = now;
                     if (zoomFixState == 0) TryZoomFix();
                     if (OptHitFix && turretFixState == 0) TryTurretFix();
                     if (OptPhysFix && descrFixState == 0) TryDescramblerFix();
+                    if (irFixState == 0 || irFixState == 1) TryIrFix();
                 }
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
@@ -1846,6 +1848,72 @@ static partial class TNPlus
     static bool FreeAreaReady()
     {
         return ReadUInt(HdPayloadFr.PoolVar) == HdPayloadFr.PoolBase || ReadUInt(HdPayloadEn.PoolVar) == HdPayloadEn.PoolBase;
+    }
+
+    // Infrared view: the game writes texture steps, masks and table addresses into the instructions of its two IR
+    // terrain routines (spans, affine rows) many times a frame, so DOSBox's dynamic core translates them again and
+    // again (turning fast in IR: 62 -> 35 fps, uneven). After TNova Native (Callemann): rebuilt routines read those
+    // slots as data. TN+ ships no game code: they are put together at run time from the game's own instructions
+    // (checked by SHA-256) and our edits (tools/ir_fix.py), in a 12 KB buffer the HD code allocates (XCode). Until
+    // then each entry (a 6-byte jmp [pointer]) goes to a stub that runs the original routine.
+    static int irFixState = 0;          // 0 to do, 1 entries in place (waiting for the buffer), 2 on, -1 unavailable
+    static int irLang = -1;
+    static void TryIrFix()
+    {
+        if (!FreeAreaReady()) return;
+        if (irFixState == 0)
+        {
+            irFixState = -1;
+            for (int l = 0; l < 2; l++)
+            {
+                byte[] s = Read(IrFix.SiteSpan[l], 6), a = Read(IrFix.SiteAffine[l], 6);
+                if (s == null || a == null) { irFixState = 0; return; }
+                byte[] ns = Hex(IrFix.NewSpan[l]), na = Hex(IrFix.NewAffine[l]);
+                if (!(Same(s, Hex(IrFix.OldSpan[l])) || Same(s, ns)) || !(Same(a, Hex(IrFix.OldAffine[l])) || Same(a, na))) continue;
+                byte[] ss = Hex(IrFix.CodeStubSpan[l]), sa = Hex(IrFix.CodeStubAffine[l]);
+                byte[] cs = Read(IrFix.StubSpan, ss.Length), ca = Read(IrFix.StubAffine, sa.Length);
+                if (!(AllZero(cs) || Same(cs, ss)) || !(AllZero(ca) || Same(ca, sa)))
+                { Say("Infrared speed fix unavailable: its memory area is not free", 300, 300); return; }
+                Write(IrFix.StubSpan, ss); Write(IrFix.StubAffine, sa);            // the stubs, then where to go,
+                if (ReadUInt(IrFix.PtrSpan) == 0) WriteInt(IrFix.PtrSpan, (int)IrFix.StubSpan);
+                if (ReadUInt(IrFix.PtrAffine) == 0) WriteInt(IrFix.PtrAffine, (int)IrFix.StubAffine);
+                Write(IrFix.SiteSpan[l], ns); Write(IrFix.SiteAffine[l], na);      // then the entries
+                irLang = l; irFixState = 1;
+                return;
+            }
+            Say("Infrared speed fix unavailable: unexpected game code", 300, 300);
+            return;
+        }
+        if (irFixState != 1) return;
+        uint x = ReadUInt(IrFix.XCode);
+        if (x == 0) return;                                         // no HD buffer yet (or no HD)
+        int L = irLang;
+        uint b = (x + 0xFFF) & ~0xFFFu;                             // a page of its own in the 12 KB buffer
+        if (ReadUInt(IrFix.PtrSpan) == b + (uint)IrFix.EntrySpan[L]) { irFixState = 2; return; }
+        var block = new System.IO.MemoryStream(); var copied = new System.IO.MemoryStream();
+        foreach (string piece in IrFix.Pieces[L])
+        {
+            byte[] part;
+            if (piece[0] == 'C')
+            {
+                string[] f = piece.Split(':');
+                part = Read(Convert.ToUInt32(f[1], 16), Convert.ToInt32(f[2], 16));
+                if (part == null) return;
+                copied.Write(part, 0, part.Length);
+            }
+            else part = Hex(piece.Substring(2));
+            block.Write(part, 0, part.Length);
+        }
+        byte[] code = block.ToArray(), sum;
+        using (var h = System.Security.Cryptography.SHA256.Create()) sum = h.ComputeHash(copied.ToArray());
+        if (code.Length != IrFix.Size[L] || BitConverter.ToString(sum).Replace("-", "").ToLowerInvariant() != IrFix.Sha[L])
+        { irFixState = -1; Say("Infrared speed fix unavailable: unexpected game code", 300, 300); return; }
+        Write(b, code);
+        if (!Same(Read(b, code.Length), code)) return;
+        WriteInt(IrFix.PtrSpan, (int)(b + (uint)IrFix.EntrySpan[L]));
+        WriteInt(IrFix.PtrAffine, (int)(b + (uint)IrFix.EntryAffine[L]));
+        irFixState = 2;
+        Say("Infrared speed fix ON: no more slowdown in the infrared view", 0);
     }
 
     // Code pieces for the English or the French exe (told apart by the bytes): all applied, the code in free areas

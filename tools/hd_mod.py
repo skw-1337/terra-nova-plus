@@ -73,7 +73,7 @@ V = {k: DATA + 4 * i for i, k in enumerate(
     'SBUF LFB VALID RATIO_OK COPIES S_ROW S_CLIP CAM_R RHALF BTAB LISSE PALSUM PALVU PALSTAB TR TG TB CALCULS '
     'S_CANVAS S_W0 S_H0 S_CX W_CUR ROWK CXK CXSUM DLT S_V1_8 S_V2_8 S_V1_10 S_V2_10 '
     'FX0 FY0 FW FH FWW HUDF HUDON LSON ROWN HX0 HX1 HROW '
-    'WM1 PREVB SHADB FORCE SIG SEGEND LROW SROW TRIED VUP R5 SIDE FSIDE S_V1_18 SIDEOK HDR HSTR CHG HUDW HCROW'.split())}
+    'WM1 PREVB SHADB FORCE SIG SEGEND LROW SROW TRIED VUP R5 SIDE FSIDE S_V1_18 SIDEOK HDR HSTR CHG HUDW HCROW XCODE'.split())}
 assert max(V.values()) < DATA + 0x500
 CXTAB, ROWTAB = DATA + 0x500, DATA + 0x900
 DIRTYP, OUTROW = DATA + 0x1000, DATA + 0x1200     # lignes modifiees (2 o de marge de chaque cote), ligne composee
@@ -597,6 +597,9 @@ fl_l0:
     mov eax, {640 * 400:#x}
     call dword ptr [0x35f54c]
     mov dword ptr [{v('SHADB')}], eax
+    mov eax, 12288
+    call dword ptr [0x35f54c]
+    mov dword ptr [{v('XCODE')}], eax
 WIDE_ALLOC
     mov dword ptr [{v('FORCE')}], 1
 fl_bufs:

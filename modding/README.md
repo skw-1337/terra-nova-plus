@@ -76,6 +76,7 @@ The game reads the keyboard through its own IRQ1 handler at **0x31AAE0**.
   game generates at 0x34E300. DOSBox's dynamic core retranslates them each time. That's why the infrared view costs
   about a third of the frame rate (63 -> ~40 fps here). With core = normal it costs nothing extra, but that core is
   much slower overall.
+  Fixed for the infrared terrain (see the infrared speed fix below).
 
 ## Memory used by Terra Nova Plus
 
@@ -142,6 +143,15 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   the panel state (0x35B184), so the decode (50 s of readable signal in a row, 0x26F094) is unchanged. After
   Callemann's clock in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved) (which also slows the
   noise further on purpose); `tools/descrambler_fix.py`. Part of the physics speed fix.
+
+- **Infrared view slow and uneven** (about 35 fps when turning fast, 60 in the normal view). Its two terrain
+  routines (spans at 0x34E223, affine rows at 0x3311F0) have their texture steps, masks and table addresses written
+  into their instructions many times a frame, so DOSBox retranslates them. Callemann's rebuilt routines
+  ([TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved)) read those operand slots as data. In TN+
+  they are put together at run time from the player's own game code plus the edits (`tools/ir_fix.py`), in a 12 KB
+  buffer the HD code allocates (pointer at 0x466228). Each entry becomes `jmp [0x4693A8]` / `jmp [0x4693AC]`; until
+  the buffer exists those point to stubs (0x46A0E0, 0x4650E8) that run the original routines. Checked by running
+  both versions on frozen real calls in Unicorn: identical bytes.
 
 - **Shots go through turrets** (particle beam in mission 26, sometimes the multipulsar). Three original bugs,
   found and fixed by Callemann in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved),

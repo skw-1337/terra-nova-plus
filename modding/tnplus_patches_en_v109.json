@@ -432,6 +432,38 @@
    "new": "E965B71F00909090",
    "checked": "in memory",
    "note": "hook: weak signal"
+  },
+  {
+   "feature": "infrared speed fix",
+   "address": "0x46A0E0",
+   "old": "00000000000000000000000000",
+   "new": "6089C6B98AE33400E93E41EEFF",
+   "checked": "in memory",
+   "note": "stub: the original span routine"
+  },
+  {
+   "feature": "infrared speed fix",
+   "address": "0x4650E8",
+   "old": "0000000000000000000000000000",
+   "new": "6089C78B1D8C123300E903C1ECFF",
+   "checked": "in memory",
+   "note": "stub: the original affine routine"
+  },
+  {
+   "feature": "infrared speed fix",
+   "address": "0x34E223",
+   "old": "608BF0B98AE3",
+   "new": "FF25A8934600",
+   "checked": "in memory",
+   "note": "entry: jmp [pointer] (pointer = stub, then the rebuilt routine)"
+  },
+  {
+   "feature": "infrared speed fix",
+   "address": "0x3311F0",
+   "old": "608BF88B1D8C",
+   "new": "FF25AC934600",
+   "checked": "in memory",
+   "note": "entry: jmp [pointer] (pointer = stub, then the rebuilt routine)"
   }
  ],
  "file_patches": [
@@ -727,6 +759,11 @@
    "what": "turret fix code"
   },
   {
+   "from": "0x4650E8",
+   "to": "0x4650F6",
+   "what": "infrared speed fix stub (affine)"
+  },
+  {
    "from": "0x465100",
    "to": "0x466100",
    "what": "HD code"
@@ -745,6 +782,11 @@
    "from": "0x4693A0",
    "to": "0x4693A8",
    "what": "descrambler fix clocks"
+  },
+  {
+   "from": "0x4693A8",
+   "to": "0x4693B0",
+   "what": "infrared speed fix pointers"
   },
   {
    "from": "0x469400",
@@ -775,6 +817,11 @@
    "from": "0x46A0C0",
    "to": "0x46A0DF",
    "what": "descrambler fix code (readable text)"
+  },
+  {
+   "from": "0x46A0E0",
+   "to": "0x46A0ED",
+   "what": "infrared speed fix stub (spans)"
   },
   {
    "from": "0x46A100",
@@ -965,6 +1012,22 @@
    "order": "code first, then the two hooks",
    "code_from": "tools/descrambler_fix.py",
    "note": "after TNova Native (Callemann, MIT); part of the physics speed fix in the tool"
+  },
+  "infrared speed fix": {
+   "where": "memory",
+   "requires": [
+    "prepared exe",
+    "HD"
+   ],
+   "memory": [
+    "0x46A0E0-0x46A0ED",
+    "0x4650E8-0x4650F6",
+    "0x4693A8-0x4693B0",
+    "a 12 KB heap buffer from the HD code (pointer 0x466228)"
+   ],
+   "order": "stubs, pointers, entries at the main menu; the rebuilt routines once the buffer exists, then the pointers",
+   "code_from": "tools/ir_fix.py (routines rebuilt from the game's own code at run time)",
+   "note": "after TNova Native (Callemann, MIT)"
   }
  }
 }
