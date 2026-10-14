@@ -331,7 +331,7 @@ static partial class TNPlus
             bool trueOk = trueWide && (Same(hb, WIDE_B_OLD) || Same(hb, TRUE_B_NEW[lang])) && (Same(hc, WIDE_C_OLD[lang]) || Same(hc, TRUE_C_NEW[lang]));
             if (trueOk)
             {
-                byte[] tc = Read(TRUE_A, 0x100);
+                byte[] tc = Read(TRUE_A, (int)(TRUE_B - TRUE_A) + TRUE_B_CODE[lang].Length / 2);   // 0x46A200-0x46A2AB only: the descrambler fix follows
                 bool tfree = true;
                 foreach (byte x in tc) if (x != 0) { tfree = false; break; }
                 trueOk = tfree || Same(Read(TRUE_A, TRUE_A_CODE[lang].Length / 2), Hex(TRUE_A_CODE[lang]));
@@ -375,7 +375,7 @@ static partial class TNPlus
             fovState = 1;
             if (deg > 0 || wide || trueWide) TryEdge(lang);
             Say("Field of view " + (deg > 0 ? deg + " degrees" : (wide ? "100.9 degrees (16:9)" : "84.5 degrees")) + (wideHooks ? ", 16:9 camera" : "") +
-                (trueWide ? ", true 16:9" : "") + (edgeState == 1 ? ", edge objects" : "") + " (the game: 84.5)", 0);
+                (trueOk ? ", true 16:9" : trueWide ? ", true 16:9 UNAVAILABLE (its memory area is not free)" : "") + (edgeState == 1 ? ", edge objects" : "") + " (the game: 84.5)", 0);
             return;
         }
         Say("Field of view unavailable: start the game from this tool (it prepares __FF.EXE)", 300, 300);
