@@ -464,6 +464,38 @@
    "new": "FF25AC934600",
    "checked": "in memory",
    "note": "entry: jmp [pointer] (pointer = stub, then the rebuilt routine)"
+  },
+  {
+   "feature": "normal view speed fix",
+   "address": "0x469F40",
+   "old": "000000000000000000000000",
+   "new": "608B388B328B0FE9ABDEEAFF",
+   "checked": "in memory",
+   "note": "stub: the original per-column test routine"
+  },
+  {
+   "feature": "normal view speed fix",
+   "address": "0x469F50",
+   "old": "000000000000000000000000000000",
+   "new": "608B3831C0A3A67F3100E94BDFEAFF",
+   "checked": "in memory",
+   "note": "stub: the original per-column update routine"
+  },
+  {
+   "feature": "normal view speed fix",
+   "address": "0x317DF0",
+   "old": "608B388B328B",
+   "new": "FF25F0934600",
+   "checked": "in memory",
+   "note": "entry: jmp [pointer] (pointer = stub, then the rebuilt routine)"
+  },
+  {
+   "feature": "normal view speed fix",
+   "address": "0x317EA0",
+   "old": "608B3833C0A3",
+   "new": "FF25F4934600",
+   "checked": "in memory",
+   "note": "entry: jmp [pointer] (pointer = stub, then the rebuilt routine)"
   }
  ],
  "file_patches": [
@@ -789,6 +821,11 @@
    "what": "infrared speed fix pointers"
   },
   {
+   "from": "0x4693F0",
+   "to": "0x4693F8",
+   "what": "normal view speed fix pointers"
+  },
+  {
    "from": "0x469400",
    "to": "0x469408",
    "what": "true 16:9 variables"
@@ -802,6 +839,11 @@
    "from": "0x469A10",
    "to": "0x469F30",
    "what": "game keys data (key map 0x469B30, 128 keys x 4 modifiers)"
+  },
+  {
+   "from": "0x469F40",
+   "to": "0x469F5F",
+   "what": "normal view speed fix stubs (per-column test, update)"
   },
   {
    "from": "0x46A000",
@@ -1028,6 +1070,21 @@
    "order": "stubs, pointers, entries at the main menu; the rebuilt routines once the buffer exists, then the pointers",
    "code_from": "tools/ir_fix.py (routines rebuilt from the game's own code at run time)",
    "note": "after TNova Native (Callemann, MIT)"
+  },
+  "normal view speed fix": {
+   "where": "memory",
+   "requires": [
+    "prepared exe",
+    "HD"
+   ],
+   "memory": [
+    "0x469F40-0x469F5F",
+    "0x4693F0-0x4693F8",
+    "a 12 KB heap buffer from the HD code (pointer 0x466228), at +0x600"
+   ],
+   "order": "stubs, pointers, entries at the main menu; the rebuilt routines once the buffer exists, then the pointers",
+   "code_from": "tools/view_fix.py (routines rebuilt from the game's own code at run time)",
+   "note": "same method as the infrared speed fix (after TNova Native, Callemann)"
   }
  }
 }

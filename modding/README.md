@@ -153,6 +153,17 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   the buffer exists those point to stubs (0x46A0E0, 0x4650E8) that run the original routines. Checked by running
   both versions on frozen real calls in Unicorn: identical bytes.
 
+- **Normal view slowed by self-modifying code** (busy scenes). For each polygon edge the 3D library calls two
+  routines that test (0x317DF0) and update (0x317EA0) a per-column buffer. Both write the buffer's end into the
+  displacements of their loop at every call, the second one also its return value (0x317FA6) and the target of a
+  jump (0x317F9F), so DOSBox retranslates them all the time. `tools/view_fix.py` rebuilds them the IR way: the loops
+  read those slots as data, the jump always takes the "first update" path (once a column is updated it only rewrites
+  the same values). Entries `jmp [0x4693F0]` / `jmp [0x4693F4]`, stubs at 0x469F40 / 0x469F50, the block at +0x600 in
+  the IR buffer. Checked in Unicorn on frozen real calls, with the buffer forced so both results come out: identical.
+  Panama, SHARPER, true 16:9: 43 -> 47 fps standing at the locks, 40 -> 46 turning. The textured span loop
+  (0x34D390) has the same habit, but its rewrite was slower: eleven operands read from memory per pixel cost more
+  than the retranslation per span.
+
 - **Shots go through turrets** (particle beam in mission 26, sometimes the multipulsar). Three original bugs,
   found and fixed by Callemann in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved),
   ported to the DOSBox game in `tools/turret_fix.py`:

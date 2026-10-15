@@ -10,6 +10,7 @@ The Python scripts that generate the machine code in `src/` (each C# payload say
 - `turret_fix.py`: shots through turrets (Callemann's three fixes, ported). Writes `src/TNPlusTurret.cs`, `test` checks the cylinder code in unicorn.
 - `descrambler_fix.py`: descrambler text at the original pace. Writes `src/TNPlusDescrambler.cs`, `test` runs it in unicorn at several frame rates.
 - `ir_fix.py`: infrared terrain routines without self-modifying code (Callemann's edits). Needs two memory images taken at the main menu (English and French game); writes `src/TNPlusIr.cs`, which holds no game code: TN+ rebuilds the routines from the player's own memory.
+- `view_fix.py`: the same for the two per-column routines of the normal view. Same images, writes `src/TNPlusView.cs`.
 - `tnre.py`: reads and writes DOSBox Staging's emulated RAM, sends keys, captures the window. Used for live tests.
 
 Python 3 with `pip install keystone-engine numpy pillow psutil`, plus `unicorn` for the kb_cave tests and `capstone` for `port_en.py` / `le.py`.

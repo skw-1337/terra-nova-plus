@@ -1437,7 +1437,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; irFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; irFixState = 0; viewFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
@@ -1460,13 +1460,14 @@ static partial class TNPlus
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
-                    (OptPhysFix && descrFixState == 0) || irFixState == 0 || irFixState == 1))
+                    (OptPhysFix && descrFixState == 0) || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1))
                 {
                     lastCave = now;
                     if (zoomFixState == 0) TryZoomFix();
                     if (OptHitFix && turretFixState == 0) TryTurretFix();
                     if (OptPhysFix && descrFixState == 0) TryDescramblerFix();
                     if (irFixState == 0 || irFixState == 1) TryIrFix();
+                    if (viewFixState == 0 || viewFixState == 1) TryViewFix();
                 }
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
@@ -1947,6 +1948,78 @@ static partial class TNPlus
         WriteInt(IrFix.PtrAffine, (int)(b + (uint)IrFix.EntryAffine[L]));
         irFixState = 2;
         Say("Infrared speed fix ON: no more slowdown in the infrared view", 0);
+    }
+
+    // Normal view: the same trouble in the two per-column routines the 3D library runs for each polygon edge: they
+    // write their buffer's end, return value and a jump target into their own loops at every call. Rebuilt the same
+    // way as the infrared ones (tools/view_fix.py), after the infrared block in XCode.
+    static int viewFixState = 0;        // 0 to do, 1 entries in place (waiting for the buffer), 2 on, -1 unavailable
+    static int viewLang = -1;
+    static void TryViewFix()
+    {
+        if (!FreeAreaReady()) return;
+        int n = ViewFix.Stub.Length;
+        if (viewFixState == 0)
+        {
+            viewFixState = -1;
+            for (int l = 0; l < 2; l++)
+            {
+                bool match = true;
+                for (int r = 0; r < n && match; r++)
+                {
+                    byte[] s = Read(ViewFix.Site[l][r], 6);
+                    if (s == null) { viewFixState = 0; return; }
+                    match = Same(s, Hex(ViewFix.Old[l][r])) || Same(s, Hex(ViewFix.New[r]));
+                }
+                if (!match) continue;
+                for (int r = 0; r < n; r++)
+                {
+                    byte[] st = Hex(ViewFix.CodeStub[l][r]), cur = Read(ViewFix.Stub[r], st.Length);
+                    if (cur == null) { viewFixState = 0; return; }
+                    if (!(AllZero(cur) || Same(cur, st)))
+                    { Say("Normal view speed fix unavailable: its memory area is not free", 300, 300); return; }
+                }
+                for (int r = 0; r < n; r++)                         // the stubs, then where to go,
+                {
+                    Write(ViewFix.Stub[r], Hex(ViewFix.CodeStub[l][r]));
+                    if (ReadUInt(ViewFix.Ptr[r]) == 0) WriteInt(ViewFix.Ptr[r], (int)ViewFix.Stub[r]);
+                }
+                for (int r = 0; r < n; r++) Write(ViewFix.Site[l][r], Hex(ViewFix.New[r]));     // then the entries
+                viewLang = l; viewFixState = 1;
+                return;
+            }
+            Say("Normal view speed fix unavailable: unexpected game code", 300, 300);
+            return;
+        }
+        if (viewFixState != 1) return;
+        uint x = ReadUInt(IrFix.XCode);
+        if (x == 0) return;                                         // no HD buffer yet (or no HD)
+        int L = viewLang;
+        uint b = ((x + 0xFFF) & ~0xFFFu) + (uint)ViewFix.XOff;
+        if (ReadUInt(ViewFix.Ptr[0]) == b + (uint)ViewFix.Entry[L][0]) { viewFixState = 2; return; }
+        var block = new System.IO.MemoryStream(); var copied = new System.IO.MemoryStream();
+        foreach (string piece in ViewFix.Pieces[L])
+        {
+            byte[] part;
+            if (piece[0] == 'C')
+            {
+                string[] f = piece.Split(':');
+                part = Read(Convert.ToUInt32(f[1], 16), Convert.ToInt32(f[2], 16));
+                if (part == null) return;
+                copied.Write(part, 0, part.Length);
+            }
+            else part = Hex(piece.Substring(2));
+            block.Write(part, 0, part.Length);
+        }
+        byte[] code = block.ToArray(), sum;
+        using (var h = System.Security.Cryptography.SHA256.Create()) sum = h.ComputeHash(copied.ToArray());
+        if (code.Length != ViewFix.Size[L] || BitConverter.ToString(sum).Replace("-", "").ToLowerInvariant() != ViewFix.Sha[L])
+        { viewFixState = -1; Say("Normal view speed fix unavailable: unexpected game code", 300, 300); return; }
+        Write(b, code);
+        if (!Same(Read(b, code.Length), code)) return;
+        for (int r = 0; r < n; r++) WriteInt(ViewFix.Ptr[r], (int)(b + (uint)ViewFix.Entry[L][r]));
+        viewFixState = 2;
+        Say("Normal view speed fix ON", 0);
     }
 
     // Code pieces for the English or the French exe (told apart by the bytes): all applied, the code in free areas
