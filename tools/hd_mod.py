@@ -149,89 +149,6 @@ cr_1:
     mov eax, {V['CAM_R']:#x}
     ret
 
-blend_calc:
-    push eax
-    push ebx
-    push ecx
-    push esi
-    push edi
-    inc dword ptr [{v('CALCULS')}]
-    movzx ecx, al
-    movzx ebx, ah
-    lea ecx, [ecx+ecx*2]
-    lea ebx, [ebx+ebx*2]
-    movzx esi, byte ptr [ecx+0x44af40]
-    movzx edi, byte ptr [ebx+0x44af40]
-    mov eax, esi
-    sub eax, edi
-    imul eax, eax
-    mov edx, eax
-    add esi, edi
-    shr esi, 1
-    mov dword ptr [{v('TR')}], esi
-    movzx esi, byte ptr [ecx+0x44af41]
-    movzx edi, byte ptr [ebx+0x44af41]
-    mov eax, esi
-    sub eax, edi
-    imul eax, eax
-    add edx, eax
-    add esi, edi
-    shr esi, 1
-    mov dword ptr [{v('TG')}], esi
-    movzx esi, byte ptr [ecx+0x44af42]
-    movzx edi, byte ptr [ebx+0x44af42]
-    mov eax, esi
-    sub eax, edi
-    imul eax, eax
-    add edx, eax
-    add esi, edi
-    shr esi, 1
-    mov dword ptr [{v('TB')}], esi
-    cmp edx, 5000
-    ja bc_bord
-    mov eax, ecx
-    xor edx, edx
-    mov ecx, 3
-    div ecx
-    mov edx, eax
-    jmp bc_fin
-bc_bord:
-    mov edi, 0x7fffffff
-    xor edx, edx
-    xor ecx, ecx
-    mov ebx, 0x44af40
-bc_loop:
-    movzx eax, byte ptr [ebx]
-    sub eax, dword ptr [{v('TR')}]
-    imul eax, eax
-    mov esi, eax
-    movzx eax, byte ptr [ebx+1]
-    sub eax, dword ptr [{v('TG')}]
-    imul eax, eax
-    add esi, eax
-    movzx eax, byte ptr [ebx+2]
-    sub eax, dword ptr [{v('TB')}]
-    imul eax, eax
-    add esi, eax
-    cmp esi, edi
-    jae bc_next
-    mov edi, esi
-    mov edx, ecx
-bc_next:
-    add ebx, 3
-    inc ecx
-    cmp ecx, 256
-    jb bc_loop
-bc_fin:
-    or edx, 0x8000
-    pop edi
-    pop esi
-    pop ecx
-    pop ebx
-    pop eax
-    mov word ptr [ebp+eax*2], dx
-    ret
-
 WIDE_SROW
 pre:
     cmp byte ptr [ebp+0x2c], 0
@@ -437,6 +354,22 @@ WIDE_ADDSIDE_ESI
     jz post_rest
 post_row:
     mov ecx, dword ptr [{v('S_W0')}]
+    cmp ecx, 4
+    jb post_px
+post_px4:
+    mov al, byte ptr [esi+4]
+    mov ah, byte ptr [esi+6]
+    shl eax, 16
+    mov al, byte ptr [esi]
+    mov ah, byte ptr [esi+2]
+    mov dword ptr [edi], eax
+    add esi, 8
+    add edi, 4
+    sub ecx, 4
+    cmp ecx, 4
+    jae post_px4
+    test ecx, ecx
+    jz post_eol
 post_px:
     mov al, byte ptr [esi]
     mov byte ptr [edi], al
@@ -444,6 +377,7 @@ post_px:
     inc edi
     dec ecx
     jnz post_px
+post_eol:
     add edi, ebp
 WIDE_ADDSIDE_ESI
 WIDE_ADDSIDE_ESI
@@ -535,59 +469,6 @@ fl_m19:
     test edi, edi
     jz fl_out
     inc dword ptr [{v('COPIES')}]
-    cmp dword ptr [{v('LISSE')}], 0
-    je fl_prep_fin
-    mov eax, dword ptr [{v('BTAB')}]
-    test eax, eax
-    jnz fl_bt
-    mov eax, 0x20000
-    call dword ptr [0x35f54c]
-    test eax, eax
-    jnz fl_bt_ok
-    mov dword ptr [{v('LISSE')}], 0
-    jmp fl_prep_fin
-fl_bt_ok:
-    mov dword ptr [{v('BTAB')}], eax
-    mov edi, eax
-    mov ecx, 0x8000
-    xor eax, eax
-    rep stosd dword ptr es:[edi], eax
-    mov dword ptr [{v('PALSTAB')}], 0
-fl_bt:
-    xor eax, eax
-    mov ecx, 192
-    mov esi, 0x44af40
-fl_ps:
-    rol eax, 3
-    add eax, dword ptr [esi]
-    add esi, 4
-    dec ecx
-    jnz fl_ps
-    cmp eax, dword ptr [{v('PALSUM')}]
-    je fl_prep_fin
-    cmp eax, dword ptr [{v('PALVU')}]
-    je fl_ps_meme
-    mov dword ptr [{v('PALVU')}], eax
-    mov dword ptr [{v('PALSTAB')}], 0
-    jmp fl_prep_fin
-fl_ps_meme:
-    inc dword ptr [{v('PALSTAB')}]
-    cmp dword ptr [{v('PALSTAB')}], 20
-    jb fl_prep_fin
-    mov dword ptr [{v('PALSUM')}], eax
-    mov edi, dword ptr [{v('BTAB')}]
-    mov ecx, 0x8000
-    xor eax, eax
-    rep stosd dword ptr es:[edi], eax
-fl_prep_fin:
-    xor eax, eax
-    cmp dword ptr [{v('LISSE')}], 0
-    je fl_l0
-    cmp dword ptr [{v('BTAB')}], 0
-    je fl_l0
-    inc eax
-fl_l0:
-    mov dword ptr [{v('LSON')}], eax
     cmp dword ptr [{v('TRIED')}], 0
     jne fl_bufs
     mov dword ptr [{v('TRIED')}], 1
@@ -701,16 +582,6 @@ WIDE_HDR
     jne fl_need
     jmp fl_skip
 fl_need:
-    xor edx, edx
-    cmp dword ptr [{v('HUDF')}], 0
-    je fl_h0
-    cmp eax, 2
-    jb fl_h0
-    cmp eax, 398
-    jae fl_h0
-    inc edx
-fl_h0:
-    mov dword ptr [{v('HUDON')}], edx
     mov edi, {OUTROW:#x}
     xor ecx, ecx
     mov eax, dword ptr [{v('HX0')}]
@@ -762,143 +633,42 @@ fl_out:
     ret
 
 seg_f:
-    cmp ecx, dword ptr [{v('SEGEND')}]
+    mov ebp, dword ptr [{v('SEGEND')}]
+    cmp ecx, ebp
     jae sf_ret
 sf_loop:
     mov al, byte ptr [esi+ecx]
     mov ah, al
-    mov dl, byte ptr [esi+ecx-1]
-    cmp dl, byte ptr [esi+ecx+1]
-    je sf_st
-    call filt_slow
-sf_st:
     mov word ptr [edi+ecx*2], ax
     inc ecx
-    cmp ecx, dword ptr [{v('SEGEND')}]
+    cmp ecx, ebp
     jb sf_loop
 sf_ret:
     ret
 
 seg_h:
-    cmp ecx, dword ptr [{v('SEGEND')}]
+    mov ebp, dword ptr [{v('SEGEND')}]
+    cmp ecx, ebp
     jae sh_ret
+    mov ebx, dword ptr [{v('HROW')}]
+WIDE_SEGH
 sh_loop:
     mov al, byte ptr [esi+ecx]
-    mov ebx, dword ptr [{v('HROW')}]
     cmp al, byte ptr [ebx+ecx*2]
-    jne sh_filter
-WIDE_M1
-    cmp dword ptr [{v('LSON')}], 0
-    je sh_plain
-    lea ebx, [ebx+ecx*2]
-    mov ebp, dword ptr [{v('BTAB')}]
-    movzx eax, word ptr [ebx]
-    mov dx, word ptr [ebp+eax*2]
-    test dh, 0x80
-    jnz sh_b1
-    call blend_calc
-sh_b1:
-    cmp dword ptr [{v('VUP')}], 0
-    je sh_s1
-    push ebx
-    sub ebx, dword ptr [{v('FWW')}]
-    movzx eax, dl
-    mov ah, byte ptr [ebx]
-    pop ebx
-    mov dx, word ptr [ebp+eax*2]
-    test dh, 0x80
-    jnz sh_s1
-    call blend_calc
-sh_s1:
-    mov byte ptr [edi+ecx*2], dl
-    movzx eax, word ptr [ebx+1]
-    mov dx, word ptr [ebp+eax*2]
-    test dh, 0x80
-    jnz sh_b2
-    call blend_calc
-sh_b2:
-    cmp dword ptr [{v('VUP')}], 0
-    je sh_s2
-    push ebx
-    sub ebx, dword ptr [{v('FWW')}]
-    movzx eax, dl
-    mov ah, byte ptr [ebx+1]
-    pop ebx
-    mov dx, word ptr [ebp+eax*2]
-    test dh, 0x80
-    jnz sh_s2
-    call blend_calc
-sh_s2:
-    mov byte ptr [edi+ecx*2+1], dl
-    jmp sh_next
-sh_plain:
+    jne sh_hud
     mov ax, word ptr [ebx+ecx*2]
     mov word ptr [edi+ecx*2], ax
-    jmp sh_next
-sh_filter:
-WIDE_M0
-sh_fhud:
-    mov ah, al
-    mov dl, byte ptr [esi+ecx-1]
-    cmp dl, byte ptr [esi+ecx+1]
-    je sh_fst
-    call filt_slow
-sh_fst:
-    mov word ptr [edi+ecx*2], ax
-sh_next:
     inc ecx
-    cmp ecx, dword ptr [{v('SEGEND')}]
+    cmp ecx, ebp
+    jb sh_loop
+    ret
+sh_hud:
+    mov ah, al
+    mov word ptr [edi+ecx*2], ax
+    inc ecx
+    cmp ecx, ebp
     jb sh_loop
 sh_ret:
-    ret
-
-filt_slow:
-    cmp dword ptr [{v('HUDON')}], 0
-    je fs_ret
-    test ecx, ecx
-    jz fs_ret
-    cmp ecx, 319
-    jae fs_ret
-    mov dl, byte ptr [esi+ecx-1]
-    mov dh, byte ptr [esi+ecx+1]
-    cmp dl, dh
-    je fs_ret
-    cmp al, dl
-    je fs_pok
-    cmp al, dh
-    jne fs_ret
-fs_pok:
-    mov ebx, dword ptr [esi+ecx+639]
-    xor ebx, dword ptr [esi+ecx-1]
-    and ebx, 0xffffff
-    jz fs_top
-    mov ebx, dword ptr [esi+ecx-641]
-    xor ebx, dword ptr [esi+ecx-1]
-    and ebx, 0xffffff
-    jnz fs_ret
-    mov bl, byte ptr [esi+ecx+640]
-    mov bh, byte ptr [esi+ecx-1280]
-    jmp fs_s2
-fs_top:
-    mov bl, byte ptr [esi+ecx-640]
-    mov bh, byte ptr [esi+ecx+1280]
-fs_s2:
-    cmp bl, bh
-    je fs_ret
-    cmp bh, dl
-    je fs_ook
-    cmp bh, dh
-    jne fs_ret
-fs_ook:
-    cmp bl, dl
-    jne fs_nb
-    mov al, dl
-    ret
-fs_nb:
-    cmp bl, dh
-    jne fs_ret
-    mov ah, dh
-fs_ret:
     ret
 
 occl:
@@ -1056,28 +826,57 @@ hw_w:
     # la couleur de la 3D derriere lui ; pris pour de la 3D, il montrait la vue elargie d'une autre colonne (fuites
     # aux bords en HUD etire). HUDW : par pixel du jeu, mot (1 << 8) | couleur du HUD vu la, oublie des que la 3D
     # montre une autre couleur a cet endroit. Efface a chaque changement de fenetre (cockpit, vue entiere...).
-    'WIDE_M1': f"""    mov edx, dword ptr [{v('HCROW')}]
+    # boucle 16:9 de seg_h : MASK (1 = 3D) et HUDW (couleur du HUD vue a cet endroit) par pixel du jeu
+    'WIDE_SEGH': f"""    mov edx, dword ptr [{v('HCROW')}]
     test edx, edx
-    jz m1_3d
+    jz shw_nohc
+shw_loop:
+    mov al, byte ptr [esi+ecx]
+    cmp al, byte ptr [ebx+ecx*2]
+    jne shw_hud
     cmp byte ptr [edx+ecx*2+1], 0
-    je m1_3d
+    je shw_3d
     cmp byte ptr [edx+ecx*2], al
-    je m1_hud
+    je shw_known
     mov byte ptr [edx+ecx*2+1], 0
-m1_3d:
+shw_3d:
     mov byte ptr [ecx+{MASK:#x}], 1
-    jmp m1_end
-m1_hud:
-    mov byte ptr [ecx+{MASK:#x}], 0
-    jmp sh_fhud
-m1_end:""",
-    'WIDE_M0': f"""    mov byte ptr [ecx+{MASK:#x}], 0
-    mov edx, dword ptr [{v('HCROW')}]
-    test edx, edx
-    jz m0_x
+    mov ax, word ptr [ebx+ecx*2]
+    mov word ptr [edi+ecx*2], ax
+    inc ecx
+    cmp ecx, ebp
+    jb shw_loop
+    ret
+shw_hud:
     mov byte ptr [edx+ecx*2], al
     mov byte ptr [edx+ecx*2+1], 1
-m0_x:""",
+shw_known:
+    mov byte ptr [ecx+{MASK:#x}], 0
+    mov ah, al
+    mov word ptr [edi+ecx*2], ax
+    inc ecx
+    cmp ecx, ebp
+    jb shw_loop
+    ret
+shw_nohc:
+    mov al, byte ptr [esi+ecx]
+    cmp al, byte ptr [ebx+ecx*2]
+    jne shw_h2
+    mov byte ptr [ecx+{MASK:#x}], 1
+    mov ax, word ptr [ebx+ecx*2]
+    mov word ptr [edi+ecx*2], ax
+    inc ecx
+    cmp ecx, ebp
+    jb shw_nohc
+    ret
+shw_h2:
+    mov byte ptr [ecx+{MASK:#x}], 0
+    mov ah, al
+    mov word ptr [edi+ecx*2], ax
+    inc ecx
+    cmp ecx, ebp
+    jb shw_nohc
+    ret""",
     'WIDE_ALLOC': f"""    mov eax, {320 * 400 * 2}
     call dword ptr [0x35f54c]
     mov dword ptr [{v('HUDW')}], eax
@@ -1154,8 +953,6 @@ sr_emit:
     add edi, ebx
     test ebp, ebp
     jz sr_hud
-    cmp dword ptr [{v('LSON')}], 0
-    jne sr_lisse
     mov esi, dword ptr [{v('HROW')}]
     sub esi, {OX}
     add esi, ebx
@@ -1181,34 +978,6 @@ sr_h2:
     dec ecx
     jnz sr_h1
     jmp sr_next
-sr_lisse:
-    mov ebp, dword ptr [{v('BTAB')}]
-    mov esi, dword ptr [{v('HROW')}]
-    sub esi, {OX}
-    add esi, ebx
-sr_l0:
-    movzx eax, word ptr [esi]
-    mov dx, word ptr [ebp+eax*2]
-    test dh, 0x80
-    jnz sr_l1
-    call blend_calc
-sr_l1:
-    cmp dword ptr [{v('VUP')}], 0
-    je sr_l2
-    mov ebx, esi
-    sub ebx, dword ptr [{v('FWW')}]
-    movzx eax, dl
-    mov ah, byte ptr [ebx]
-    mov dx, word ptr [ebp+eax*2]
-    test dh, 0x80
-    jnz sr_l2
-    call blend_calc
-sr_l2:
-    mov al, dl
-    stosb byte ptr es:[edi], al
-    inc esi
-    dec ecx
-    jnz sr_l0
 sr_next:
     pop edi
     pop esi
@@ -1260,7 +1029,7 @@ ws_out:""",
                 'WIDE_W': None, 'WIDE_ADDSIDE_EBX': None, 'WIDE_ADDSIDE_EAX': None, 'WIDE_ADDSIDE_ESI': None,
                 'WIDE_ADDSIDE_ECX': None, 'WIDE_ANGLE': None, 'WIDE_ANGLE_BACK': None, 'WIDE_HALFW': None,
                 'WIDE_RECT': """    sar word ptr [esi], 1
-    sar word ptr [esi+4], 1""", 'WIDE_FSIDE': None, 'WIDE_ADDFSIDE_EDX': None, 'WIDE_HDR': None, 'WIDE_SIDES': None, 'WIDE_STR': None, 'WIDE_SROW': None, 'WIDE_M1': None, 'WIDE_M0': None,
+    sar word ptr [esi+4], 1""", 'WIDE_FSIDE': None, 'WIDE_ADDFSIDE_EDX': None, 'WIDE_HDR': None, 'WIDE_SIDES': None, 'WIDE_STR': None, 'WIDE_SROW': None, 'WIDE_SEGH': None,
                 'WIDE_ALLOC': None, 'WIDE_CLR': None, 'WIDE_HC': None}
 if WIDE:   # routines ajoutees en tete de code (les etiquettes sont calculees sur le code qui precede)
     ASM = f"""
