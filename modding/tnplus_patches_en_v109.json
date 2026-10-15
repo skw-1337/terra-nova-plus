@@ -496,6 +496,118 @@
    "new": "FF25F4934600",
    "checked": "in memory",
    "note": "entry: jmp [pointer] (pointer = stub, then the rebuilt routine)"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x469F60",
+   "old": "000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "new": "3C100F840242ECFF803DF993460084750F01D80305FC9346008A00E9D741ECFF88D0E9D041ECFF",
+   "checked": "in memory",
+   "note": "cave: the pixel loop's \"cmp al,10h / je\", then the table lookup (or mov al,dl) from the two data words"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32DE76",
+   "old": "C70550E132008A840300",
+   "new": "C705F89346008A840300",
+   "checked": "in memory",
+   "note": "writer redirected to the state word 0x4693F8"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32DE80",
+   "old": "891553E13200",
+   "new": "8915FC934600",
+   "checked": "in memory",
+   "note": "writer redirected to the table word 0x4693FC"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32DE88",
+   "old": "C70550E132008AC2A900",
+   "new": "C705F89346008AC2A900",
+   "checked": "in memory",
+   "note": "writer redirected to the state word 0x4693F8"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32E1E3",
+   "old": "C70550E132008A840300",
+   "new": "C705F89346008A840300",
+   "checked": "in memory",
+   "note": "writer redirected to the state word 0x4693F8"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32E1ED",
+   "old": "891553E13200",
+   "new": "8915FC934600",
+   "checked": "in memory",
+   "note": "writer redirected to the table word 0x4693FC"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32E1F5",
+   "old": "C70550E132008AC2A900",
+   "new": "C705F89346008AC2A900",
+   "checked": "in memory",
+   "note": "writer redirected to the state word 0x4693F8"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32E14C",
+   "old": "3C10741A8A",
+   "new": "E90FBE1300",
+   "checked": "in memory",
+   "note": "pixel loop: jmp to the cave"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32D9CC",
+   "old": "663D00807210C6050DDA320048C605FBD9320048EB10C6050DDA320040C605FBD9320040EB008B5364F7EA0FACD01040A3A0E232008B47088B5318F7EA0FACD01040894348",
+   "new": "8B5364F7EA0FACD01066817F0800804873024040A3A0E232008B47088B5318F7EA0FACD01066817F0800804873024040894348EB10CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+   "checked": "in memory",
+   "note": "edge rounding rewritten in place (no inc/dec patching)"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32DA61",
+   "old": "663D00807210C605A2DA320048C60590DA320048EB10C605A2DA320040C60590DA320040EB008B5364F7EA0FACD01040A3C2E232008B470C8B5318F7EA0FACD0104089434C",
+   "new": "8B5364F7EA0FACD01066817F0C00804873024040A3C2E232008B470C8B5318F7EA0FACD01066817F0C0080487302404089434CEB10CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+   "checked": "in memory",
+   "note": "edge rounding rewritten in place (no inc/dec patching)"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32DAF3",
+   "old": "663D00807210C60534DB320048C60522DB320048EB10C60534DB320040C60522DB320040EB008B5364F7EA0FACD01040A37CE232008B47148B5318F7EA0FACD01040894350",
+   "new": "8B5364F7EA0FACD01066817F1400804873024040A37CE232008B47148B5318F7EA0FACD01066817F1400804873024040894350EB10CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+   "checked": "in memory",
+   "note": "edge rounding rewritten in place (no inc/dec patching)"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32DC2A",
+   "old": "663D00807210C6056BDC320048C60559DC320048EB10C6056BDC320040C60559DC320040EB008B5364F7EA0FACD01040A395E232008B47088B5318F7EA0FACD01040894324",
+   "new": "8B5364F7EA0FACD01066817F0800804873024040A395E232008B47088B5318F7EA0FACD01066817F0800804873024040894324EB10CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+   "checked": "in memory",
+   "note": "edge rounding rewritten in place (no inc/dec patching)"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32DCC1",
+   "old": "663D00807210C60502DD320048C605F0DC320048EB10C60502DD320040C605F0DC320040EB008B5364F7EA0FACD01040A3B7E232008B470C8B5318F7EA0FACD01040894328",
+   "new": "8B5364F7EA0FACD01066817F0C00804873024040A3B7E232008B470C8B5318F7EA0FACD01066817F0C00804873024040894328EB10CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+   "checked": "in memory",
+   "note": "edge rounding rewritten in place (no inc/dec patching)"
+  },
+  {
+   "feature": "polygon speed fix",
+   "address": "0x32DD53",
+   "old": "663D00807210C60594DD320048C60582DD320048EB10C60594DD320040C60582DD320040EB008B5364F7EA0FACD01040A371E232008B47148B5318F7EA0FACD0104089432C",
+   "new": "8B5364F7EA0FACD01066817F1400804873024040A371E232008B47148B5318F7EA0FACD01066817F140080487302404089432CEB10CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+   "checked": "in memory",
+   "note": "edge rounding rewritten in place (no inc/dec patching)"
   }
  ],
  "file_patches": [
@@ -826,6 +938,11 @@
    "what": "normal view speed fix pointers"
   },
   {
+   "from": "0x4693F8",
+   "to": "0x469400",
+   "what": "polygon speed fix: state and table words"
+  },
+  {
    "from": "0x469400",
    "to": "0x469408",
    "what": "true 16:9 variables"
@@ -844,6 +961,11 @@
    "from": "0x469F40",
    "to": "0x469F5F",
    "what": "normal view speed fix stubs (per-column test, update)"
+  },
+  {
+   "from": "0x469F60",
+   "to": "0x469F87",
+   "what": "polygon speed fix: pixel loop cave"
   },
   {
    "from": "0x46A000",
@@ -1085,6 +1207,19 @@
    "order": "stubs, pointers, entries at the main menu; the rebuilt routines once the buffer exists, then the pointers",
    "code_from": "tools/view_fix.py (routines rebuilt from the game's own code at run time)",
    "note": "same method as the infrared speed fix (after TNova Native, Callemann)"
+  },
+  "polygon speed fix": {
+   "where": "memory",
+   "requires": [
+    "prepared exe"
+   ],
+   "memory": [
+    "0x469F60-0x469F87",
+    "0x4693F8-0x469400"
+   ],
+   "order": "cave, writers, pixel hook, edge blocks; only while the filler is still as loaded (its 0xDEADBEEF slots), before the first mission",
+   "code_from": "tools/filler_fix.py",
+   "note": "DOSBox dyn_x86 runs rewritten opcodes through its interpreter"
   }
  }
 }

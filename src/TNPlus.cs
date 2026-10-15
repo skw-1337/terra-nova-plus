@@ -1437,7 +1437,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; irFixState = 0; viewFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
@@ -1460,12 +1460,13 @@ static partial class TNPlus
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
-                    (OptPhysFix && descrFixState == 0) || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1))
+                    (OptPhysFix && descrFixState == 0) || fillerFixState == 0 || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1))
                 {
                     lastCave = now;
                     if (zoomFixState == 0) TryZoomFix();
                     if (OptHitFix && turretFixState == 0) TryTurretFix();
                     if (OptPhysFix && descrFixState == 0) TryDescramblerFix();
+                    if (fillerFixState == 0) TryFillerFix();
                     if (irFixState == 0 || irFixState == 1) TryIrFix();
                     if (viewFixState == 0 || viewFixState == 1) TryViewFix();
                 }
@@ -1871,6 +1872,16 @@ static partial class TNPlus
     static void TryDescramblerFix()
     {
         descrFixState = TryPieces(DescramblerFix.At, DescramblerFix.Old, DescramblerFix.New, "Descrambler fix", "its text scrolls at the original pace");
+    }
+
+    // Polygon filler of the 3D library: DOSBox runs two of its habits through the interpreter, an opcode rewritten
+    // per line inside the pixel loop and the inc/dec rewritten per edge. A cave and in-place rewrites remove both
+    // (tools/filler_fix.py). Only while that code is still as loaded (main menu, before the first mission): once
+    // DOSBox has translated it, writes from outside would not reach the translated copy.
+    static int fillerFixState = 0;
+    static void TryFillerFix()
+    {
+        fillerFixState = TryPieces(FillerFix.At, FillerFix.Old, FillerFix.New, "Polygon speed fix", "the 3D models draw faster");
     }
 
     // (With HD on they also wait for the HD injection: the turret fix code sits at the start of the HD zone, which

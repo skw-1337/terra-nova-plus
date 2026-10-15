@@ -7,8 +7,10 @@
 # which no longer run. In the new 0x317EA0 that jump always goes to the "first update" path: once a column is
 # updated, that path only rewrites the same return value and jump target. Panama, SHARPER, true 16:9: 41 -> 46 fps
 # standing at the locks, 37 -> 45 turning there, same fps where the view is light.
-# Not done: the textured span loop (EN 0x34D390) is rewritten per span the same way, but reading its eleven operands
-# from memory costs more per pixel than the retranslation saves (5 % slower in light views, no gain in heavy ones).
+# What costs is the jump target: DOSBox's dyn_x86 core reads rewritten immediates and [reg+disp32] displacements
+# from memory once they have changed (see filler_fix.py), not branch displacements. Not done: the textured span loop
+# (EN 0x34D390) rewrites its operands per span too, but nearly all of them are of the kind DOSBox reads from memory;
+# a rewrite was 5 % slower.
 # An indexed load with a rewritten displacement goes through eax, which the loop reloads anyway (mov leaves the
 # flags alone). French exe: both routines +0x280, checked instruction by instruction.
 #   python view_fix.py EN_IMAGE FR_IMAGE          layout and checks (images: RAM 0x1AB000-0x470000 at the main menu)
