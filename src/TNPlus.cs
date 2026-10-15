@@ -115,6 +115,15 @@ static partial class TNPlus
     // 32: 59.6, 40: 54.2, 48: 49.1; at most 1870 quads turning at 48 cells, 16:9 included.
     static readonly int[] SMOOTH_FAR = { 0, 32, 48 };
     static int OptSmoothCells = 0;                  // ini only (tests): forced end of the smooth ring, 0 = per detail
+    // SHARPER adapts to the frame rate (HD only, its frame counter): the polygon ring is what costs (DOSBox runs on
+    // one host core and was already at its limit: more cycles gave the same fps). Measured on Panama, same view:
+    // 48 cells ~53 fps, SHARP ~64, the game's own 12 cells ~100. Every second the fps over the last second: below
+    // the target the ring shrinks by 8 cells (down to 24); it grows back (to 48) only after 3 s well above the target
+    // (a step costs 15-20 %) and not within 10 s of a shrink: growing back too soon made it swing every 3 s.
+    static int OptTerrainFps = 60;                  // ini terrain_fps, 0 = fixed SHARPER ring
+    static int adaptCells = 0;                      // current end of the polygon ring when adapting, 0 = not adapting
+    static double adaptT = -1, adaptHold = 0, adaptNoGrow = 0;
+    static int adaptFrames = 0, adaptGood = 0;
     static bool farTerrain = false;
     static readonly uint[][] SMOOTH_AT = { new uint[] { 0x2AB0C5, 0x2ADF0F, 0x2ADF00 }, new uint[] { 0x2AB0D5, 0x2ADF1F, 0x2ADF10 } };
     static readonly byte[][] SMOOTH_OLD = { new byte[] { 0xC0, 0x3E, 0, 0 }, new byte[] { 0, 0x7D, 0, 0 }, new byte[] { 0x42, 0x72, 0, 0 } };
@@ -385,7 +394,30 @@ static partial class TNPlus
     {
         int n = farTerrain ? SMOOTH_FAR[OptDetail] : SMOOTH_TO[OptDetail];
         if (OptSmoothCells > 0) n = Math.Min(OptSmoothCells, farTerrain ? 48 : 24);
+        else if (adaptCells > 0) n = Math.Min(n, adaptCells);
         return n;
+    }
+
+    static void AdaptTerrain(double now)
+    {
+        if (OptTerrainFps <= 0 || OptSmoothCells > 0 || OptDetail != 2 || !farTerrain || smoothState != 1 || hdState != 1 || !haveDetail)
+            return;
+        int frames = ReadInt(HdPayload.Frames);
+        if (adaptT < 0 || now - adaptT > 3.0) { adaptT = now; adaptFrames = frames; return; }   // (re)start the window
+        if (now - adaptT < 1.0) return;
+        double fps = (frames - adaptFrames) / (now - adaptT);
+        adaptT = now; adaptFrames = frames;
+        if (fps < 5 || now < adaptHold) { adaptGood = 0; return; }   // menus, pause; or a change still settling
+        int max = SMOOTH_FAR[2], min = SMOOTH_TO[2], cur = adaptCells > 0 ? adaptCells : max;
+        int next = cur;
+        adaptGood = fps * 0.8 > OptTerrainFps + 2 ? adaptGood + 1 : 0;
+        if (fps < OptTerrainFps - 2 && cur > min) { next = Math.Max(min, cur - 8); adaptNoGrow = now + 10.0; }
+        else if (adaptGood >= 3 && now >= adaptNoGrow && cur < max) next = Math.Min(max, cur + 8);
+        if (next == cur) return;
+        adaptCells = next;
+        adaptHold = now + 2.0;
+        adaptGood = 0;
+        FixDetail(DETAIL_RINGS[OptDetail]);
     }
 
     static void TrySmooth()
@@ -1477,6 +1509,7 @@ static partial class TNPlus
                 bool changed = d && !prevD; prevD = d;
                 if (changed) { distMode = (distMode + 1) % 3; Say("View distance: " + DIST_NAMES[distMode], 700 + 250 * distMode, 90); }
                 if (changed || now - lastFix > 1.0) { lastFix = now; PeriodicFixes(distMode); }
+                AdaptTerrain(now);
 
                 // --- toggles (rising edges, game in the foreground only)
                 bool f = OptFreelook && fg && ((plain && Down(vkFree)) || toolMouse(0));
@@ -2456,6 +2489,7 @@ static partial class TNPlus
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
+                    case "terrain_fps": int.TryParse(v, out OptTerrainFps); break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
                     case "keep_dos": OptKeepDos = v != "0"; break;
@@ -2503,6 +2537,7 @@ static partial class TNPlus
                 "noclip = " + (OptNoclip ? 1 : 0) + "\r\n" +
                 "; NORMAL, FAR or MAX\r\nview_distance = " + DIST_NAMES[OptDistance] + "\r\n" +
                 "; GAME, SHARP or SHARPER (more terrain detail in the distance)\r\nterrain_detail = " + DETAIL_NAMES[OptDetail] + "\r\n" +
+                "; SHARPER with HD: frame rate kept by drawing the smooth terrain less far when needed (24 to 48 cells), 0 = always 48\r\nterrain_fps = " + OptTerrainFps + "\r\n" +
                 "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: the 3D drawn in 848 columns)\r\nwidescreen = " + WideMode() + "\r\n" +
                 "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +

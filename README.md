@@ -72,7 +72,7 @@ The turret, descrambler and infrared fixes come from Callemann's [TNova Native](
 
 ### Terrain detail
 - More ground detail far away. Steep walls in the distance no longer turn into a saw blade.
-- Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 32 cells and SHARPER to 48.
+- Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 32 cells and SHARPER to 48. In HD, SHARPER draws them less far (down to 24 cells) when the frame rate drops below 60, and back to 48 when it can.
 - The engine could not go past 31 cells: its vertex grid is 64x64 and its polygon buffers are small. TNPlus patches `TNOVA\__FF.EXE` once (128x128 grid, bigger buffers, 1 MB render memory) and keeps the untouched file as `__FF.EXE.tnplus-original`.
 
 ### Sound
@@ -139,6 +139,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `display` | `HD` | `ORIGINAL`, `320X400` or `HD` (640x400, 848x480 in true 16:9) |
 | `freelook`, `noclip` | `1`, `0` | the launcher options |
 | `terrain_detail` | `SHARPER` | `GAME`, `SHARP` or `SHARPER` |
+| `terrain_fps` | `60` | SHARPER in HD: frame rate it keeps by drawing the smooth terrain less far, `0` = always 48 cells |
 | `widescreen` | `0` | `0` off, `1` stretched, `2` true 16:9 (HD) |
 | `wide_hud` | `1` | true 16:9: `1` cockpit and HUD stretched to the full width, `0` centred at their own proportions |
 | `edge_objects` | `1` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta) |
