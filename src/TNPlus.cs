@@ -121,6 +121,7 @@ static partial class TNPlus
     // the target the ring shrinks by 8 cells (down to 24); it grows back (to 48) only after 3 s well above the target
     // (a step costs 15-20 %) and not within 10 s of a shrink: growing back too soon made it swing every 3 s.
     static int OptTerrainFps = 60;                  // ini terrain_fps, 0 = fixed SHARPER ring
+    static bool OptHd720 = false;                   // ini hd_720: true 16:9 in 1280x720 instead of 848x480
     static int adaptCells = 0;                      // current end of the polygon ring when adapting, 0 = not adapting
     static double adaptT = -1, adaptHold = 0, adaptNoGrow = 0;
     static int adaptFrames = 0, adaptGood = 0;
@@ -327,8 +328,8 @@ static partial class TNPlus
         double k = deg > 0 ? 1 / (1.1 * Math.Tan(deg * Math.PI / 360)) : (wide ? 0.75 : 1);
         for (int lang = 0; lang < 2; lang++)
         {
-            HdPayload.Use(lang == 1, false);
-            if (ReadUInt(HdPayload.PoolVar) != HdPayload.PoolBase) continue;   // __FF.EXE not prepared (24 KB)
+            if (lang == 1 ? ReadUInt(HdPayloadEn.PoolVar) != HdPayloadEn.PoolBase : ReadUInt(HdPayloadFr.PoolVar) != HdPayloadFr.PoolBase)
+                continue;                                                    // __FF.EXE not prepared (24 KB)
             byte[] code = Hex(FOV_CODE[lang]);
             byte[] h = Read(FOV_HOOK[lang], 7), c = Read(FOV_CAVE + 0x10, code.Length);
             bool free = true;
@@ -805,7 +806,7 @@ static partial class TNPlus
 
     // HD is 640x400, or DOSBox's VESA 848x480 in true 16:9: the labels follow the settings, the messages what runs
     static string HdName() { return WideMode() == 2 ? "HD 848x480" : "HD 640x400"; }
-    static string HdNow() { return TrueWideActive() ? "HD 848x480" : "HD 640x400"; }
+    static string HdNow() { return TrueWideActive() ? (OptHd720 ? "HD 1280x720" : "HD 848x480") : "HD 640x400"; }
     static string[] DisplayLabels() { return new[] { DISPLAY_LABELS[0], DISPLAY_LABELS[1], HdName() }; }
     static string HdHelp()
     {
@@ -1930,7 +1931,7 @@ static partial class TNPlus
             return;
         }
         if (irFixState != 1) return;
-        uint x = ReadUInt(IrFix.XCode);
+        uint x = ReadUInt(HdPayload.XCode);
         if (x == 0) return;                                         // no HD buffer yet (or no HD)
         int L = irLang;
         uint b = (x + 0xFFF) & ~0xFFFu;                             // a page of its own in the 12 KB buffer
@@ -2003,7 +2004,7 @@ static partial class TNPlus
             return;
         }
         if (viewFixState != 1) return;
-        uint x = ReadUInt(IrFix.XCode);
+        uint x = ReadUInt(HdPayload.XCode);
         if (x == 0) return;                                         // no HD buffer yet (or no HD)
         int L = viewLang;
         uint b = ((x + 0xFFF) & ~0xFFFu) + (uint)ViewFix.XOff;
@@ -2080,7 +2081,7 @@ static partial class TNPlus
     // translated, later writes to that code would be ignored (the temporary pool is still unused until then)
     static void TryHdInject()
     {
-        HdPayload.Use(ExeLanguage(GameDir) == "English", TrueWideActive());   // the code and its addresses depend on the executable
+        HdPayload.Use(ExeLanguage(GameDir) == "English", TrueWideActive(), OptHd720);   // the code and its addresses depend on the executable
         int n = HdPayload.PatchAt.Length;
         bool allNew = true, allOld = true;
         for (int i = 0; i < n; i++)
@@ -2574,6 +2575,7 @@ static partial class TNPlus
                     case "phys_fix": OptPhysFix = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
                     case "terrain_fps": int.TryParse(v, out OptTerrainFps); break;
+                    case "hd_720": OptHd720 = v == "1"; break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
                     case "keep_dos": OptKeepDos = v != "0"; break;
@@ -2624,6 +2626,7 @@ static partial class TNPlus
                 "; SHARPER with HD: frame rate kept by drawing the smooth terrain less far when needed (24 to 48 cells), 0 = always 48\r\nterrain_fps = " + OptTerrainFps + "\r\n" +
                 "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: the 3D drawn in 848 columns)\r\nwidescreen = " + WideMode() + "\r\n" +
                 "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
+                "; true 16:9: 1 = in 1280x720 (3D in 1280 columns and 1.5 x the game's lines, needs a fast PC), 0 = 848x480\r\nhd_720 = " + (OptHd720 ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
                 "; SHARP (DOSBox in OpenGL with its sharp shader: every pixel the same size, less shimmer) or GAME'S OWN\r\n" +
                 "scaling = " + SCALING_NAMES[OptScaling] + "\r\n" +

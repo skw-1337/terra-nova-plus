@@ -9,6 +9,7 @@ static class HdPayloadFrWide
     public const uint Valid = 0x466134, HdWidth = 0x4661b8, HdHeight = 0x4661b4;   // last 3D frame: drawn in HD, its width (2x) and height
     public const uint HudStretch = 0x466218;               // true 16:9: 1 = HUD stretched to the full width, 0 = centred
     public const uint PoolVar = 0x43e360;                  // the game's pool base pointer
+    public const uint XCode = 0x466228;                    // pointer to the 12 KB buffer for rebuilt game routines
     public static readonly byte[] CodeBytes = new byte[] {
             0x85, 0xc0, 0x7d, 0x02, 0x31, 0xc0, 0x3b, 0x05, 0x78, 0x61, 0x46, 0x00, 0x7c, 0x06, 0xa1, 0x78,
             0x61, 0x46, 0x00, 0x48, 0xc3, 0x2d, 0xa8, 0x01, 0x00, 0x00, 0x69, 0xc0, 0x9b, 0x60, 0x00, 0x00,

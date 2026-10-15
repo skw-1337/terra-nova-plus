@@ -1,0 +1,1214 @@
+# Terra Nova HD 720 : vrai 16:9 en 1280x720, injection en RAM (meme principe que hd_mod.py --wide, en plus grand).
+#  ecran : mode VESA 0x17D de DOSBox (1280x960, 8 bits) dont le CRTC est reprogramme a 600 lignes ; DOSBox affiche
+#          alors 1280x600 etire en 1280x720 (pixels 1:1,2, comme le 320x400 du jeu en 4:3).
+#  3D    : la vue principale est rendue en 3 x les colonnes du jeu (+ les cotes 16:9, 1280 colonnes en tout) et en
+#          1,5 x ses lignes (cockpit 199 -> 298/299 lignes) : centre, focale, table 1/x des colonnes ET des lignes
+#          (VIEW +0x50, comprise dans la somme de controle 0x427EA8) poses avant le rendu, remis apres.
+#  HUD   : l'ecran 320x400 du jeu agrandi x4 en largeur (etire) ou x3 centre, 400 -> 600 lignes (ligne 2k -> 1 ligne,
+#          2k+1 -> 2 lignes) ; la 3D HD remplace les pixels ou l'ecran du jeu montre la 3D (comparaison pixel du jeu /
+#          pixel HD reduit, comme hd_mod.py).
+#  Memoire : les gros tableaux (tampon HD 1280x608, table des lignes, table 1/y, tableaux par colonne du moteur pour
+#          1280 colonnes) sont alloues dans le tas du jeu au premier rendu ; les 7 instructions du moteur qui visent
+#          les tableaux par colonne sont alors repointees PAR LE JEU (ecritures emulees : DOSBox retraduit).
+# A appliquer AU MENU PRINCIPAL. --en : exe anglais (GOG EN = Steam).
+#   python hd720.py [--en]              injecte (RAM)
+#   python hd720.py asm [--en]          taille et etiquettes
+#   python hd720.py export [--en]       ecrit src/HdPayloadEn720.cs / HdPayloadFr720.cs
+import json, os, re, struct, sys
+
+from keystone import Ks, KS_ARCH_X86, KS_MODE_32
+
+EN = '--en' in sys.argv
+OW, OH, OX, KX = 1280, 600, 160, 3            # ecran, decalage du jeu centre (960 = 3 x 320), colonnes 3D par colonne du jeu
+RMREGS = 0x45e318 if EN else 0x45e3c8
+MAP = {}
+if EN:
+    MAP = {int(k, 16): int(v, 16) for k, v in json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'port_en.json'))).items() if v}
+    MAP.update({0x2b274a: 0x2b275a, 0x35cdae: 0x35cd8e, 0x44af40: 0x44ae90, 0x44af41: 0x44ae91, 0x44af42: 0x44ae92,
+                0x43e358: 0x43e2a8, 0x2ece04: 0x2ecc24,
+                0x36237e: 0x3622d6, 0x362386: 0x3622de, 0x36238e: 0x3622e6, 0x362396: 0x3622ee})   # projection : hauteur
+M = lambda a: MAP.get(a, a)
+
+WMAX, HMAX, HMARGE = OW, OH, 8
+NROWS = HMAX + HMARGE + 8
+EXPORT = len(sys.argv) > 1 and sys.argv[1] in ('export', 'asm')
+if not EXPORT:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import tnre
+    g = tnre.Guest()
+    POOL_BASE = g.dword(M(0x43e360))
+ZONE, PLACE = 0x465024, 0x6000
+CODE = (ZONE + 0xff) & ~0xff                      # 0x465100 : code (6 Ko)
+DATA = CODE + 0x1800                              # 0x466900 : variables et petites tables (6 Ko)
+FIN = DATA + 0x1800
+assert FIN <= 0x469390                            # zone libre du HD dans l'exe prepare (le reste sert a TN+)
+V = {k: DATA + 4 * i for i, k in enumerate(
+    'HBUF ACTIVE S_BITS S_RATIO S_SUM S_V1_48 S_V1_4C S_V2_48 S_V2_4C FRAMES ESSAIS '
+    'SBUF LFB VALID COPIES S_ROW S_CLIP RHALF LISSE HUDF CAM_R '
+    'S_CANVAS S_W0 S_H0 S_CX W_CUR ROWK CXK CXSUM DLT S_V1_8 S_V2_8 S_V1_10 S_V2_10 '
+    'FX0 FY0 FW FH FWW ROWN HX0 HX1 HROW PREVB SHADB FORCE SIG TRIED SIDE FSIDE SIDEOK HSTR HUDW HCROW XCODE '
+    'H3 S_CLIPY S_V1_C S_V2_C S_V1_14 S_V2_14 S_V1_50 S_V2_50 CYTB CYK CYSUM VY0 VB0 ROWT NEWA NEWB TMP '
+    'RA RB ERS ERO HRW'.split())}
+assert max(V.values()) < DATA + 0x500
+CXTAB = DATA + 0x500                              # 256 x 4
+OUTROW = DATA + 0x900                             # ligne de sortie du HUD (1280 + 4)
+DIRTYP = DATA + 0xE10                             # lignes modifiees de l'ecran du jeu (2 o de marge)
+MASK = DATA + 0x1000                              # 1 la ou la ligne du jeu montre la 3D (320 o)
+assert MASK + 0x140 <= DATA + 0x1800
+VIEW1, VIEW2 = M(0x38fbd4), M(0x41ec74)
+P = lambda v: struct.pack('<I', v & 0xffffffff)
+v = lambda k: '%#x' % V[k]
+# instructions du moteur qui visent ses tableaux par colonne (320 colonnes ; hd_fix.py) : repointees au 1er rendu
+SITES_A = [(0x2a849d, 1, 'bf'), (0x2a869b, 2, '8b92')]                      # mov edi,A / mov edx,[edx+A]
+SITES_N = [(0x2a84a2, 1, 'b9')]                                               # mov ecx, octets a copier
+SITES_B = [(0x29e1fe, 2, '899a'), (0x29e239, 3, '891c85'), (0x29e362, 2, '8998')]
+SITES_B4 = [(0x29e3de, 1, 'b9')]                                              # mov ecx, B + 4
+
+ASM = f"""
+check_mode:
+    cmp dword ptr [0x35f978], 19
+    je cm_ecran
+    ret
+cm_ecran:
+    mov eax, dword ptr [{v('SBUF')}]
+    test eax, eax
+    jnz cm_have
+    mov eax, {640 * 400:#x}
+    call dword ptr [0x35f54c]
+    test eax, eax
+    jz cm_ret
+    mov dword ptr [{v('SBUF')}], eax
+cm_have:
+    mov esi, dword ptr [0x44b258]
+    cmp dword ptr [esi], eax
+    je cm_sub
+    mov ecx, dword ptr [esi]
+    mov dword ptr [{v('LFB')}], ecx
+    mov dword ptr [{v('FORCE')}], 1
+    mov dword ptr [esi], eax
+    push eax
+    mov edi, {RMREGS:#x}
+    mov ecx, 13
+    xor eax, eax
+    rep stosd dword ptr es:[edi], eax
+    mov dword ptr [{RMREGS + 0x1c:#x}], 0x4f06
+    mov dword ptr [{RMREGS + 0x18:#x}], {OW}
+    mov edi, {RMREGS:#x}
+    mov eax, 0x300
+    mov ebx, 0x10
+    xor ecx, ecx
+    int 0x31
+    call crtc600
+    pop eax
+    mov edi, eax
+    mov esi, dword ptr [0x447028]
+    movzx ebx, word ptr [0x447034]
+    mov edx, 400
+cm_init:
+    push esi
+    push edi
+    mov ecx, 80
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    pop edi
+    pop esi
+    add esi, ebx
+    add edi, 640
+    dec edx
+    jnz cm_init
+    cmp word ptr [0x44706c], 320
+    je cm_sub
+    mov word ptr [0x44706c], 320
+    mov word ptr [0x44706e], 400
+    mov eax, 0x1900140
+    mov edx, 4194336
+    call 0x2e476c
+cm_sub:
+    mov ecx, dword ptr [0x4470c0]
+    sub ecx, dword ptr [{v('LFB')}]
+    cmp ecx, 0x40000
+    jae cm_ret
+    add ecx, dword ptr [{v('SBUF')}]
+    mov dword ptr [0x4470c0], ecx
+cm_ret:
+    ret
+
+crtc600:
+    mov dx, 0x3d4
+    mov al, 0x11
+    out dx, al
+    inc dx
+    in al, dx
+    and al, 0x7f
+    out dx, al
+    dec dx
+    mov al, 0x12
+    out dx, al
+    inc dx
+    mov al, {(OH - 1) & 0xff:#x}
+    out dx, al
+    dec dx
+    mov al, 0x07
+    out dx, al
+    inc dx
+    in al, dx
+    and al, 0xbd
+    or al, {(((OH - 1) >> 8) & 1) << 1 | (((OH - 1) >> 9) & 1) << 6:#x}
+    out dx, al
+    dec dx
+    mov al, 0x38
+    out dx, al
+    inc dx
+    mov al, 0x48
+    out dx, al
+    dec dx
+    mov al, 0x39
+    out dx, al
+    inc dx
+    mov al, 0xa5
+    out dx, al
+    dec dx
+    mov al, 0x5e
+    out dx, al
+    inc dx
+    in al, dx
+    and al, 0xfd
+    or al, {((OH - 1) >> 10) & 1 and 2:#x}
+    out dx, al
+    ret
+
+camratio:
+    mov eax, dword ptr [0x35f974]
+    mov eax, dword ptr [eax]
+    cmp dword ptr [0x35f978], 19
+    jne cr_1
+    sar eax, 1
+cr_1:
+    mov dword ptr [{v('CAM_R')}], eax
+    mov eax, {V['CAM_R']:#x}
+    ret
+
+rect_clamp:
+    test eax, eax
+    jge rc_pos
+    xor eax, eax
+rc_pos:
+    cmp eax, edx
+    jl rc_ret
+    lea eax, [edx-1]
+rc_ret:
+    ret
+
+alloc_all:
+    mov eax, {WMAX * (HMAX + HMARGE):#x}
+    call dword ptr [0x35f54c]
+    test eax, eax
+    jz aa_ret
+    mov dword ptr [{v('TMP')}], eax
+    mov eax, {NROWS * 4:#x}
+    call dword ptr [0x35f54c]
+    test eax, eax
+    jz aa_ret
+    mov dword ptr [{v('ROWT')}], eax
+    mov eax, 1024
+    call dword ptr [0x35f54c]
+    test eax, eax
+    jz aa_ret
+    mov dword ptr [{v('CYTB')}], eax
+    mov eax, {WMAX * 8 + 64:#x}
+    call dword ptr [0x35f54c]
+    test eax, eax
+    jz aa_ret
+    mov dword ptr [{v('NEWA')}], eax
+    add eax, {WMAX * 4 + 32:#x}
+    mov dword ptr [{v('NEWB')}], eax
+SELFPATCH
+    mov eax, dword ptr [{v('TMP')}]
+    mov dword ptr [{v('HBUF')}], eax
+aa_ret:
+    ret
+
+pre:
+    cmp byte ptr [ebp+0x2c], 0
+    je pre_go
+    call 0x2ad18c
+    ret
+pre_go:
+    pushad
+    call check_mode
+    inc dword ptr [{v('ESSAIS')}]
+    cmp ebp, {VIEW1:#x}
+    jne pre_lo
+    mov esi, dword ptr [{VIEW1 + 0x1c:#x}]
+    cmp dword ptr [0x44b250], esi
+    jne pre_lo
+    mov dword ptr [{v('VALID')}], 0
+    test byte ptr [0x35a560], 2
+    jz pre_lo
+    movzx eax, word ptr [esi+8]
+    cmp eax, 16
+    jb pre_lo
+    cmp eax, 320
+    ja pre_lo
+    movzx ebx, word ptr [esi+0xa]
+    cmp ebx, 400
+    ja pre_lo
+    mov ecx, dword ptr [{VIEW1 + 0x10:#x}]
+    lea edx, [ecx+ecx+1]
+    sub edx, eax
+    cmp edx, 2
+    ja pre_lo
+    cmp dword ptr [{VIEW1 + 0x4c:#x}], {CXTAB:#x}
+    je pre_lo
+    mov dword ptr [{v('S_CANVAS')}], esi
+    mov dword ptr [{v('S_W0')}], eax
+    mov dword ptr [{v('S_H0')}], ebx
+    mov dword ptr [{v('S_CX')}], ecx
+    mov eax, dword ptr [esi]
+    sub eax, dword ptr [0x447028]
+    jb pre_lo
+    movzx ecx, word ptr [esi+0xc]
+    test ecx, ecx
+    jz pre_lo
+    xor edx, edx
+    div ecx
+    cmp eax, 400
+    jae pre_lo
+    mov dword ptr [{v('VY0')}], eax
+    mov ecx, eax
+    add eax, dword ptr [{v('S_H0')}]
+    lea eax, [eax+eax*2]
+    shr eax, 1
+    lea edx, [ecx+ecx*2]
+    shr edx, 1
+    mov dword ptr [{v('VB0')}], edx
+    sub eax, edx
+    mov dword ptr [{v('H3')}], eax
+    cmp dword ptr [{v('HBUF')}], 0
+    jne pre_have
+    call alloc_all
+    cmp dword ptr [{v('HBUF')}], 0
+    je pre_lo
+pre_have:
+    mov eax, dword ptr [{v('S_W0')}]
+    lea eax, [eax+eax*2]
+    neg eax
+    add eax, {OW}
+    sar eax, 1
+    mov dword ptr [{v('SIDE')}], eax
+    mov eax, {OW}
+    mov dword ptr [{v('W_CUR')}], eax
+    cmp eax, dword ptr [{v('ROWK')}]
+    je pre_rt_ok
+    mov dword ptr [{v('ROWK')}], eax
+    mov edi, dword ptr [{v('ROWT')}]
+    xor edx, edx
+    mov ecx, {NROWS}
+pre_rt:
+    mov dword ptr [edi], edx
+    add edx, eax
+    add edi, 4
+    dec ecx
+    jnz pre_rt
+pre_rt_ok:
+    mov ebx, dword ptr [{v('S_CX')}]
+    lea ebx, [ebx+ebx*2]
+    add ebx, dword ptr [{v('SIDE')}]
+    cmp ebx, dword ptr [{v('CXK')}]
+    je pre_cx_ok
+    mov dword ptr [{v('CXK')}], ebx
+    mov edi, {CXTAB:#x}
+    mov ecx, 0x10000
+    xor esi, esi
+pre_cx:
+    mov edx, ebx
+    xor eax, eax
+    div ecx
+    mov dword ptr [edi], eax
+    add esi, eax
+    add edi, 4
+    add ecx, 0x100
+    cmp ecx, 0x20000
+    jb pre_cx
+    mov dword ptr [{v('CXSUM')}], esi
+pre_cx_ok:
+    mov esi, dword ptr [{VIEW1 + 0x4c:#x}]
+    call sum256
+    mov edx, dword ptr [{v('CXSUM')}]
+    sub edx, eax
+    mov dword ptr [{v('DLT')}], edx
+    mov ebx, dword ptr [{v('H3')}]
+    sar ebx, 1
+    cmp ebx, dword ptr [{v('CYK')}]
+    je pre_cy_ok
+    mov dword ptr [{v('CYK')}], ebx
+    mov edi, dword ptr [{v('CYTB')}]
+    mov ecx, 0x10000
+    xor esi, esi
+pre_cy:
+    mov edx, ebx
+    xor eax, eax
+    div ecx
+    mov dword ptr [edi], eax
+    add esi, eax
+    add edi, 4
+    add ecx, 0x100
+    cmp ecx, 0x20000
+    jb pre_cy
+    mov dword ptr [{v('CYSUM')}], esi
+pre_cy_ok:
+    mov esi, dword ptr [{VIEW1 + 0x50:#x}]
+    call sum256
+    mov edx, dword ptr [{v('CYSUM')}]
+    sub edx, eax
+    add dword ptr [{v('DLT')}], edx
+    mov esi, dword ptr [{v('S_CANVAS')}]
+    mov eax, dword ptr [{v('HBUF')}]
+    mov ebx, dword ptr [esi]
+    mov dword ptr [{v('S_BITS')}], ebx
+    movzx ebx, word ptr [esi+0xc]
+    mov dword ptr [{v('S_ROW')}], ebx
+    mov ebx, dword ptr [esi+0x34]
+    mov dword ptr [{v('S_CLIP')}], ebx
+    mov ebx, dword ptr [esi+0x38]
+    mov dword ptr [{v('S_CLIPY')}], ebx
+    mov dword ptr [esi], eax
+    mov eax, dword ptr [{v('W_CUR')}]
+    mov word ptr [esi+8], ax
+    mov word ptr [esi+0xc], ax
+    shl eax, 16
+    mov dword ptr [esi+0x34], eax
+    mov eax, dword ptr [{v('H3')}]
+    mov word ptr [esi+0xa], ax
+    shl eax, 16
+    mov dword ptr [esi+0x38], eax
+    mov dword ptr [{v('ACTIVE')}], 1
+    inc dword ptr [{v('FRAMES')}]
+    mov ebx, dword ptr [0x35f974]
+    mov eax, dword ptr [ebx]
+    mov dword ptr [{v('S_RATIO')}], eax
+    mov eax, dword ptr [{VIEW1 + 8:#x}]
+    mov dword ptr [{v('S_V1_8')}], eax
+    lea eax, [eax+eax*2]
+    mov dword ptr [{VIEW1 + 8:#x}], eax
+    mov eax, dword ptr [{VIEW2 + 8:#x}]
+    mov dword ptr [{v('S_V2_8')}], eax
+    lea eax, [eax+eax*2]
+    mov dword ptr [{VIEW2 + 8:#x}], eax
+    mov eax, dword ptr [{VIEW1 + 0x10:#x}]
+    mov dword ptr [{v('S_V1_10')}], eax
+    lea eax, [eax+eax*2]
+    add eax, dword ptr [{v('SIDE')}]
+    mov dword ptr [{VIEW1 + 0x10:#x}], eax
+    mov eax, dword ptr [{VIEW2 + 0x10:#x}]
+    mov dword ptr [{v('S_V2_10')}], eax
+    lea eax, [eax+eax*2]
+    add eax, dword ptr [{v('SIDE')}]
+    mov dword ptr [{VIEW2 + 0x10:#x}], eax
+    mov ebx, dword ptr [{v('H3')}]
+    sar ebx, 1
+    mov eax, dword ptr [{VIEW1 + 0x14:#x}]
+    mov dword ptr [{v('S_V1_14')}], eax
+    mov dword ptr [{VIEW1 + 0x14:#x}], ebx
+    mov eax, dword ptr [{VIEW2 + 0x14:#x}]
+    mov dword ptr [{v('S_V2_14')}], eax
+    mov dword ptr [{VIEW2 + 0x14:#x}], ebx
+    mov eax, dword ptr [{VIEW1 + 0xc:#x}]
+    mov dword ptr [{v('S_V1_C')}], eax
+    imul dword ptr [{v('H3')}]
+    idiv dword ptr [{v('S_H0')}]
+    mov dword ptr [{VIEW1 + 0xc:#x}], eax
+    mov eax, dword ptr [{VIEW2 + 0xc:#x}]
+    mov dword ptr [{v('S_V2_C')}], eax
+    imul dword ptr [{v('H3')}]
+    idiv dword ptr [{v('S_H0')}]
+    mov dword ptr [{VIEW2 + 0xc:#x}], eax
+    mov eax, dword ptr [{VIEW1 + 0x48:#x}]
+    mov dword ptr [{v('S_V1_48')}], eax
+    mov eax, dword ptr [{VIEW1 + 0x4c:#x}]
+    mov dword ptr [{v('S_V1_4C')}], eax
+    mov eax, dword ptr [{VIEW1 + 0x50:#x}]
+    mov dword ptr [{v('S_V1_50')}], eax
+    mov eax, dword ptr [{VIEW2 + 0x48:#x}]
+    mov dword ptr [{v('S_V2_48')}], eax
+    mov eax, dword ptr [{VIEW2 + 0x4c:#x}]
+    mov dword ptr [{v('S_V2_4C')}], eax
+    mov eax, dword ptr [{VIEW2 + 0x50:#x}]
+    mov dword ptr [{v('S_V2_50')}], eax
+    mov eax, dword ptr [{v('ROWT')}]
+    mov dword ptr [{VIEW1 + 0x48:#x}], eax
+    mov dword ptr [{VIEW2 + 0x48:#x}], eax
+    mov dword ptr [{VIEW1 + 0x4c:#x}], {CXTAB:#x}
+    mov dword ptr [{VIEW2 + 0x4c:#x}], {CXTAB:#x}
+    mov eax, dword ptr [{v('CYTB')}]
+    mov dword ptr [{VIEW1 + 0x50:#x}], eax
+    mov dword ptr [{VIEW2 + 0x50:#x}], eax
+    mov eax, dword ptr [0x427ea8]
+    mov dword ptr [{v('S_SUM')}], eax
+    add eax, dword ptr [{v('DLT')}]
+    mov dword ptr [0x427ea8], eax
+    jmp pre_out
+pre_lo:
+    cmp dword ptr [0x35f978], 19
+    jne pre_out
+    mov ebx, dword ptr [0x35f974]
+    mov eax, dword ptr [ebx]
+    mov dword ptr [{v('S_RATIO')}], eax
+    sar eax, 1
+    mov dword ptr [ebx], eax
+    mov dword ptr [{v('RHALF')}], 1
+pre_out:
+    popad
+    ret
+
+sum256:
+    xor eax, eax
+    mov ecx, 256
+s256:
+    add eax, dword ptr [esi]
+    add esi, 4
+    dec ecx
+    jnz s256
+    ret
+
+post:
+    cmp byte ptr [ebp+0x2c], 0
+    je post_go
+    call 0x2ad1cc
+post_go:
+    cmp dword ptr [{v('RHALF')}], 0
+    je post_hd
+    push eax
+    push ebx
+    mov ebx, dword ptr [0x35f974]
+    mov eax, dword ptr [{v('S_RATIO')}]
+    mov dword ptr [ebx], eax
+    mov dword ptr [{v('RHALF')}], 0
+    pop ebx
+    pop eax
+post_hd:
+    cmp dword ptr [{v('ACTIVE')}], 0
+    je post_ret
+    pushad
+    mov dword ptr [{v('ACTIVE')}], 0
+    mov esi, dword ptr [{v('S_CANVAS')}]
+    mov edi, dword ptr [{v('S_BITS')}]
+    mov dword ptr [esi], edi
+    mov eax, dword ptr [{v('S_W0')}]
+    mov word ptr [esi+8], ax
+    mov eax, dword ptr [{v('S_H0')}]
+    mov word ptr [esi+0xa], ax
+    mov eax, dword ptr [{v('S_ROW')}]
+    mov word ptr [esi+0xc], ax
+    mov ebx, dword ptr [{v('S_CLIP')}]
+    mov dword ptr [esi+0x34], ebx
+    mov ebx, dword ptr [{v('S_CLIPY')}]
+    mov dword ptr [esi+0x38], ebx
+    sub eax, dword ptr [{v('S_W0')}]
+    mov ebp, eax
+    xor edx, edx
+post_row:
+    cmp edx, dword ptr [{v('S_H0')}]
+    jae post_rest
+    mov eax, edx
+    add eax, dword ptr [{v('VY0')}]
+    lea eax, [eax+eax*2]
+    shr eax, 1
+    sub eax, dword ptr [{v('VB0')}]
+    imul eax, dword ptr [{v('W_CUR')}]
+    add eax, dword ptr [{v('HBUF')}]
+    add eax, dword ptr [{v('SIDE')}]
+    mov esi, eax
+    mov ecx, dword ptr [{v('S_W0')}]
+    cmp ecx, 4
+    jb post_px
+post_px4:
+    mov al, byte ptr [esi+6]
+    mov ah, byte ptr [esi+9]
+    shl eax, 16
+    mov al, byte ptr [esi]
+    mov ah, byte ptr [esi+3]
+    mov dword ptr [edi], eax
+    add esi, 12
+    add edi, 4
+    sub ecx, 4
+    cmp ecx, 4
+    jae post_px4
+    test ecx, ecx
+    jz post_eol
+post_px:
+    mov al, byte ptr [esi]
+    mov byte ptr [edi], al
+    add esi, 3
+    inc edi
+    dec ecx
+    jnz post_px
+post_eol:
+    add edi, ebp
+    inc edx
+    jmp post_row
+post_rest:
+    mov ebx, dword ptr [0x35f974]
+    mov eax, dword ptr [{v('S_RATIO')}]
+    mov dword ptr [ebx], eax
+    mov eax, dword ptr [{v('S_V1_8')}]
+    mov dword ptr [{VIEW1 + 8:#x}], eax
+    mov eax, dword ptr [{v('S_V2_8')}]
+    mov dword ptr [{VIEW2 + 8:#x}], eax
+    mov eax, dword ptr [{v('S_V1_10')}]
+    mov dword ptr [{VIEW1 + 0x10:#x}], eax
+    mov eax, dword ptr [{v('S_V2_10')}]
+    mov dword ptr [{VIEW2 + 0x10:#x}], eax
+    mov eax, dword ptr [{v('S_V1_14')}]
+    mov dword ptr [{VIEW1 + 0x14:#x}], eax
+    mov eax, dword ptr [{v('S_V2_14')}]
+    mov dword ptr [{VIEW2 + 0x14:#x}], eax
+    mov eax, dword ptr [{v('S_V1_C')}]
+    mov dword ptr [{VIEW1 + 0xc:#x}], eax
+    mov eax, dword ptr [{v('S_V2_C')}]
+    mov dword ptr [{VIEW2 + 0xc:#x}], eax
+    mov eax, dword ptr [{v('S_V1_48')}]
+    mov dword ptr [{VIEW1 + 0x48:#x}], eax
+    mov eax, dword ptr [{v('S_V1_4C')}]
+    mov dword ptr [{VIEW1 + 0x4c:#x}], eax
+    mov eax, dword ptr [{v('S_V1_50')}]
+    mov dword ptr [{VIEW1 + 0x50:#x}], eax
+    mov eax, dword ptr [{v('S_V2_48')}]
+    mov dword ptr [{VIEW2 + 0x48:#x}], eax
+    mov eax, dword ptr [{v('S_V2_4C')}]
+    mov dword ptr [{VIEW2 + 0x4c:#x}], eax
+    mov eax, dword ptr [{v('S_V2_50')}]
+    mov dword ptr [{VIEW2 + 0x50:#x}], eax
+    mov eax, dword ptr [{v('S_SUM')}]
+    mov dword ptr [0x427ea8], eax
+    mov ecx, dword ptr [0x35bfa0]
+    cmp ecx, 0
+    jle post_nrect
+    cmp ecx, 64
+    ja post_nrect
+    mov esi, 0x397d50
+post_rect:
+    mov edx, dword ptr [{v('S_W0')}]
+    movsx eax, word ptr [esi]
+    call rect_x
+    mov word ptr [esi], ax
+    movsx eax, word ptr [esi+4]
+    call rect_x
+    mov word ptr [esi+4], ax
+    mov edx, dword ptr [{v('S_H0')}]
+    movsx eax, word ptr [esi+2]
+    call rect_y
+    mov word ptr [esi+2], ax
+    movsx eax, word ptr [esi+6]
+    call rect_y
+    mov word ptr [esi+6], ax
+    add esi, 10
+    dec ecx
+    jnz post_rect
+post_nrect:
+    mov eax, dword ptr [{v('S_W0')}]
+    mov dword ptr [0x36237a], eax
+    shl eax, 15
+    mov dword ptr [0x362392], eax
+    sar eax, 16
+    mov dword ptr [0x362382], eax
+    mov eax, dword ptr [{v('W_CUR')}]
+    cmp dword ptr [{v('HSTR')}], 0
+    jne pn_s
+    imul eax, eax, 10923
+    jmp pn_w
+pn_s:
+    shl eax, 13
+pn_w:
+    mov dword ptr [0x36238a], eax
+    mov eax, dword ptr [{v('S_H0')}]
+    mov dword ptr [0x36237e], eax
+    shl eax, 15
+    mov dword ptr [0x36238e], eax
+    mov dword ptr [0x362396], eax
+    sar eax, 16
+    mov dword ptr [0x362386], eax
+    mov eax, dword ptr [{v('S_BITS')}]
+    sub eax, dword ptr [0x447028]
+    jb post_nv
+    mov ecx, dword ptr [{v('S_ROW')}]
+    cmp ecx, 320
+    jb post_nv
+    xor edx, edx
+    div ecx
+    mov ebx, eax
+    add ebx, dword ptr [{v('S_H0')}]
+    cmp ebx, 400
+    ja post_nv
+    mov ebx, edx
+    add ebx, dword ptr [{v('S_W0')}]
+    cmp ebx, 320
+    ja post_nv
+    mov dword ptr [{v('FY0')}], eax
+    mov dword ptr [{v('FX0')}], edx
+    mov eax, dword ptr [{v('S_W0')}]
+    mov dword ptr [{v('FW')}], eax
+    mov eax, dword ptr [{v('S_H0')}]
+    mov dword ptr [{v('FH')}], eax
+    mov eax, dword ptr [{v('W_CUR')}]
+    mov dword ptr [{v('FWW')}], eax
+    mov eax, dword ptr [{v('SIDE')}]
+    mov dword ptr [{v('FSIDE')}], eax
+    lea edx, [edx+edx*2]
+    add edx, {OX}
+    xor ecx, ecx
+    cmp eax, edx
+    jne pn_sk
+    inc ecx
+pn_sk:
+    mov dword ptr [{v('SIDEOK')}], ecx
+    mov dword ptr [{v('VALID')}], 1
+post_nv:
+    popad
+post_ret:
+    ret
+
+rect_x:
+    cmp dword ptr [{v('HSTR')}], 0
+    jne rx_s
+    sub eax, dword ptr [{v('SIDE')}]
+    push edx
+    cdq
+    push ecx
+    mov ecx, 3
+    idiv ecx
+    pop ecx
+    pop edx
+    jmp rect_clamp
+rx_s:
+    sub eax, {OW // 2}
+    sar eax, 2
+    push edx
+    sar edx, 1
+    add eax, edx
+    pop edx
+    jmp rect_clamp
+
+rect_y:
+    add eax, dword ptr [{v('VB0')}]
+    add eax, eax
+    push edx
+    cdq
+    push ecx
+    mov ecx, 3
+    idiv ecx
+    pop ecx
+    pop edx
+    sub eax, dword ptr [{v('VY0')}]
+    jmp rect_clamp
+
+flush:
+    call 0x26282c
+    pushad
+    call check_mode
+    cmp dword ptr [0x35f978], 19
+    je fl_m19
+    mov dword ptr [{v('FORCE')}], 1
+    jmp fl_out
+fl_m19:
+    mov edi, dword ptr [{v('LFB')}]
+    test edi, edi
+    jz fl_out
+    inc dword ptr [{v('COPIES')}]
+    cmp dword ptr [{v('TRIED')}], 0
+    jne fl_bufs
+    mov dword ptr [{v('TRIED')}], 1
+    mov eax, {320 * 400:#x}
+    call dword ptr [0x35f54c]
+    mov dword ptr [{v('PREVB')}], eax
+    mov eax, {OW * 400:#x}
+    call dword ptr [0x35f54c]
+    mov dword ptr [{v('SHADB')}], eax
+    mov eax, 12288
+    call dword ptr [0x35f54c]
+    mov dword ptr [{v('XCODE')}], eax
+    mov eax, {320 * 400 * 2:#x}
+    call dword ptr [0x35f54c]
+    mov dword ptr [{v('HUDW')}], eax
+    call clr_hudw
+    mov dword ptr [{v('FORCE')}], 1
+fl_bufs:
+    mov eax, dword ptr [{v('VALID')}]
+    imul eax, eax, 1000
+    add eax, dword ptr [{v('FX0')}]
+    imul eax, eax, 1000
+    add eax, dword ptr [{v('FY0')}]
+    imul eax, eax, 1000
+    add eax, dword ptr [{v('FW')}]
+    xor eax, dword ptr [{v('FH')}]
+    xor eax, dword ptr [{v('HSTR')}]
+    cmp eax, dword ptr [{v('SIG')}]
+    je fl_sig_ok
+    mov dword ptr [{v('SIG')}], eax
+    mov dword ptr [{v('FORCE')}], 1
+    call clr_hudw
+fl_sig_ok:
+    mov edi, dword ptr [{v('PREVB')}]
+    test edi, edi
+    jz fl_nodirty
+    cmp dword ptr [{v('SHADB')}], 0
+    je fl_nodirty
+    mov esi, dword ptr [{v('SBUF')}]
+    xor edx, edx
+fl_p1:
+    push esi
+    push edi
+    mov ecx, 80
+    repe cmpsd dword ptr [esi], dword ptr es:[edi]
+    pop edi
+    pop esi
+    je fl_p1_same
+    mov byte ptr [edx+{DIRTYP:#x}], 1
+    push esi
+    push edi
+    mov ecx, 80
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    pop edi
+    pop esi
+    jmp fl_p1_next
+fl_p1_same:
+    mov byte ptr [edx+{DIRTYP:#x}], 0
+fl_p1_next:
+    add esi, 640
+    add edi, 320
+    inc edx
+    cmp edx, 400
+    jb fl_p1
+    jmp fl_p2
+fl_nodirty:
+    mov dword ptr [{v('FORCE')}], 1
+fl_p2:
+    cmp dword ptr [{v('FORCE')}], 0
+    je fl_p2_nc
+    mov edi, dword ptr [{v('LFB')}]
+    mov ecx, {OW * OH // 4}
+    xor eax, eax
+    rep stosd dword ptr es:[edi], eax
+fl_p2_nc:
+    mov dword ptr [{v('ROWN')}], 0
+fl_row:
+    mov eax, dword ptr [{v('ROWN')}]
+    lea ecx, [eax+eax*2]
+    mov edx, ecx
+    shr ecx, 1
+    mov dword ptr [{v('RA')}], ecx
+    add edx, 3
+    shr edx, 1
+    mov dword ptr [{v('RB')}], edx
+    xor ebx, ebx
+    cmp dword ptr [{v('VALID')}], 0
+    je fl_nohd
+    mov edx, eax
+    sub edx, dword ptr [{v('FY0')}]
+    jb fl_nohd
+    cmp edx, dword ptr [{v('FH')}]
+    jae fl_nohd
+    inc ebx
+fl_nohd:
+    test ebx, ebx
+    jnz fl_need
+    cmp dword ptr [{v('FORCE')}], 0
+    jne fl_need
+    cmp byte ptr [eax+{DIRTYP:#x}], 0
+    je fl_skip
+fl_need:
+    push ebx
+    imul esi, eax, 640
+    add esi, dword ptr [{v('SBUF')}]
+    call build_outrow
+    pop ebx
+    test ebx, ebx
+    jz fl_hud
+    mov eax, dword ptr [{v('RA')}]
+    sub eax, dword ptr [{v('VB0')}]
+    imul eax, dword ptr [{v('FWW')}]
+    add eax, dword ptr [{v('HBUF')}]
+    add eax, dword ptr [{v('FSIDE')}]
+    mov ecx, dword ptr [{v('FX0')}]
+    lea ecx, [ecx+ecx*2]
+    sub eax, ecx
+    mov dword ptr [{v('HROW')}], eax
+    xor edx, edx
+    cmp dword ptr [{v('HUDW')}], edx
+    je fl_hc
+    imul edx, dword ptr [{v('ROWN')}], 640
+    add edx, dword ptr [{v('HUDW')}]
+fl_hc:
+    mov dword ptr [{v('HCROW')}], edx
+    mov eax, dword ptr [{v('FX0')}]
+    mov dword ptr [{v('HX0')}], eax
+    add eax, dword ptr [{v('FW')}]
+    mov dword ptr [{v('HX1')}], eax
+    call seg_mask
+    mov edx, dword ptr [{v('RA')}]
+fl_r3:
+    cmp edx, dword ptr [{v('RB')}]
+    jae fl_skip
+    push edx
+    mov eax, edx
+    sub eax, dword ptr [{v('VB0')}]
+    imul eax, dword ptr [{v('FWW')}]
+    add eax, dword ptr [{v('HBUF')}]
+    mov dword ptr [{v('HRW')}], eax
+    imul edi, edx, {OW}
+    add edi, dword ptr [{v('LFB')}]
+    call emit_row
+    pop edx
+    inc edx
+    jmp fl_r3
+fl_hud:
+    imul edi, dword ptr [{v('ROWN')}], {OW}
+    add edi, dword ptr [{v('SHADB')}]
+    cmp dword ptr [{v('FORCE')}], 0
+    jne fl_hw
+    push edi
+    mov esi, {OUTROW:#x}
+    mov ecx, {OW // 4}
+    repe cmpsd dword ptr [esi], dword ptr es:[edi]
+    pop edi
+    je fl_skip
+fl_hw:
+    mov esi, {OUTROW:#x}
+    mov ecx, {OW // 4}
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    mov edx, dword ptr [{v('RA')}]
+fl_hw2:
+    cmp edx, dword ptr [{v('RB')}]
+    jae fl_skip
+    imul edi, edx, {OW}
+    add edi, dword ptr [{v('LFB')}]
+    mov esi, {OUTROW:#x}
+    mov ecx, {OW // 4}
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    inc edx
+    jmp fl_hw2
+fl_skip:
+    inc dword ptr [{v('ROWN')}]
+    cmp dword ptr [{v('ROWN')}], 400
+    jb fl_row
+    mov dword ptr [{v('FORCE')}], 0
+fl_out:
+    popad
+    ret
+
+clr_hudw:
+    mov edi, dword ptr [{v('HUDW')}]
+    test edi, edi
+    jz ch_ret
+    mov ecx, {320 * 400 * 2 // 4}
+    xor eax, eax
+    rep stosd dword ptr es:[edi], eax
+ch_ret:
+    ret
+
+build_outrow:
+    mov edi, {OUTROW:#x}
+    xor ecx, ecx
+    cmp dword ptr [{v('HSTR')}], 0
+    je bo_cen
+bo_s:
+    movzx eax, byte ptr [esi+ecx]
+    imul eax, eax, 0x01010101
+    mov dword ptr [edi+ecx*4], eax
+    inc ecx
+    cmp ecx, 320
+    jb bo_s
+    ret
+bo_cen:
+    add edi, {OX}
+bo_c:
+    movzx eax, byte ptr [esi+ecx]
+    imul eax, eax, 0x01010101
+    mov dword ptr [edi], eax
+    add edi, 3
+    inc ecx
+    cmp ecx, 320
+    jb bo_c
+    xor eax, eax
+    mov edi, {OUTROW:#x}
+    mov ecx, {OX // 4}
+    rep stosd dword ptr es:[edi], eax
+    mov edi, {OUTROW + OX + 960:#x}
+    mov ecx, {(OW - OX - 960) // 4}
+    rep stosd dword ptr es:[edi], eax
+    ret
+
+seg_mask:
+    mov ecx, dword ptr [{v('HX0')}]
+    mov ebp, dword ptr [{v('HX1')}]
+    cmp ecx, ebp
+    jae sm_ret
+    mov ebx, dword ptr [{v('HROW')}]
+    mov edx, dword ptr [{v('HCROW')}]
+    test edx, edx
+    jz sm_nohc
+sm_loop:
+    lea edi, [ecx+ecx*2]
+    mov al, byte ptr [esi+ecx]
+    cmp al, byte ptr [ebx+edi]
+    jne sm_hud
+    cmp byte ptr [edx+ecx*2+1], 0
+    je sm_3d
+    cmp byte ptr [edx+ecx*2], al
+    je sm_known
+    mov byte ptr [edx+ecx*2+1], 0
+sm_3d:
+    mov byte ptr [ecx+{MASK:#x}], 1
+    inc ecx
+    cmp ecx, ebp
+    jb sm_loop
+    ret
+sm_hud:
+    mov byte ptr [edx+ecx*2], al
+    mov byte ptr [edx+ecx*2+1], 1
+sm_known:
+    mov byte ptr [ecx+{MASK:#x}], 0
+    inc ecx
+    cmp ecx, ebp
+    jb sm_loop
+    ret
+sm_nohc:
+    lea edi, [ecx+ecx*2]
+    mov al, byte ptr [esi+ecx]
+    cmp al, byte ptr [ebx+edi]
+    sete byte ptr [ecx+{MASK:#x}]
+    inc ecx
+    cmp ecx, ebp
+    jb sm_nohc
+sm_ret:
+    ret
+
+emit_row:
+    mov ebx, dword ptr [{v('HRW')}]
+    cmp dword ptr [{v('HSTR')}], 0
+    jne er_str
+    push edi
+    mov esi, {OUTROW:#x}
+    cmp dword ptr [{v('SIDEOK')}], 0
+    je er_l
+    mov esi, ebx
+er_l:
+    mov ecx, {OX // 4}
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    pop edi
+    push edi
+    add edi, {OX + 960}
+    mov esi, {OUTROW + OX + 960:#x}
+    cmp dword ptr [{v('SIDEOK')}], 0
+    je er_r
+    lea esi, [ebx+{OX + 960}]
+er_r:
+    mov ecx, {(OW - OX - 960) // 4}
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    pop edi
+    mov dword ptr [{v('ERS')}], 3
+    mov dword ptr [{v('ERO')}], {OX}
+    jmp er_go
+er_str:
+    mov dword ptr [{v('ERS')}], 4
+    mov dword ptr [{v('ERO')}], 0
+er_go:
+    xor ecx, ecx
+er_run:
+    cmp ecx, 320
+    jae er_done
+    xor ebp, ebp
+    mov edx, 320
+    mov eax, dword ptr [{v('HX0')}]
+    cmp ecx, eax
+    jae er_in
+    mov edx, eax
+    jmp er_emit
+er_in:
+    mov eax, dword ptr [{v('HX1')}]
+    cmp ecx, eax
+    jae er_emit
+    push edi
+    push ecx
+    movzx ebp, byte ptr [ecx+{MASK:#x}]
+    lea edi, [ecx+{MASK:#x}]
+    mov edx, eax
+    sub eax, ecx
+    mov ecx, eax
+    mov eax, ebp
+    repe scasb byte ptr es:[edi]
+    je er_all
+    lea edx, [edi-{MASK + 1:#x}]
+er_all:
+    pop ecx
+    pop edi
+er_emit:
+    push edx
+    push edi
+    mov eax, dword ptr [{v('ERS')}]
+    imul ecx, eax
+    add ecx, dword ptr [{v('ERO')}]
+    imul eax, edx
+    add eax, dword ptr [{v('ERO')}]
+    sub eax, ecx
+    jbe er_next
+    lea esi, [ecx+{OUTROW:#x}]
+    test ebp, ebp
+    jz er_cp
+    lea esi, [ebx+ecx]
+er_cp:
+    add edi, ecx
+    mov ecx, eax
+    shr ecx, 2
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    mov ecx, eax
+    and ecx, 3
+    rep movsb byte ptr es:[edi], byte ptr [esi]
+er_next:
+    pop edi
+    pop ecx
+    jmp er_run
+er_done:
+    ret
+
+occl:
+    push eax
+    mov eax, dword ptr [0x44b250]
+    movzx eax, word ptr [eax+8]
+    dec eax
+    mov dword ptr [{v('TMP')}], eax
+    cmp dword ptr [esp+0x18], eax
+    jle occl_ok
+    mov dword ptr [esp+0x18], eax
+occl_ok:
+    pop eax
+    ret
+
+rainx:
+    xor eax, eax
+    mov al, byte ptr [0x35a560]
+    sar ecx, 4
+    sar eax, 1
+    push edx
+    mov edx, dword ptr [0x44b250]
+    cmp edx, dword ptr [{v('S_CANVAS')}]
+    jne rainx_ret
+    movzx edx, word ptr [edx+8]
+    cmp edx, dword ptr [{v('W_CUR')}]
+    jne rainx_ret
+    lea ecx, [ecx+ecx*2]
+    add ecx, dword ptr [{v('SIDE')}]
+rainx_ret:
+    pop edx
+    ret
+"""
+# auto-patch des tableaux par colonne (ecritures du jeu, une fois)
+sp = []
+for a, o, op in SITES_A: sp.append(f"    mov eax, dword ptr [{v('NEWA')}]\n    mov dword ptr [{M(a) + o:#x}], eax")
+for a, o, op in SITES_N: sp.append(f"    mov dword ptr [{M(a) + o:#x}], {WMAX * 4:#x}")
+for a, o, op in SITES_B: sp.append(f"    mov eax, dword ptr [{v('NEWB')}]\n    mov dword ptr [{M(a) + o:#x}], eax")
+for a, o, op in SITES_B4: sp.append(f"    mov eax, dword ptr [{v('NEWB')}]\n    add eax, 4\n    mov dword ptr [{M(a) + o:#x}], eax")
+ASM = ASM.replace('SELFPATCH\n', '\n'.join(sp) + '\n')
+# adresses du jeu selon la version (pas celles deja anglaises : VIEW1/VIEW2 et les sites ci-dessus le sont)
+ASM = re.sub(r'0x[0-9a-fA-F]{5,6}', lambda m: '0x%x' % (M(int(m.group(), 16)) if int(m.group(), 16) in MAP and EN else int(m.group(), 16)), ASM)
+
+
+def assemble():
+    ks = Ks(KS_ARCH_X86, KS_MODE_32)
+    code = bytes(ks.asm(ASM, CODE)[0])
+    labels = {}
+    for name in ('camratio', 'pre', 'post', 'flush', 'occl', 'rainx'):
+        r = bytes(ks.asm(ASM + '\n    mov eax, %s\n' % name, CODE)[0])
+        labels[name] = struct.unpack('<I', r[-4:])[0]
+    return code, labels
+
+
+def call_rel(src, dst):
+    return b'\xe8' + struct.pack('<i', dst - (src + 5))
+
+
+code, LBL = assemble()
+assert len(code) <= DATA - CODE, len(code)
+DATA_INIT = bytearray(DATA + 0x1800 - DATA)
+struct.pack_into('<I', DATA_INIT, V['HSTR'] - DATA, 1)        # HUD etire sur toute la largeur (TN+ : wide_hud)
+
+PATCHES = [
+    # les tableaux par colonne : verifies ici, repointes par le jeu au 1er rendu (alloc_all)
+] + [(M(a), bytes.fromhex(op), bytes.fromhex(op)) for a, o, op in SITES_A + SITES_N + SITES_B + SITES_B4] + [
+    # segment de nuages : compteur 16 bits
+    (M(0x2b274a), bytes.fromhex('8ac8c1e51081e60000ffff33c090'), bytes.fromhex('668bc8c1e51081e60000ffff33c0')),
+    (M(0x2b276f), bytes.fromhex('fec9'), bytes.fromhex('6649')),
+    # tampon 0x41ED30 (copie largeur x hauteur du canvas 3D a chaque image) : 320x400 -> 1280x600
+    (M(0x2614c3), bytes.fromhex('b8') + P(0x1f400), bytes.fromhex('b8') + P(WMAX * HMAX)),
+    (M(0x26152d), bytes.fromhex('b8') + P(0x1f400), bytes.fromhex('b8') + P(WMAX * HMAX)),
+    (M(0x262f80), bytes.fromhex('b8') + P(0x1f400), bytes.fromhex('b8') + P(WMAX * HMAX)),
+    # test objet / relief : colonnes bornees a 319 -> largeur reelle de la vue - 1
+    (M(0x2a1011), bytes.fromhex('817c24103f0100007e08c74424103f010000'), call_rel(M(0x2a1011), LBL['occl']) + b'\x90' * 13),
+    (M(0x2a1032), bytes.fromhex('81fb3f010000'), bytes.fromhex('3b1d') + P(V['TMP'])),
+    # pluie : colonne d'une goutte x3 + cote pendant une image HD
+    (M(0x2afa24), bytes.fromhex('31c0a0') + P(M(0x35a560)) + bytes.fromhex('c1f904d1f8'), call_rel(M(0x2afa24), LBL['rainx']) + b'\x90' * 7),
+    # crochets avant / apres le rendu 3D
+    (M(0x29e746), bytes.fromhex('807d2c007405e83bea0000'), call_rel(M(0x29e746), LBL['pre']) + b'\x90' * 6),
+    (M(0x29e80c), bytes.fromhex('807d2c007405e8b5e90000'), call_rel(M(0x29e80c), LBL['post']) + b'\x90' * 6),
+]
+ECRAN = [
+    (M(0x262f64), bytes.fromhex('b802000000'), bytes.fromhex('b813000000')),
+    (M(0x35cdae), struct.pack('<h', 2), struct.pack('<h', 19)),
+    (M(0x29ea41), bytes.fromhex('a1') + P(M(0x35f974)), call_rel(M(0x29ea41), LBL['camratio'])),
+    (M(0x261fe4), call_rel(M(0x261fe4), M(0x26282c)), call_rel(M(0x261fe4), LBL['flush'])),
+    # mode 19 du pilote : VBE 0x100 (640x400) -> 0x17D (1280x960 de DOSBox, vesa_modes = all), CRTC mis a 600 lignes
+    (0x364ed4 if EN else 0x364f7c, bytes.fromhex('1300000180029001'), bytes.fromhex('13007d0180029001')),
+]
+
+
+def export(path, cls):
+    def arr(b):
+        toks = ['0x%02x' % x for x in b]
+        lines = [', '.join(toks[i:i + 16]) for i in range(0, len(toks), 16)]
+        return 'new byte[] {\n            ' + ',\n            '.join(lines) + '\n        }'
+    out = ['// GENERE par tools/hd720.py export - ne pas modifier a la main.',
+           '// Terra Nova HD 720 (3D 3 x colonnes / 1,5 x lignes, ecran VESA 1280x960 a 600 lignes, affiche en 1280x720).',
+           '// Adresses de la version %s (__FF.EXE prepare).' % ('anglaise GOG / Steam' if EN else 'francaise GOG'),
+           'static class ' + cls, '{',
+           '    public const uint Zone = 0x%x, End = 0x%x, PoolBase = 0x%x;' % (ZONE, FIN, ZONE + PLACE),
+           '    public const uint Code = 0x%x, Data = 0x%x;' % (CODE, DATA),
+           '    public const uint Smoothing = 0x%x, HudFilter = 0x%x, Frames = 0x%x, PoolMax = 0x%x, DriverMode = 0x%x;' % (
+               V['LISSE'], V['HUDF'], V['FRAMES'], M(0x35d03c), M(0x35f978)),
+           '    public const uint Valid = 0x%x, HdWidth = 0x%x, HdHeight = 0x%x;' % (V['VALID'], V['FWW'], V['FH']),
+           '    public const uint HudStretch = 0x%x;' % V['HSTR'],
+           '    public const uint PoolVar = 0x%x;' % M(0x43e360),
+           '    public const uint XCode = 0x%x;' % V['XCODE'],
+           '    public static readonly byte[] CodeBytes = %s;' % arr(code),
+           '    public static readonly byte[] DataInit = %s;' % arr(bytes(DATA_INIT)),
+           '    public static readonly uint[] PatchAt = { %s };' % ', '.join('0x%x' % a for a, o, n in PATCHES + ECRAN),
+           '    public static readonly byte[][] PatchOld = {']
+    for a, o, n in PATCHES + ECRAN: out.append('        new byte[] { %s },' % ', '.join('0x%02x' % x for x in o))
+    out.append('    };')
+    out.append('    public static readonly byte[][] PatchNew = {')
+    for a, o, n in PATCHES + ECRAN: out.append('        new byte[] { %s },' % ', '.join('0x%02x' % x for x in n))
+    out += ['    };', '}']
+    with open(path, 'w', encoding='utf-8', newline='\r\n') as f:
+        f.write('\n'.join(out) + '\n')
+    print('exporte', path, '(%d o de code, %d patchs)' % (len(code), len(PATCHES + ECRAN)))
+
+
+cmd = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith('--') else 'inject'
+if cmd == 'export':
+    args = [x for x in sys.argv[2:] if not x.startswith('--')]
+    cls = 'HdPayload' + ('En' if EN else 'Fr') + '720'
+    export(args[0] if args else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src', '%s.cs' % cls), cls)
+elif cmd == 'asm':
+    print('code %d o, etiquettes %s' % (len(code), {k: hex(a) for k, a in LBL.items()}))
+else:
+    if POOL_BASE != ZONE + PLACE:
+        raise SystemExit('__FF.EXE non prepare : reserve en %#x' % POOL_BASE)
+    if any(g.read(ZONE, FIN - ZONE)):
+        raise SystemExit('zone du mod non nulle (deja injecte ?)')
+    liste = PATCHES + ECRAN
+    st = [g.read(a, len(old)) == old for a, old, new in liste]
+    if not all(st):
+        raise SystemExit('octets inattendus : %s' % st)
+    g.write(DATA, bytes(DATA_INIT))
+    g.write(CODE, code)
+    for a, old, new in liste:
+        g.write(a, new)
+    print('injecte (RAM seulement)')
