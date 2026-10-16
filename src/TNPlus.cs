@@ -121,7 +121,7 @@ static partial class TNPlus
     // the target the ring shrinks by 8 cells (down to 24); it grows back (to 48) only after 3 s well above the target
     // (a step costs 15-20 %) and not within 10 s of a shrink: growing back too soon made it swing every 3 s.
     static int OptTerrainFps = 60;                  // ini terrain_fps, 0 = fixed SHARPER ring
-    static bool OptHd720 = false;                   // ini hd_720: true 16:9 in 1280x720 instead of 848x480
+    static bool OptHd720 = false;                   // true 16:9 in 1280x720 instead of 848x480 (widescreen = 3)
     static int adaptCells = 0;                      // current end of the polygon ring when adapting, 0 = not adapting
     static double adaptT = -1, adaptHold = 0, adaptNoGrow = 0;
     static int adaptFrames = 0, adaptGood = 0;
@@ -750,9 +750,9 @@ static partial class TNPlus
     static bool OptWideAttach = false;              // ini only (tests): 16:9 also on a game we attached to
     static bool OptWideTrue = false;                // 16:9: false STRETCHED (DOSBox stretches, camera corrected), true TRUE
     static bool launchedTrue = false;               // DOSBox started by us for the true 16:9 (VESA 848x480)
-    static readonly string[] WIDE_NAMES = { "OFF", "STRETCHED", "TRUE" };
-    static int WideMode() { return OptWide ? (OptWideTrue ? 2 : 1) : 0; }
-    static void SetWideMode(int m) { OptWide = m > 0; OptWideTrue = m == 2; }
+    static readonly string[] WIDE_NAMES = { "OFF", "STRETCHED", "TRUE", "TRUE 720" };
+    static int WideMode() { return OptWide ? (OptWideTrue ? (OptHd720 ? 3 : 2) : 1) : 0; }
+    static void SetWideMode(int m) { OptWide = m > 0; OptWideTrue = m >= 2; OptHd720 = m == 3; }
 
     // true 16:9 (HD only): the game's HD screen is a VESA 848x480 mode of DOSBox, the 3D view drawn across the whole
     // width in its own columns (HdPayload*Wide); the cockpit and HUD stretched to the full width (wide_hud = 1) or
@@ -805,12 +805,13 @@ static partial class TNPlus
     static int Display = 2;                         // 0 original, 1 320x400, 2 HD 640x400
 
     // HD is 640x400, or DOSBox's VESA 848x480 in true 16:9: the labels follow the settings, the messages what runs
-    static string HdName() { return WideMode() == 2 ? "HD 848x480" : "HD 640x400"; }
+    static string HdName() { return WideMode() == 3 ? "HD 1280x720" : WideMode() == 2 ? "HD 848x480" : "HD 640x400"; }
     static string HdNow() { return TrueWideActive() ? (OptHd720 ? "HD 1280x720" : "HD 848x480") : "HD 640x400"; }
     static string[] DisplayLabels() { return new[] { DISPLAY_LABELS[0], DISPLAY_LABELS[1], HdName() }; }
     static string HdHelp()
     {
-        return (WideMode() == 2 ? "HD 848x480 (true 16:9): the 3D view drawn 848 columns wide" : "HD 640x400: the 3D view drawn at twice the width") +
+        return (WideMode() == 3 ? "HD 1280x720 (true 16:9): the 3D view drawn 1280 columns wide and 1.5 x taller, needs a fast PC"
+            : WideMode() == 2 ? "HD 848x480 (true 16:9): the 3D view drawn 848 columns wide" : "HD 640x400: the 3D view drawn at twice the width") +
             ", GOG and Steam, French and English";
     }
     static string hdCheckedDir = null, hdWhy = "";
@@ -858,6 +859,7 @@ static partial class TNPlus
         Display = p;                                // 0 original, 1 320x400, 2 HD (falls back to 320x400 by itself)
         OptWide = p == 2;
         OptWideTrue = p == 2;
+        OptHd720 = false;
         OptDetail = p;                              // GAME / SHARP / SHARPER
         OptDistance = p;                            // NORMAL / FAR / MAX
         OptFreelook = p > 0;                        // noclip is a cheat: left to the player
@@ -866,7 +868,7 @@ static partial class TNPlus
     static int CurrentPreset()
     {
         for (int p = 0; p < 3; p++)
-            if (Display == p && OptWide == (p == 2) && OptWideTrue == (p == 2) && OptDetail == p && OptDistance == p
+            if (Display == p && OptWide == (p == 2) && OptWideTrue == (p == 2) && !OptHd720 && OptDetail == p && OptDistance == p
                 && OptFreelook == (p > 0))
                 return p;
         return -1;
@@ -993,7 +995,7 @@ static partial class TNPlus
                 case 'P': ApplyPreset(preset < 0 ? 2 : (preset + 1) % 3); break;
                 case 'L': LaunchTarget = (LaunchTarget + 1) % 3; break;
                 case '1': Display = (Display + 1) % 3; break;
-                case '2': SetWideMode((WideMode() + 1) % 3); break;
+                case '2': SetWideMode((WideMode() + 1) % 4); break;
                 case '3': OptDetail = (OptDetail + 1) % 3; break;
                 case '4': OptDistance = (OptDistance + 1) % 3; break;
                 case 'O': OptObjDist = (OptObjDist + 1) % 3; break;
@@ -2566,7 +2568,7 @@ static partial class TNPlus
                     case "force_320x400": oldForce = v != "0"; break;
                     case "display": Display = Math.Max(0, Array.IndexOf(DISPLAY_NAMES, v.ToUpperInvariant())); haveDisplay = true; break;
                     case "launch": LaunchTarget = Math.Max(0, Array.IndexOf(TARGET_NAMES, v.ToUpperInvariant())); break;
-                    case "widescreen": SetWideMode(v == "2" || v.ToUpperInvariant() == "TRUE" ? 2 : v == "0" ? 0 : 1); break;
+                    case "widescreen": SetWideMode(v == "3" ? 3 : v == "2" || v.ToUpperInvariant() == "TRUE" ? 2 : v == "0" ? 0 : 1); break;
                     case "stereo_fix": OptStereoFix = v != "0"; break;
                     case "scaling": OptScaling = Math.Max(0, Array.IndexOf(SCALING_NAMES, v.ToUpperInvariant())); break;
                     case "music": OptMusic = Math.Max(0, Array.IndexOf(MUSIC_NAMES, v.ToUpperInvariant())); break;
@@ -2575,7 +2577,7 @@ static partial class TNPlus
                     case "phys_fix": OptPhysFix = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
                     case "terrain_fps": int.TryParse(v, out OptTerrainFps); break;
-                    case "hd_720": OptHd720 = v == "1"; break;
+                    case "hd_720": if (v == "1" && OptWideTrue) OptHd720 = true; break;   // first test builds
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
                     case "keep_dos": OptKeepDos = v != "0"; break;
@@ -2624,9 +2626,9 @@ static partial class TNPlus
                 "; NORMAL, FAR or MAX\r\nview_distance = " + DIST_NAMES[OptDistance] + "\r\n" +
                 "; GAME, SHARP or SHARPER (more terrain detail in the distance)\r\nterrain_detail = " + DETAIL_NAMES[OptDetail] + "\r\n" +
                 "; SHARPER with HD: frame rate kept by drawing the smooth terrain less far when needed (24 to 48 cells), 0 = always 48\r\nterrain_fps = " + OptTerrainFps + "\r\n" +
-                "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: the 3D drawn in 848 columns)\r\nwidescreen = " + WideMode() + "\r\n" +
+                "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: the 3D drawn in 848 columns),\r\n" +
+                "; 3 true 16:9 in 1280x720 (3D in 1280 columns and 1.5 x the lines, needs a fast PC)\r\nwidescreen = " + WideMode() + "\r\n" +
                 "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
-                "; true 16:9: 1 = in 1280x720 (3D in 1280 columns and 1.5 x the game's lines, needs a fast PC), 0 = 848x480\r\nhd_720 = " + (OptHd720 ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
                 "; SHARP (DOSBox in OpenGL with its sharp shader: every pixel the same size, less shimmer) or GAME'S OWN\r\n" +
                 "scaling = " + SCALING_NAMES[OptScaling] + "\r\n" +

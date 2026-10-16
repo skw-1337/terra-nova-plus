@@ -339,7 +339,7 @@ static partial class TNPlus
         int y0 = 156, lx = 20, pw = (GUI_W - 60) / 2, rx = lx + pw + 20;
         Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(7));
         cbDisplay = Combo(pPic, "Display", 0, DisplayLabels(), "BETA", "");
-        cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, "BETA", "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. Needs the game launched from here.");
+        cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, "BETA", "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. TRUE 720: the same in 1280x720 (1280 columns, 1.5 x the lines), needs a fast PC. Needs the game launched from here.");
         cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER costs about 25 % fps (the default CPU speed makes up for it).");
         cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), ""); KeyBadge(lastBadge, 2);
         cbFov = Combo(pPic, "Field of view", 5, FOV_NAMES, "BETA", "Horizontal field of view of the 3D view in degrees, at every zoom level. GAME: 84.5, or 100.9 in 16:9. The small cockpit cameras keep theirs.");
