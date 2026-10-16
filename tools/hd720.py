@@ -48,12 +48,13 @@ V = {k: DATA + 4 * i for i, k in enumerate(
     'S_CANVAS S_W0 S_H0 S_CX W_CUR ROWK CXK CXSUM DLT S_V1_8 S_V2_8 S_V1_10 S_V2_10 '
     'FX0 FY0 FW FH FWW ROWN HX0 HX1 HROW PREVB SHADB FORCE SIG TRIED SIDE FSIDE SIDEOK HSTR HUDW HCROW XCODE '
     'H3 S_CLIPY S_V1_C S_V2_C S_V1_14 S_V2_14 S_V1_50 S_V2_50 CYTB CYK CYSUM VY0 VB0 ROWT NEWA NEWB TMP '
-    'RA RB ERS ERO HRW'.split())}
+    'RA RB ERS ERO HRW FPSV FPSCOL FD'.split())}
 assert max(V.values()) < DATA + 0x500
 CXTAB = DATA + 0x500                              # 256 x 4
 OUTROW = DATA + 0x900                             # ligne de sortie du HUD (1280 + 4)
 DIRTYP = DATA + 0xE10                             # lignes modifiees de l'ecran du jeu (2 o de marge)
 MASK = DATA + 0x1000                              # 1 la ou la ligne du jeu montre la 3D (320 o)
+FONT = DATA + 0x1200                              # chiffres 3x5 du compteur d'images (10 mots)
 assert MASK + 0x140 <= DATA + 0x1800
 VIEW1, VIEW2 = M(0x38fbd4), M(0x41ec74)
 P = lambda v: struct.pack('<I', v & 0xffffffff)
@@ -890,9 +891,108 @@ fl_skip:
     inc dword ptr [{v('ROWN')}]
     cmp dword ptr [{v('ROWN')}], 400
     jb fl_row
+    call fps_draw
     mov dword ptr [{v('FORCE')}], 0
 fl_out:
     popad
+    ret
+
+
+fps_draw:
+    mov eax, dword ptr [{v('FPSV')}]
+    test eax, eax
+    jz fd_ret
+    cmp eax, 999
+    jbe fd_n
+    mov eax, 999
+fd_n:
+    xor ecx, ecx
+    mov ebx, 10
+fd_div:
+    xor edx, edx
+    div ebx
+    push edx
+    inc ecx
+    test eax, eax
+    jnz fd_div
+    mov dword ptr [{v('FD')}], ecx
+    mov edx, 2
+fd_bg:
+    lea eax, [edx+edx]
+    push edx
+    xor edx, edx
+    mov ebx, 3
+    div ebx
+    pop edx
+    cmp dword ptr [{v('VALID')}], 0
+    je fd_hud
+    mov ebx, eax
+    sub ebx, dword ptr [{v('FY0')}]
+    jb fd_hud
+    cmp ebx, dword ptr [{v('FH')}]
+    jb fd_bgn
+fd_hud:
+    imul esi, eax, {OW}
+    add esi, dword ptr [{v('SHADB')}]
+    add esi, {OW - 32}
+    imul edi, edx, {OW}
+    add edi, dword ptr [{v('LFB')}]
+    add edi, {OW - 32}
+    mov ebx, 7
+fd_cp:
+    mov eax, dword ptr [esi]
+    mov dword ptr [edi], eax
+    add esi, 4
+    add edi, 4
+    dec ebx
+    jnz fd_cp
+fd_bgn:
+    inc edx
+    cmp edx, 17
+    jb fd_bg
+    mov ecx, dword ptr [{v('FD')}]
+    mov edi, dword ptr [{v('LFB')}]
+    add edi, {4 * OW + OW - 6}
+    mov eax, ecx
+    shl eax, 3
+    sub edi, eax
+    mov al, byte ptr [{v('FPSCOL')}]
+    mov ah, al
+fd_dig:
+    pop ebx
+    movzx ebx, word ptr [ebx*2+{FONT:#x}]
+    push edi
+    mov esi, 14
+    mov edx, 5
+fd_row:
+    push edi
+    bt ebx, esi
+    jnc fd_c1
+    mov word ptr [edi], ax
+    mov word ptr [edi+{OW}], ax
+fd_c1:
+    dec esi
+    bt ebx, esi
+    jnc fd_c2
+    mov word ptr [edi+2], ax
+    mov word ptr [edi+{OW + 2}], ax
+fd_c2:
+    dec esi
+    bt ebx, esi
+    jnc fd_c3
+    mov word ptr [edi+4], ax
+    mov word ptr [edi+{OW + 4}], ax
+fd_c3:
+    dec esi
+    pop edi
+    add edi, {2 * OW}
+    dec edx
+    jnz fd_row
+    pop edi
+    add edi, 8
+    dec ecx
+    jnz fd_dig
+fd_ret:
     ret
 
 clr_hudw:
@@ -1130,6 +1230,9 @@ code, LBL = assemble()
 assert len(code) <= DATA - CODE, len(code)
 DATA_INIT = bytearray(DATA + 0x1800 - DATA)
 struct.pack_into('<I', DATA_INIT, V['HSTR'] - DATA, 1)        # HUD etire sur toute la largeur (TN+ : wide_hud)
+_F = ['111101101101111', '010110010010111', '111001111100111', '111001111001111', '101101111001001',
+      '111100111001111', '111100111101111', '111001010010010', '111101111101111', '111101111001111']
+for _i, _b in enumerate(_F): struct.pack_into('<H', DATA_INIT, FONT - DATA + 2 * _i, int(_b, 2))
 
 PATCHES = [
     # les tableaux par colonne : verifies ici, repointes par le jeu au 1er rendu (alloc_all)
@@ -1175,6 +1278,7 @@ def export(path, cls):
                V['LISSE'], V['HUDF'], V['FRAMES'], M(0x35d03c), M(0x35f978)),
            '    public const uint Valid = 0x%x, HdWidth = 0x%x, HdHeight = 0x%x;' % (V['VALID'], V['FWW'], V['FH']),
            '    public const uint HudStretch = 0x%x;' % V['HSTR'],
+           '    public const uint FpsValue = 0x%x, FpsColour = 0x%x;   // frames per second shown top right (0 = hidden), palette index' % (V['FPSV'], V['FPSCOL']),
            '    public const uint PoolVar = 0x%x;' % M(0x43e360),
            '    public const uint XCode = 0x%x;' % V['XCODE'],
            '    public static readonly byte[] CodeBytes = %s;' % arr(code),

@@ -20,12 +20,12 @@ from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
 import ir_fix as F
 
-FR_DELTA = 0x280
+FR_DELTA = {'coltest': 0x280, 'colupdate': 0x280, 'colpass': -0x10}   # French exe: where each routine sits
 XOFF = 0x600                    # offset in the HD code's buffer (XCODE), after the infrared routines (1282 bytes)
-ORDER = ('coltest', 'colupdate')
-ENTRY = {'coltest': 0x317DF0, 'colupdate': 0x317EA0}
-STUB = {'coltest': 0x469F40, 'colupdate': 0x469F50}       # free gap of the tool's code area
-PTR = {'coltest': 0x4693F0, 'colupdate': 0x4693F4}        # data page: where each entry jumps
+ORDER = ('coltest', 'colupdate', 'colpass')
+ENTRY = {'coltest': 0x317DF0, 'colupdate': 0x317EA0, 'colpass': 0x2B2785}
+STUB = {'coltest': 0x469F40, 'colupdate': 0x469F50, 'colpass': 0x469F90}     # free gaps of the tool's code area
+PTR = {'coltest': 0x4693F0, 'colupdate': 0x4693F4, 'colpass': 0x4693EC}      # data page: where each entry jumps
 FREE = ((0x469F30, 0x46A000),)
 
 lde = lambda a: 'mov eax, dword ptr [%#x];mov eax, dword ptr [edi+eax];' % a        # mov eax,[edi+slot]
@@ -42,6 +42,58 @@ RECIPES = {   # EN addresses: low, high, no digest (the slots differ from call t
         0x317f9e: (0x317fa0, '@jg 0x317f50;'),                  # its target byte, written at 0x317EF5 / 0x317F62
         0x317fa5: (0x317faa, 'mov eax, dword ptr [0x317fa6];'), # the return value, written at 0x317EA5 / 0x317F55
     }),
+    # water / haze pass of the terrain, column by column (called from 0x2A87E7): same pixels, same results, but the
+    # usual pixel (colour not in the table) costs 5 instructions instead of 9 -- the source position and the row
+    # table pointer it would step along are only worked out for the pixels it changes (esi + edi stays constant down
+    # a column, the row pointer follows the counter); no longer writes its table address into its own loop
+    'colpass': (0x2B2785, 0x2B27DA, None, {
+        0x2b278b: (0x2b27da, '''
+    mov eax, dword ptr [ebx+4]
+    mov ebp, dword ptr [ebx+8]
+    mov ebx, dword ptr [ebx]
+    add esi, edx
+    sub esp, 12
+    mov dword ptr [esp], eax
+    lea eax, [esi+edi]
+    sub eax, edx
+    mov dword ptr [esp+4], eax
+    lea eax, [ebx+ecx*4]
+    mov dword ptr [esp+8], eax
+cp_loop:
+    movzx eax, byte ptr [edi]
+    cmp byte ptr [eax+ebp], 0
+    jne cp_spec
+cp_next:
+    add edi, edx
+    dec ecx
+    jnz cp_loop
+    pushfd
+    mov ebx, dword ptr [esp+12]
+    mov esi, dword ptr [esp+8]
+    sub esi, edi
+    add esi, edx
+    popfd
+    lea esp, [esp+12]
+    pop ebp
+    ret
+cp_spec:
+    shl eax, 2
+    add eax, dword ptr [esp]
+    mov eax, dword ptr [eax]
+    add eax, dword ptr [esp+4]
+    sub eax, edi
+    movzx eax, byte ptr [eax]
+    mov ebx, ecx
+    shl ebx, 2
+    neg ebx
+    add ebx, dword ptr [esp+8]
+    add eax, dword ptr [ebx]
+    mov al, byte ptr [eax]
+    mov byte ptr [edi], al
+    xor eax, eax
+    jmp cp_next
+'''),
+    }),
 }
 
 
@@ -57,10 +109,11 @@ def entry_stub(read, s, at):
 
 def build(en_read, fr_read=None):
     out = {}
-    for lang, read, d in (('EN', en_read, 0), ('FR', fr_read, FR_DELTA)):
+    for lang, read in (('EN', en_read), ('FR', fr_read)):
         if read is None: continue
         pieces_all, copied_all, total, entry, site, stub = [], b'', 0, {}, {}, {}
         for name in ORDER:
+            d = FR_DELTA[name] if lang == 'FR' else 0
             rec = RECIPES[name] if d == 0 else F.shifted(RECIPES[name], d)
             if d: F.same_shape(en_read, fr_read, RECIPES[name][0], RECIPES[name][1], d, RECIPES[name][3])
             s = ENTRY[name] + d

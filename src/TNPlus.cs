@@ -399,6 +399,32 @@ static partial class TNPlus
         return n;
     }
 
+    // Small frame counter top right (HD 1280x720): the 3D frames of the last half second, drawn by the HD code in the
+    // palette colour closest to a light green (the palette changes in infrared)
+    static bool OptFpsCounter = true;               // ini fps_counter
+    static double fpsT = -1;
+    static int fpsFrames = 0;
+    static void FpsCounter(double now)
+    {
+        if (HdPayload.FpsValue == 0 || hdState != 1) return;
+        if (!OptFpsCounter) { if (fpsT >= 0) { WriteInt(HdPayload.FpsValue, 0); fpsT = -1; } return; }
+        int frames = ReadInt(HdPayload.Frames);
+        if (fpsT < 0 || now - fpsT > 2.0) { fpsT = now; fpsFrames = frames; return; }
+        if (now - fpsT < 0.5) return;
+        double fps = (frames - fpsFrames) / (now - fpsT);
+        fpsT = now; fpsFrames = frames;
+        byte[] pal = Read(HdPayload.English ? 0x44AE90u : 0x44AF40u, 768);
+        if (pal == null) return;
+        int best = 1, bd = int.MaxValue;
+        for (int i = 1; i < 256; i++)
+        {
+            int dr = pal[3 * i] - 96, dg = pal[3 * i + 1] - 255, db = pal[3 * i + 2] - 96, dd = dr * dr + dg * dg + db * db;
+            if (dd < bd) { bd = dd; best = i; }
+        }
+        Write(HdPayload.FpsColour, new byte[] { (byte)best });
+        WriteInt(HdPayload.FpsValue, fps >= 1 ? (int)Math.Round(fps) : 0);
+    }
+
     static void AdaptTerrain(double now)
     {
         if (OptTerrainFps <= 0 || OptSmoothCells > 0 || OptDetail != 2 || !farTerrain || smoothState != 1 || hdState != 1 || !haveDetail)
@@ -1515,6 +1541,7 @@ static partial class TNPlus
                 if (changed) { distMode = (distMode + 1) % 3; Say("View distance: " + DIST_NAMES[distMode], 700 + 250 * distMode, 90); }
                 if (changed || now - lastFix > 1.0) { lastFix = now; PeriodicFixes(distMode); }
                 AdaptTerrain(now);
+                FpsCounter(now);
 
                 // --- toggles (rising edges, game in the foreground only)
                 bool f = OptFreelook && fg && ((plain && Down(vkFree)) || toolMouse(0));
@@ -2578,6 +2605,7 @@ static partial class TNPlus
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
                     case "terrain_fps": int.TryParse(v, out OptTerrainFps); break;
                     case "hd_720": if (v == "1" && OptWideTrue) OptHd720 = true; break;   // first test builds
+                    case "fps_counter": OptFpsCounter = v != "0"; break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
                     case "keep_dos": OptKeepDos = v != "0"; break;
@@ -2629,6 +2657,7 @@ static partial class TNPlus
                 "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: the 3D drawn in 848 columns),\r\n" +
                 "; 3 true 16:9 in 1280x720 (3D in 1280 columns and 1.5 x the lines, needs a fast PC)\r\nwidescreen = " + WideMode() + "\r\n" +
                 "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
+                "; HD 1280x720: 1 = small frame counter top right\r\nfps_counter = " + (OptFpsCounter ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
                 "; SHARP (DOSBox in OpenGL with its sharp shader: every pixel the same size, less shimmer) or GAME'S OWN\r\n" +
                 "scaling = " + SCALING_NAMES[OptScaling] + "\r\n" +
