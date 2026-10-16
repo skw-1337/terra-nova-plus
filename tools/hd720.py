@@ -41,8 +41,7 @@ ZONE, PLACE = 0x465024, 0x6000
 CODE = (ZONE + 0xff) & ~0xff                      # 0x465100 : code (6 Ko)
 DATA = CODE + 0x1800                              # 0x466900 : variables et petites tables (6 Ko)
 GP = DATA + 0x1800                                # 0x468100 : correctifs de vitesse poses par le jeu (speed_fix.py)
-FIN = 0x469000                                    # (la page 0x469000 sert a TN+ : donnees et stubs)
-assert FIN <= 0x469390                            # zone libre du HD dans l'exe prepare (le reste sert a TN+)
+FIN = 0x469390                                    # fin de la zone libre du HD dans l'exe prepare (TN+ ensuite)
 V = {k: DATA + 4 * i for i, k in enumerate(
     'HBUF ACTIVE S_BITS S_RATIO S_SUM S_V1_48 S_V1_4C S_V2_48 S_V2_4C FRAMES ESSAIS '
     'SBUF LFB VALID COPIES S_ROW S_CLIP RHALF LISSE HUDF CAM_R '
@@ -1841,6 +1840,7 @@ def export(path, cls):
            '    public const uint SpeedDone = 0x%x, SpeedOn = 0x%x, SpeedBad = 0x%x;   // speed fixes written by the game: done, bit per group' % (
                V['GPDONE'], V['GPOK'], V['GPBAD']),
            '    public static readonly string[] SpeedNames = { %s };' % ', '.join('"%s"' % n for n, r in GP_GROUPS),
+           '    public const uint SpeedOptional = 0x%x;   // groups left alone quietly when their code already ran' % speed_fix.optional_mask(GP_GROUPS),
            '    public static readonly byte[] CodeBytes = %s;' % arr(code),
            '    public static readonly byte[] DataInit = %s;' % arr(bytes(DATA_INIT)),
            '    public static readonly uint[] PatchAt = { %s };' % ', '.join('0x%x' % a for a, o, n in PATCHES + ECRAN),

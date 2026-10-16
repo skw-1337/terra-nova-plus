@@ -93,8 +93,8 @@ static partial class TNPlus
     // Left Shift), Right Shift, Alt (the game's own keys are checked against the KEYBOARD tab)
     static readonly int[] KEY_RESERVED = { 0x01, 0x18, 0x39, 0x1D, 0x2A, 0x36, 0x38 };
     static double NoclipSpeed = 15.0;               // game units per second (a walking PBA ~2.5)
-    static int CpuCycles = 1400000;                 // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
-    static readonly int[] CYCLE_CHOICES = { 500000, 700000, 1000000, 1200000, 1400000, 0 };
+    static int CpuCycles = 1800000;                 // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
+    static readonly int[] CYCLE_CHOICES = { 500000, 700000, 1000000, 1400000, 1800000, 2200000, 0 };
     static string GameDir = "";
 
     static readonly string[] DIST_NAMES = { "NORMAL", "FAR", "MAX" };
@@ -438,8 +438,10 @@ static partial class TNPlus
         speedSaid = true;
         int n = HdPayload.SpeedNames.Length, k = 0;
         var off = new List<string>();
-        for (int i = 0; i < n; i++) if ((on >> i & 1) != 0) k++; else off.Add(HdPayload.SpeedNames[i]);
-        if (off.Count == 0) Say("Speed fixes ON (" + k + ")", 0);
+        for (int i = 0; i < n; i++)
+            if ((on >> i & 1) != 0) k++;
+            else if ((HdPayload.SpeedOptional >> i & 1) == 0) off.Add(HdPayload.SpeedNames[i]);
+        if (off.Count == 0) Say("Speed fixes ON (" + k + " of " + n + ")", 0);
         else Say("Speed fixes: " + k + " of " + n + " on, unexpected game code for " + string.Join(", ", off.ToArray()), 300, 300);
     }
 
@@ -1306,7 +1308,8 @@ static partial class TNPlus
     // generates in memory), and when the host cannot keep up DOSBox lowers the cycles for a moment instead of
     // falling behind (lag and choppy sound). The game copes with a varying frame rate (hit and physics fixes).
     // 1280x720 on a Ryzen 7 9800X3D, calm mission start: 50 fps at 1000000 (DOSBox at 0.85 core, held back by the
-    // cycles), 57-67 at 1400000 (0.95-0.99 core). cpu_cycles_protected: the game runs in protected mode, where a value
+    // cycles), 57-67 at 1400000 (0.95-0.99 core); with the speed fixes, full view ~57 at 1400000, ~63 at 1700000, ~65
+    // at 2000000 (0.93 core). cpu_cycles_protected: the game runs in protected mode, where a value
     // from DOSBox's own config (dosbox-staging.conf) would otherwise win.
     static string CpuSection(string db)
     {
@@ -1487,7 +1490,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
@@ -1510,7 +1513,8 @@ static partial class TNPlus
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
-                    (OptPhysFix && descrFixState == 0) || fillerFixState == 0 || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1))
+                    (OptPhysFix && descrFixState == 0) || fillerFixState == 0 || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1 ||
+                    (OptSpeedFix && affineState == 0)))
                 {
                     lastCave = now;
                     if (zoomFixState == 0) TryZoomFix();
@@ -1519,6 +1523,7 @@ static partial class TNPlus
                     if (fillerFixState == 0) TryFillerFix();
                     if (irFixState == 0 || irFixState == 1) TryIrFix();
                     if (viewFixState == 0 || viewFixState == 1) TryViewFix();
+                    if (OptSpeedFix && affineState == 0) TryAffineFix();
                 }
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
@@ -1953,13 +1958,16 @@ static partial class TNPlus
     // slots as data. TN+ ships no game code: they are put together at run time from the game's own instructions
     // (checked by SHA-256) and our edits (tools/ir_fix.py), in a 12 KB buffer the HD code allocates (XCode). Until
     // then each entry (a 6-byte jmp [pointer]) goes to a stub that runs the original routine.
-    static int irFixState = 0;          // 0 to do, 1 entries in place (waiting for the buffer), 2 on, -1 unavailable
+    static int irFixState = 0;          // 0 to do, 1 entries in place (waiting for the buffer), 2 on, 3 on in place, -1 unavailable
     static int irLang = -1;
     static void TryIrFix()
     {
         if (!FreeAreaReady()) return;
         if (irFixState == 0)
         {
+            int ip = TryIrInPlace();
+            if (ip == 0) return;                                    // memory not readable yet
+            if (ip == 1) { irFixState = 3; Say("Infrared speed fix ON (in place)", 0); return; }
             irFixState = -1;
             for (int l = 0; l < 2; l++)
             {
@@ -2011,6 +2019,97 @@ static partial class TNPlus
         WriteInt(IrFix.PtrAffine, (int)(b + (uint)IrFix.EntryAffine[L]));
         irFixState = 2;
         Say("Infrared speed fix ON: no more slowdown in the infrared view", 0);
+    }
+
+    // Better when the infrared routines never ran yet (fresh game, the usual case: TN+ starts it): the six fields that
+    // really force DOSBox to translate again are re-encoded IN the game's own loops (tools/ir_inplace.py), which stay
+    // twice as fast per pixel as the rebuilt copies. Checked through a SHA-256 of the pristine bytes (slot
+    // placeholders, entries without ir_fix's jmp); moved instructions are copied from memory before anything is
+    // written. 1 = done, 0 = memory not readable yet, -1 = not pristine (ir_fix then).
+    static int TryIrInPlace()
+    {
+        for (int l = 0; l < IrInPlace.Sha.Length; l++)
+        {
+            var old = new System.IO.MemoryStream();
+            for (int i = 0; i < IrInPlace.CheckAt[l].Length; i++)
+            {
+                byte[] b = Read(IrInPlace.CheckAt[l][i], IrInPlace.CheckSize[l][i]);
+                if (b == null) return 0;
+                old.Write(b, 0, b.Length);
+            }
+            byte[] sum;
+            using (var h = System.Security.Cryptography.SHA256.Create()) sum = h.ComputeHash(old.ToArray());
+            if (BitConverter.ToString(sum).Replace("-", "").ToLowerInvariant() != IrInPlace.Sha[l]) continue;
+            int n = IrInPlace.At[l].Length;
+            var news = new byte[n][];
+            for (int e = 0; e < n; e++)                             // everything read first
+            {
+                var nb = new System.IO.MemoryStream();
+                foreach (string piece in IrInPlace.Pieces[l][e])
+                {
+                    byte[] part;
+                    if (piece[0] == 'C')
+                    {
+                        string[] f = piece.Split(':');
+                        part = Read(Convert.ToUInt32(f[1], 16), Convert.ToInt32(f[2], 16));
+                        if (part == null) return 0;
+                    }
+                    else part = Hex(piece.Substring(2));
+                    nb.Write(part, 0, part.Length);
+                }
+                news[e] = nb.ToArray();
+                if (news[e].Length != IrInPlace.Size[l][e]) return -1;
+            }
+            for (int e = 0; e < n; e++) Write(IrInPlace.At[l][e], news[e]);
+            for (int e = 0; e < n; e++) if (!Same(Read(IrInPlace.At[l][e], news[e].Length), news[e])) return -1;
+            return 1;
+        }
+        return -1;
+    }
+
+    // Normal-view affine polygons (tools/affine_fix.py): the module rebuilt with a branch-free pixel loop in a page of
+    // its own in the HD buffer (XCode), the game's gradient and scan driver copied from memory into it; the renderer
+    // table dword then points to it (data: safe at any time, the next polygon uses it). Needs the HD buffer.
+    static int affineState = 0;         // 0 to do, 1 on, -1 unavailable
+    static void TryAffineFix()
+    {
+        if (HdPayload.XCode == 0 || hdState != 1) return;
+        uint x = ReadUInt(HdPayload.XCode);
+        if (x == 0) return;                                         // no HD buffer yet
+        uint P = ((x + 0xFFF) & ~0xFFFu) + (uint)AffineFix.Off;
+        int L = -1;
+        for (int l = 0; l < AffineFix.Table.Length; l++)
+        {
+            uint v = ReadUInt(AffineFix.Table[l]);
+            if (v == P + (uint)AffineFix.Entry[l]) { affineState = 1; return; }
+            if (v == AffineFix.Old[l]) L = l;
+        }
+        if (L < 0) { affineState = -1; Say("Polygon speed fix (affine) unavailable: unexpected game code", 300, 300); return; }
+        var block = new System.IO.MemoryStream(); var copied = new System.IO.MemoryStream();
+        foreach (string piece in AffineFix.Pieces[L])
+        {
+            byte[] part;
+            if (piece[0] == 'C')
+            {
+                string[] f = piece.Split(':');
+                part = Read(Convert.ToUInt32(f[1], 16), Convert.ToInt32(f[2], 16));
+                if (part == null) return;
+                copied.Write(part, 0, part.Length);
+            }
+            else part = Hex(piece.Substring(2));
+            block.Write(part, 0, part.Length);
+        }
+        byte[] code = block.ToArray(), sum;
+        using (var h = System.Security.Cryptography.SHA256.Create()) sum = h.ComputeHash(copied.ToArray());
+        if (code.Length != AffineFix.Size[L] || BitConverter.ToString(sum).Replace("-", "").ToLowerInvariant() != AffineFix.Sha[L])
+        { affineState = -1; Say("Polygon speed fix (affine) unavailable: unexpected game code", 300, 300); return; }
+        foreach (int o in AffineFix.Abs[L])
+            Array.Copy(BitConverter.GetBytes(BitConverter.ToUInt32(code, o) + P), 0, code, o, 4);
+        Write(P, code);
+        if (!Same(Read(P, code.Length), code)) return;
+        WriteInt(AffineFix.Table[L], (int)(P + (uint)AffineFix.Entry[L]));
+        affineState = 1;
+        Say("Polygon speed fix (affine) ON", 0);
     }
 
     // Normal view: the same trouble in the two per-column routines the 3D library runs for each polygon edge: they
@@ -2660,7 +2759,7 @@ static partial class TNPlus
         // cycles, not by the PC (DOSBox used 0.6 core at 700000 in HD on the test PC)
         if (speedVer < 3 && (CpuCycles == 300000 || CpuCycles == 500000)) CpuCycles = 700000;
         if (speedVer < 4 && CpuCycles == 700000) CpuCycles = 1000000;   // the default before the true 16:9 measurements
-        if (speedVer < 5 && CpuCycles == 1000000) CpuCycles = 1400000;  // the default before the 1280x720 measurements
+        if (speedVer < 6 && (CpuCycles == 1000000 || CpuCycles == 1400000)) CpuCycles = 1800000;   // defaults before the speed fixes
         // freelook was on H in beta 5 (Y before): back on Y, the game's previous target moves to K.
         if (keysVer < 3 && ScanFreelook == 0x23) ScanFreelook = 0x15;
         ResolveToolClashes();
@@ -2702,7 +2801,7 @@ static partial class TNPlus
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
-                "; raise it if the game feels slow, DOSBox lowers it for a moment when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 5\r\n" +
+                "; raise it if the game feels slow, DOSBox lowers it for a moment when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 6\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 23 = H, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (40 = F6, 41 = F7), 57 = F11, 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +

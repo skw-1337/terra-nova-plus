@@ -31,6 +31,13 @@ def rec(at, old, new=None):
     return (at, out)
 
 
+def unchecked(r, lo, hi):
+    """the same record, its bytes in [lo, hi) still written but no longer checked to see the group is in place
+    (a later group rewrites them)"""
+    at, bs = r
+    return (at, [(o, n, m & ~4 if lo <= at + k < hi else m) for k, (o, n, m) in enumerate(bs)])
+
+
 # ---------------------------------------------------------------- the transparent-texture filler (EN 0x3316A0)
 # The set-up writes a dword at the end of path C's adc immediate and so bumps DOSBox's rewrite count of the next
 # opcode (test dl,0xff), which then runs in the interpreter for each pixel of paths C/D. Every pixel now goes through
@@ -58,11 +65,11 @@ def tf_groups(fr):
 # Same length, same results in AL and memory; registers or flags that differ are dead (overwritten or popped first).
 # FR: code -0x10, data +0xB0.
 P1 = [   # (name, [(en, fr, old_en, new_en, old_fr, new_fr)], context [(en, fr, bytes_en, bytes_fr)])
-    ('horizon test', [(0x2B4780, 0x2B4770,
+    ('horizon test', [(0x2B4780, 0x2B4770,     # ends 'pop ebx / ret' at 0x2B47B8: see the terrain returns below
         '53c1fa1085c07d0ca1087e42003b100f9ec05bc38b1dccca430039d87c1189d88b1d087e42003b5483fc0f9ec05bc38b1d087e42003b14830f9ec05bc38d4000',
-        '53c1fa1085c07d09a1087e42003b10eb218b1dccca430039d87c0e89d88b1d087e42003b5483fceb098b1d087e42003b14835bb0017e02b000c3909090909090',
+        '53c1fa1085c07d09a1087e42003b10eb218b1dccca430039d87c0e89d88b1d087e42003b5483fceb098b1d087e42003b1483b0017e02b0005bc3909090909090',
         '53c1fa1085c07d0ca1b87e42003b100f9ec05bc38b1d7ccb430039d87c1189d88b1db87e42003b5483fc0f9ec05bc38b1db87e42003b14830f9ec05bc38d4000',
-        '53c1fa1085c07d09a1b87e42003b10eb218b1d7ccb430039d87c0e89d88b1db87e42003b5483fceb098b1db87e42003b14835bb0017e02b000c3909090909090')],
+        '53c1fa1085c07d09a1b87e42003b10eb218b1d7ccb430039d87c0e89d88b1db87e42003b5483fceb098b1db87e42003b1483b0017e02b0005bc3909090909090')],
      []),
     ('view test', [(0x2B417F, 0x2B416F,
         '85c07d0bf7db39d80f9fc05e595bc339d80f9cc05e595bc3', '85c07d0cf7db39d8b0017ff0b000ebec39d8b0017ce6ebf4',
@@ -90,6 +97,259 @@ P1 = [   # (name, [(en, fr, old_en, new_en, old_fr, new_fr)], context [(en, fr, 
         (0x2B199C, 0x2B198C, 'e9f7000000', 'e9f4000000', 'e9f7000000', 'e9f4000000')],
      [(0x2B1A82, 0x2B1A72, '8a5e1c', '8a5e1c'), (0x2B199A, 0x2B198A, '85d2', '85d2')]),
 ]
+
+# ---------------------------------------------------------------- terrain raycaster and clouds
+# Step 0x2B4428 and its only callee, the projection 0x2B2930: a memory access between the last flag writer and imul /
+# adc makes DOSBox save and reload the flags (POPFQ) 5 times per call; loads moved, the register imuls placed after a
+# test, the call made a push + jmp and the projection's ret a jmp back (single caller, same stack bytes). The step's
+# epilogue and the horizon test's ret then jump straight to their two hot return sites (a ret always goes back to
+# DOSBox's dispatcher, a jmp is linked; flags are dead at all 12 return sites; other callers still get a real ret).
+# Cloud span 0x2B2768: the texel load moved above 'add ecx,esi' so adc follows add (no POPFQ per pixel); its texture
+# displacement moves 2 bytes, the per-frame writer's address imm32 (0x2B27F3) follows. New opcodes land on that old
+# slot: only while it still holds the placeholder (never written), otherwise left alone.
+# FR: code -0x10, data +0xB0. Checked in Unicorn (terrain/inplace_fix.py, ret_cave.py): 4000 horizon calls, 600
+# step+projection calls, 300 cloud spans, 3000 calls through the returns (hot, cold and unknown sites).
+TERRAIN = dict(
+    en=dict(step=(0x2B4428,
+        '5351525657558b1d6cca43008d049d000000008b1570ca430029d801c2668b420166c1f8048b1d048842000fbfc80fafd9031dc8ca4300891570ca430081fb000001007d0430c9eb22e8bae4ffffa1f07d4200668b1d84ca430066895810668b1d88ca4300b10166895812',
+        '535152565755a16cca43008d04408b1570ca430001c2668b42018b1d0488420066c1f8040fbfc80fafd9031dc8ca4300891570ca430081fb000001007d0430c9eb296876442b00e9bce4ffff8d642404a1f07d42008b1d84ca4300668958108b1d88ca4300b10166895812'),
+        project=(0x2B2930,
+        '55a1ec874200f7e98be8a1f8874200f7e98bf0a1c4ca430003e8a144cb430003f08bc381fbffffff007f0ec1e8108a8860c9430080c108eb0cc1e8188a8860c9430080c110d3eb80c10881e3ff0000008b049d60c54300f7ed0fadd003054ccb4300a3d0ca43008b049d60c14300f7ee0fadd0030548cb4300a3d4ca43005dc3',
+        '558b2dec8742008b35f887420085c90fafe90faff1a1c4ca430001c5a144cb430001c689d881fbffffff007f07c1e810b108eb05c1e818b110028860c94300d3eb81e3ff0000008b049d60c5430080c108f7ed0fadd003054ccb4300a3d0ca43008b049d60c1430085c0f7ee0fadd0030548cb4300a3d4ca43005de9c41a0000'),
+        step_epi=0x2B44F7, hz_epi=0x2B47B8, step_sites=(0x2B4BA0, 0x2B4DC0), hz_sites=(0x2B4BDC, 0x2B4DF9),
+        swap=0x2B2768, writer=0x2B27F3),
+    fr=dict(step=(0x2B4418,
+        '5351525657558b1d1ccb43008d049d000000008b1520cb430029d801c2668b420166c1f8048b1db48842000fbfc80fafd9031d78cb4300891520cb430081fb000001007d0430c9eb22e8bae4ffffa1a07e4200668b1d34cb430066895810668b1d38cb4300b10166895812',
+        '535152565755a11ccb43008d04408b1520cb430001c2668b42018b1db488420066c1f8040fbfc80fafd9031d78cb4300891520cb430081fb000001007d0430c9eb296866442b00e9bce4ffff8d642404a1a07e42008b1d34cb4300668958108b1d38cb4300b10166895812'),
+        project=(0x2B2920,
+        '55a19c884200f7e98be8a1a8884200f7e98bf0a174cb430003e8a1f4cb430003f08bc381fbffffff007f0ec1e8108a8810ca430080c108eb0cc1e8188a8810ca430080c110d3eb80c10881e3ff0000008b049d10c64300f7ed0fadd00305fccb4300a380cb43008b049d10c24300f7ee0fadd00305f8cb4300a384cb43005dc3',
+        '558b2d9c8842008b35a888420085c90fafe90faff1a174cb430001c5a1f4cb430001c689d881fbffffff007f07c1e810b108eb05c1e818b110028810ca4300d3eb81e3ff0000008b049d10c6430080c108f7ed0fadd00305fccb4300a380cb43008b049d10c2430085c0f7ee0fadd00305f8cb4300a384cb43005de9c41a0000'),
+        step_epi=0x2B44E7, hz_epi=0x2B47A8, step_sites=(0x2B4B90, 0x2B4DB0), hz_sites=(0x2B4BCC, 0x2B4DE9),
+        swap=0x2B2758, writer=0x2B27E3))
+
+
+def ret_caves(L, at):
+    """(bytes, step cave address, horizon cave address): compare the return address with the two hot sites"""
+    def src(sites, pops):
+        s = ''.join('    pop %s\n' % r for r in pops)
+        for k, a in enumerate(sites):
+            s += '    cmp dword ptr [esp], %#x\n    jne r_%d\n    lea esp, [esp+4]\n    jmp %#x\nr_%d:\n' % (a, k, a, k)
+        return s + '    ret\n'
+    cs = asm(src(L['step_sites'], ['edx', 'ecx', 'ebx']), at)
+    ch = asm(src(L['hz_sites'], ['ebx']), at + len(cs))
+    return cs + ch, at, at + len(cs)
+
+
+def terrain_groups(L, ret_at):
+    _, cs, ch = ret_caves(L, ret_at)
+    sw = L['swap']
+    return [
+        ('raycaster step', [rec(L['step'][0], L['step'][1], L['step'][2]), rec(L['project'][0], L['project'][1], L['project'][2])]),
+        ('terrain returns', [rec(L['step_epi'], '5a595bc390', asm('jmp %#x' % cs, L['step_epi']).hex()),
+                             rec(L['hz_epi'], '5bc3909090', asm('jmp %#x' % ch, L['hz_epi']).hex())]),
+        ('cloud span', [rec(sw, '03ce8a83efbeadde', '8a83efbeadde03ce'),
+                        rec(L['writer'], struct.pack('<I', sw + 8).hex(), struct.pack('<I', sw + 6).hex())]),
+    ]
+
+
+OPTIONAL = {'cloud span'}       # skipped quietly when its slot was already written (3D drawn before the first HD frame)
+
+# ---------------------------------------------------------------- terrain fill columns without shade (EN 0x2B2AF7)
+# Pixel = P[S[T[HI|dl]]] with T, S, P fixed for a call and dl + 1 per pixel across all its columns: the first 256
+# pixels of a call are drawn as before and kept in a 256-byte table, every later one is read from it (4 per block).
+# The routine's per-call operands live in its stack frame (300 bytes, table included), the per-frame row table and
+# stride are read from the slots the game writes (EN 0x2B2B8A / 0x2B2BB0). Same columns, order, y-buffer, exit
+# registers and flags (terrain/column_v3.py: 300 calls; independent check on EN and FR, whole address space: 0 diff).
+COLUMN = dict(en=dict(entry=0x2B2AF7, old='ba4f2b2b008b4308', rowt=0x2B2B8A, stride=0x2B2BB0),
+              fr=dict(entry=0x2B2AE7, old='ba3f2b2b008b4308', rowt=0x2B2B7A, stride=0x2B2BA0))
+COLUMN_SRC = '''
+    sub esp, 300
+    mov eax, dword ptr [ebx+8]
+    lea eax, [eax+ecx*4]
+    mov dword ptr [esp+0], eax
+    mov eax, dword ptr [ebx+0xc]
+    add eax, ecx
+    sub eax, dword ptr [ebx+0x24]
+    mov dword ptr [esp+4], eax
+    mov eax, dword ptr [{rowt}]
+    mov dword ptr [esp+8], eax
+    mov eax, dword ptr [{stride}]
+    mov dword ptr [esp+36], eax
+    mov dword ptr [esp+12], 256
+    mov eax, dword ptr [ebx+0x14]
+    mov dword ptr [esp+32], eax
+    mov edx, dword ptr [ebx+4]
+    mov eax, edx
+    and eax, 0xffffff00
+    mov dword ptr [esp+28], eax
+    add eax, dword ptr [ebx]
+    mov dword ptr [esp+16], eax
+    mov eax, dword ptr [ebx+0x18]
+    mov dword ptr [esp+20], eax
+    mov eax, dword ptr [ebx+0x1c]
+    mov dword ptr [esp+24], eax
+    mov ebp, dword ptr [esp+0]
+    mov esi, dword ptr [ebx+0x10]
+    neg ecx
+    shl ecx, 2
+b_top:
+    mov eax, esi
+    sar eax, 0x10
+    mov ebx, dword ptr [ecx+ebp]
+    cmp eax, ebx
+    jl b_draw
+b_skip:
+    add esi, dword ptr [esp+32]
+    add ecx, 4
+    jne b_top
+    lea esp, [esp+300]
+    pop ebp
+    ret
+b_draw:
+    sar ecx, 2
+b_draw2:
+    mov dword ptr [ebp+ecx*4], eax
+    mov ebp, dword ptr [esp+8]
+    mov edi, dword ptr [ebp+eax*4]
+    sub ebx, eax
+    add edi, dword ptr [esp+4]
+    add edi, ecx
+    xor eax, eax
+    movzx edx, dl
+    mov ebp, dword ptr [esp+36]
+    cmp dword ptr [esp+12], 0
+    jle b_lut
+    push ecx
+    push esi
+    push ebx
+    mov ecx, dword ptr [esp+12+12]
+    sub ecx, ebx
+    jge b_pall
+    neg ecx
+    mov dword ptr [esp], ecx
+    mov ebx, dword ptr [esp+12+12]
+    mov dword ptr [esp+12+12], 0
+    jmp b_pgo
+b_pall:
+    mov dword ptr [esp+12+12], ecx
+    mov dword ptr [esp], 0
+b_pgo:
+    mov ecx, dword ptr [esp+12+16]
+    mov esi, dword ptr [esp+12+20]
+    mov ebp, dword ptr [esp+12+24]
+    sub ebx, 4
+    jl b_prem
+b_p4:
+    mov al, byte ptr [edx+ecx]
+    mov al, byte ptr [eax+esi]
+    mov al, byte ptr [eax+ebp]
+    mov byte ptr [esp+edx+52], al
+    add edi, dword ptr [esp+12+36]
+    mov byte ptr [edi], al
+    inc dl
+    mov al, byte ptr [edx+ecx]
+    mov al, byte ptr [eax+esi]
+    mov al, byte ptr [eax+ebp]
+    mov byte ptr [esp+edx+52], al
+    add edi, dword ptr [esp+12+36]
+    mov byte ptr [edi], al
+    inc dl
+    mov al, byte ptr [edx+ecx]
+    mov al, byte ptr [eax+esi]
+    mov al, byte ptr [eax+ebp]
+    mov byte ptr [esp+edx+52], al
+    add edi, dword ptr [esp+12+36]
+    mov byte ptr [edi], al
+    inc dl
+    mov al, byte ptr [edx+ecx]
+    mov al, byte ptr [eax+esi]
+    mov al, byte ptr [eax+ebp]
+    mov byte ptr [esp+edx+52], al
+    add edi, dword ptr [esp+12+36]
+    mov byte ptr [edi], al
+    inc dl
+    sub ebx, 4
+    jge b_p4
+b_prem:
+    add ebx, 4
+    jz b_pdone
+b_plain:
+    mov al, byte ptr [edx+ecx]
+    mov al, byte ptr [eax+esi]
+    mov al, byte ptr [eax+ebp]
+    mov byte ptr [esp+edx+52], al
+    add edi, dword ptr [esp+12+36]
+    mov byte ptr [edi], al
+    inc dl
+    dec ebx
+    jnz b_plain
+b_pdone:
+    mov ebp, dword ptr [esp+12+36]
+    cmp dword ptr [esp+12+12], 0
+    jg b_pend
+    mov ecx, dword ptr [esp+52]
+    mov dword ptr [esp+308], ecx
+b_pend:
+    pop ebx
+    pop esi
+    pop ecx
+    test ebx, ebx
+    jz b_done
+b_lut:
+    sub ebx, 4
+    jl b_rem
+b_l4:
+    mov al, byte ptr [esp+edx+40]
+    mov byte ptr [edi+ebp], al
+    mov al, byte ptr [esp+edx+41]
+    mov byte ptr [edi+ebp*2], al
+    lea edi, [edi+ebp*2]
+    mov al, byte ptr [esp+edx+42]
+    mov byte ptr [edi+ebp], al
+    mov al, byte ptr [esp+edx+43]
+    mov byte ptr [edi+ebp*2], al
+    lea edi, [edi+ebp*2]
+    add dl, 4
+    sub ebx, 4
+    jge b_l4
+b_rem:
+    add ebx, 4
+    jz b_done
+b_l1:
+    mov al, byte ptr [esp+edx+40]
+    add edi, ebp
+    mov byte ptr [edi], al
+    inc dl
+    dec ebx
+    jnz b_l1
+b_done:
+    or edx, dword ptr [esp+28]
+    mov ebp, dword ptr [esp+0]
+    add esi, dword ptr [esp+32]
+    inc ecx
+    je b_exit
+    mov eax, esi
+    sar eax, 0x10
+    mov ebx, dword ptr [ebp+ecx*4]
+    cmp eax, ebx
+    jl b_draw2
+    shl ecx, 2
+    jmp b_skip
+b_exit:
+    lea esp, [esp+300]
+    pop ebp
+    ret
+'''
+
+
+def column_cave(L, at):
+    return asm(COLUMN_SRC.format(rowt=hex(L['rowt']), stride=hex(L['stride'])), at)
+
+
+def column_group(L, at):
+    hook = asm('jmp %#x' % at, L['entry'])
+    return ('terrain columns', [rec(L['entry'], L['old'], hook.hex() + L['old'][2 * len(hook):])])
+
 
 # ---------------------------------------------------------------- sky / haze pass (EN 0x2A8658, once per frame)
 # Its two column loops replace "flagged" colours (byte table FLAGS) with the haze colour: 3 blocks / 10 instructions
@@ -324,13 +584,24 @@ gp_ret:
 '''
 
 
-def groups(fr, sky_at, ir_at, T):
-    """[(name, [records])] for one exe; sky_at / ir_at: where our two routines are"""
+def caves(fr, T):
+    """our routines in the GP block, in order: (name, assembler at a given address)"""
+    L = 'fr' if fr else 'en'
+    return [('sky', lambda at: asm(sky_cave(SKY[L], T), at)),
+            ('ir', lambda at: ir_cave(IRROW[L], at)),
+            ('ret', lambda at: ret_caves(TERRAIN[L], at)[0]),
+            ('column', lambda at: column_cave(COLUMN[L], at))]
+
+
+def groups(fr, cv, T):
+    """[(name, [records])] for one exe; cv: {routine name: its address in the GP block}"""
     L = 'fr' if fr else 'en'
     out = [('transparent filler', tf_groups(fr))]
     for name, rs, ctx in P1:
         recs = [rec(f if fr else e, ofr if fr else oen, nfr if fr else nen) for e, f, oen, nen, ofr, nfr in rs]
         recs += [rec(f if fr else e, bf if fr else be) for e, f, be, bf in ctx]
+        if name == 'horizon test':      # its 'pop ebx / ret' becomes a jmp in 'terrain returns': not rechecked
+            recs = [unchecked(r, TERRAIN[L]['hz_epi'], TERRAIN[L]['hz_epi'] + 5) for r in recs]
         out.append((name, recs))
     s = SKY[L]
     la, lb = sky_loops(s, T)
@@ -339,15 +610,17 @@ def groups(fr, sky_at, ir_at, T):
     old_a = old_a.replace('..........', fl + '00'); old_b = old_b.replace('..........', fl + '00')
     assert len(la) <= len(old_a) // 2 and len(lb) <= len(old_b) // 2
     pad = lambda b, n: (b + b'\x90' * (n - len(b))).hex()
-    hook = asm('jmp %#x' % sky_at, s['hook'])
+    hook = asm('jmp %#x' % cv['sky'], s['hook'])
     out.append(('sky pass', [rec(s['hook'], '5351525657', hook.hex()), rec(s['hook'] + 5, '55'),
                              rec(s['la'], old_a, pad(la, len(old_a) // 2)), rec(s['lb'], old_b, pad(lb, len(old_b) // 2)),
                              rec(s['out'], 'a1')]))
     r = IRROW[L]
     old = IRROW_OLD % struct.pack('<I', r['tex']).hex()
-    hook = asm('jmp %#x' % ir_at, r['hook'])
+    hook = asm('jmp %#x' % cv['ir'], r['hook'])
     out.append(('infrared ground', [rec(r['hook'], old[:10], hook.hex()), rec(r['hook'] + 5, old[10:]),
                                     rec(r['epi'], '83c4145d5f5e59c3')]))
+    out += terrain_groups(TERRAIN[L], cv['ret'])      # after 'horizon test': its returns check the new bytes
+    out.append(column_group(COLUMN[L], cv['column']))
     return out
 
 
@@ -375,47 +648,60 @@ def tf_mode(fr, tab_at, where):
 
 
 def build(fr, base, done, ok, bad):
-    """our block at base: T (256 B, rebuilt by the sky routine each frame), the patcher, the two routines, the table.
+    """our block at base: T (256 B, rebuilt by the sky routine each frame), the patcher, our routines, the table.
     Returns (bytes, patcher address, groups)."""
-    L = 'fr' if fr else 'en'
     T = base
     at = base + 0x100
     where = {}
-    table(groups(fr, at, at, T), where)
+    table(groups(fr, {n: at for n, f in caves(fr, T)}, T), where)
     pat_len = len(asm(PATCHER.format(done=done, ok=ok, bad=bad, table=at, pre=tf_mode(fr, at, where)), at))
-    sky_at = (at + pat_len + 15) & ~15
-    sky = asm(sky_cave(SKY[L], T), sky_at)
-    ir_at = (sky_at + len(sky) + 15) & ~15
-    ir = ir_cave(IRROW[L], ir_at)
-    tab_at = (ir_at + len(ir) + 15) & ~15
-    gs = groups(fr, sky_at, ir_at, T)
+    cv, code, nxt = {}, {}, (at + pat_len + 15) & ~15
+    for name, mk in caves(fr, T):
+        cv[name] = nxt; code[name] = mk(nxt); nxt = (nxt + len(code[name]) + 15) & ~15
+    tab_at = nxt
+    gs = groups(fr, cv, T)
     where = {}
     tab = table(gs, where)
     pat = asm(PATCHER.format(done=done, ok=ok, bad=bad, table=tab_at, pre=tf_mode(fr, tab_at, where)), at)
     assert len(pat) == pat_len
     blob = bytearray(tab_at - base) + tab
     blob[at - base:at - base + len(pat)] = pat
-    blob[sky_at - base:sky_at - base + len(sky)] = sky
-    blob[ir_at - base:ir_at - base + len(ir)] = ir
+    for name in cv: blob[cv[name] - base:cv[name] - base + len(code[name])] = code[name]
     assert len(gs) <= 32
     return bytes(blob), at, gs
 
 
+def optional_mask(gs):
+    return sum(1 << k for k, (n, r) in enumerate(gs) if n in OPTIONAL)
+
+
+def apply(mem, gs, base=0x1AB000):
+    """the patcher's work on a bytearray image, group by group in order: [(name, 'on' | 'already' | 'bad')]"""
+    res = []
+    for name, recs in gs:
+        not_new = not_old = False
+        for a, bs in recs:
+            for k, (o, n, m) in enumerate(bs):
+                c = mem[a - base + k]
+                if m & OLD and c != o: not_old = True
+                if m & 4 and c != n: not_new = True
+        if not not_new: res.append((name, 'already')); continue
+        if not_old: res.append((name, 'bad')); continue
+        for a, bs in recs:
+            for k, (o, n, m) in enumerate(bs):
+                if m & 2: mem[a - base + k] = n
+        res.append((name, 'on'))
+    return res
+
+
 def check(image, fr, base=0x468100):
-    """every group against a memory image: old (fixed bytes) found, new not yet there"""
-    data = open(image, 'rb').read()
-    rd = lambda a, n: data[a - 0x1AB000:a - 0x1AB000 + n]
+    """the groups applied to a memory image like the patcher does; returns True if every non-optional one goes on"""
+    mem = bytearray(open(image, 'rb').read())
     blob, pat, gs = build(fr, base, 0x466000, 0x466004, 0x466008)
     good = True
-    for name, recs in gs:
-        st = []
-        for a, bs in recs:
-            cur = rd(a, len(bs))
-            old_ok = all(c == o for c, (o, n, m) in zip(cur, bs) if m & OLD)
-            new_ok = all(c == n for c, (o, n, m) in zip(cur, bs) if m & 4)
-            st.append('old' if old_ok else ('new' if new_ok else 'BAD'))
-        print('  %-20s %s' % (name, ' '.join(st)))
-        good &= all(x == 'old' for x in st)
+    for name, st in apply(mem, gs):
+        print('  %-20s %s%s' % (name, st, ' (optional)' if name in OPTIONAL else ''))
+        good &= st == 'on' or name in OPTIONAL
     print('  %d bytes at %#x, patcher %#x' % (len(blob), base, pat))
     return good
 

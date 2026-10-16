@@ -6,7 +6,7 @@ using System;
 
 static class HdPayload
 {
-    public static uint Zone, End, PoolBase, Code, Data, Smoothing, HudFilter, Frames, PoolMax, DriverMode, Valid, HdWidth, HdHeight, PoolVar, HudStretch, XCode, FpsValue, FpsColour, SpeedDone, SpeedOn, SpeedBad;
+    public static uint Zone, End, PoolBase, Code, Data, Smoothing, HudFilter, Frames, PoolMax, DriverMode, Valid, HdWidth, HdHeight, PoolVar, HudStretch, XCode, FpsValue, FpsColour, SpeedDone, SpeedOn, SpeedBad, SpeedOptional;
     public static string[] SpeedNames = new string[0];
     public static byte[] CodeBytes, DataInit;
     public static uint[] PatchAt;
@@ -24,7 +24,7 @@ static class HdPayload
             HdWidth = HdPayloadEn720.HdWidth; HdHeight = HdPayloadEn720.HdHeight; PoolVar = HdPayloadEn720.PoolVar;
             HudStretch = HdPayloadEn720.HudStretch; CodeBytes = HdPayloadEn720.CodeBytes; DataInit = HdPayloadEn720.DataInit;
             PatchAt = HdPayloadEn720.PatchAt; PatchOld = HdPayloadEn720.PatchOld; PatchNew = HdPayloadEn720.PatchNew; XCode = HdPayloadEn720.XCode; FpsValue = HdPayloadEn720.FpsValue; FpsColour = HdPayloadEn720.FpsColour;
-            SpeedDone = HdPayloadEn720.SpeedDone; SpeedOn = HdPayloadEn720.SpeedOn; SpeedBad = HdPayloadEn720.SpeedBad; SpeedNames = HdPayloadEn720.SpeedNames;
+            SpeedDone = HdPayloadEn720.SpeedDone; SpeedOn = HdPayloadEn720.SpeedOn; SpeedBad = HdPayloadEn720.SpeedBad; SpeedNames = HdPayloadEn720.SpeedNames; SpeedOptional = HdPayloadEn720.SpeedOptional;
         }
         else if (wide && hd720)
         {
@@ -34,7 +34,7 @@ static class HdPayload
             HdWidth = HdPayloadFr720.HdWidth; HdHeight = HdPayloadFr720.HdHeight; PoolVar = HdPayloadFr720.PoolVar;
             HudStretch = HdPayloadFr720.HudStretch; CodeBytes = HdPayloadFr720.CodeBytes; DataInit = HdPayloadFr720.DataInit;
             PatchAt = HdPayloadFr720.PatchAt; PatchOld = HdPayloadFr720.PatchOld; PatchNew = HdPayloadFr720.PatchNew; XCode = HdPayloadFr720.XCode; FpsValue = HdPayloadFr720.FpsValue; FpsColour = HdPayloadFr720.FpsColour;
-            SpeedDone = HdPayloadFr720.SpeedDone; SpeedOn = HdPayloadFr720.SpeedOn; SpeedBad = HdPayloadFr720.SpeedBad; SpeedNames = HdPayloadFr720.SpeedNames;
+            SpeedDone = HdPayloadFr720.SpeedDone; SpeedOn = HdPayloadFr720.SpeedOn; SpeedBad = HdPayloadFr720.SpeedBad; SpeedNames = HdPayloadFr720.SpeedNames; SpeedOptional = HdPayloadFr720.SpeedOptional;
         }
         else if (wide && english)
         {
@@ -44,7 +44,7 @@ static class HdPayload
             HdWidth = HdPayloadEnWide.HdWidth; HdHeight = HdPayloadEnWide.HdHeight; PoolVar = HdPayloadEnWide.PoolVar;
             HudStretch = HdPayloadEnWide.HudStretch; CodeBytes = HdPayloadEnWide.CodeBytes; DataInit = HdPayloadEnWide.DataInit;
             PatchAt = HdPayloadEnWide.PatchAt; PatchOld = HdPayloadEnWide.PatchOld; PatchNew = HdPayloadEnWide.PatchNew; XCode = HdPayloadEnWide.XCode; FpsValue = 0; FpsColour = 0;
-            SpeedDone = SpeedOn = SpeedBad = 0; SpeedNames = new string[0];
+            SpeedDone = SpeedOn = SpeedBad = SpeedOptional = 0; SpeedNames = new string[0];
         }
         else if (wide)
         {
@@ -54,7 +54,7 @@ static class HdPayload
             HdWidth = HdPayloadFrWide.HdWidth; HdHeight = HdPayloadFrWide.HdHeight; PoolVar = HdPayloadFrWide.PoolVar;
             HudStretch = HdPayloadFrWide.HudStretch; CodeBytes = HdPayloadFrWide.CodeBytes; DataInit = HdPayloadFrWide.DataInit;
             PatchAt = HdPayloadFrWide.PatchAt; PatchOld = HdPayloadFrWide.PatchOld; PatchNew = HdPayloadFrWide.PatchNew; XCode = HdPayloadFrWide.XCode; FpsValue = 0; FpsColour = 0;
-            SpeedDone = SpeedOn = SpeedBad = 0; SpeedNames = new string[0];
+            SpeedDone = SpeedOn = SpeedBad = SpeedOptional = 0; SpeedNames = new string[0];
         }
         else if (english)
         {
@@ -64,7 +64,7 @@ static class HdPayload
             HdWidth = HdPayloadEn.HdWidth; HdHeight = HdPayloadEn.HdHeight; PoolVar = HdPayloadEn.PoolVar;
             HudStretch = 0; CodeBytes = HdPayloadEn.CodeBytes; DataInit = HdPayloadEn.DataInit;
             PatchAt = HdPayloadEn.PatchAt; PatchOld = HdPayloadEn.PatchOld; PatchNew = HdPayloadEn.PatchNew; XCode = HdPayloadEn.XCode; FpsValue = 0; FpsColour = 0;
-            SpeedDone = SpeedOn = SpeedBad = 0; SpeedNames = new string[0];
+            SpeedDone = SpeedOn = SpeedBad = SpeedOptional = 0; SpeedNames = new string[0];
         }
         else
         {
@@ -74,7 +74,7 @@ static class HdPayload
             HdWidth = HdPayloadFr.HdWidth; HdHeight = HdPayloadFr.HdHeight; PoolVar = HdPayloadFr.PoolVar;
             HudStretch = 0; CodeBytes = HdPayloadFr.CodeBytes; DataInit = HdPayloadFr.DataInit;
             PatchAt = HdPayloadFr.PatchAt; PatchOld = HdPayloadFr.PatchOld; PatchNew = HdPayloadFr.PatchNew; XCode = HdPayloadFr.XCode; FpsValue = 0; FpsColour = 0;
-            SpeedDone = SpeedOn = SpeedBad = 0; SpeedNames = new string[0];
+            SpeedDone = SpeedOn = SpeedBad = SpeedOptional = 0; SpeedNames = new string[0];
         }
     }
 }
