@@ -359,7 +359,7 @@ static partial class TNPlus
         cbTarget = Combo(pLaunch, "Run", 0, new[] { "FULL GAME", "DEMO 1", "DEMO 2" }, null, "The two 1996 demos shipped with GOG and Steam have missions the full game hasn't. No HD there yet.");
         cbPreset = Combo(pLaunch, "Preset", 1, new[] { "ORIGINAL", "CLASSIC+", "BEST", "CUSTOM" }, null, "Presets set picture and controls at once. Fixes, cheats and music are yours to choose.");
         cbSpeed = Combo(pLaunch, "CPU speed", 2, SPEED_NAMES, "BETA",
-            "DOSBox CPU cycles: the game runs as fast as they allow. True 16:9 HD: 700000 ~40 fps, 1000000 ~57, 1200000 ~70 (one full CPU core). DOSBox lowers them by itself when your PC cannot keep up.");
+            "DOSBox CPU cycles: the game runs as fast as they allow. True 16:9 HD: 700000 ~40 fps, 1000000 ~57. 1280x720: 1000000 ~50, 1400000 ~60 (one full CPU core). DOSBox lowers them by itself when your PC cannot keep up.");
         guiPreset = Lbl(pLaunch, "", 14, PaneH(3) - 4, TSmall, TDim); guiPreset.AutoSize = false; guiPreset.Size = new Size(pw - 28, 20);
 
         // help and warnings: a readout strip like the cockpit's message line

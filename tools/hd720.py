@@ -40,7 +40,8 @@ if not EXPORT:
 ZONE, PLACE = 0x465024, 0x6000
 CODE = (ZONE + 0xff) & ~0xff                      # 0x465100 : code (6 Ko)
 DATA = CODE + 0x1800                              # 0x466900 : variables et petites tables (6 Ko)
-FIN = DATA + 0x1800
+GP = DATA + 0x1800                                # 0x468100 : correctifs de vitesse poses par le jeu (speed_fix.py)
+FIN = 0x469000                                    # (la page 0x469000 sert a TN+ : donnees et stubs)
 assert FIN <= 0x469390                            # zone libre du HD dans l'exe prepare (le reste sert a TN+)
 V = {k: DATA + 4 * i for i, k in enumerate(
     'HBUF ACTIVE S_BITS S_RATIO S_SUM S_V1_48 S_V1_4C S_V2_48 S_V2_4C FRAMES ESSAIS '
@@ -48,15 +49,27 @@ V = {k: DATA + 4 * i for i, k in enumerate(
     'S_CANVAS S_W0 S_H0 S_CX W_CUR ROWK CXK CXSUM DLT S_V1_8 S_V2_8 S_V1_10 S_V2_10 '
     'FX0 FY0 FW FH FWW ROWN HX0 HX1 HROW PREVB SHADB FORCE SIG TRIED SIDE FSIDE SIDEOK HSTR HUDW HCROW XCODE '
     'H3 S_CLIPY S_V1_C S_V2_C S_V1_14 S_V2_14 S_V1_50 S_V2_50 CYTB CYK CYSUM VY0 VB0 ROWT NEWA NEWB TMP '
-    'RA RB ERS ERO HRW FPSV FPSCOL FD'.split())}
+    'RA RB ERS ERO HRW FPSV FPSCOL FD GPDONE GPOK GPBAD'.split())}
 assert max(V.values()) < DATA + 0x500
 CXTAB = DATA + 0x500                              # 256 x 4
 OUTROW = DATA + 0x900                             # ligne de sortie du HUD (1280 + 4)
 DIRTYP = DATA + 0xE10                             # lignes modifiees de l'ecran du jeu (2 o de marge)
 MASK = DATA + 0x1000                              # 1 la ou la ligne du jeu montre la 3D (320 o)
 FONT = DATA + 0x1200                              # chiffres 3x5 du compteur d'images (10 mots)
+NV = DATA + 0x1140                                # variables du chemin rapide (page 0x467000 : pas de code, ecritures directes)
+BL = DATA + 0x1240                                # bascules HUD/3D d'une ligne du jeu (x), 322 dwords max
+assert BL + 4 * 322 <= DATA + 0x1800
+NVN = {k: NV + 4 * i for i, k in enumerate('Y BLP G8 G4 HX1 RA RB HROW HCROW BEND BLAST DST HRW R SP LASTB LAST3D ANY3D S'.split())}
+assert NV + 4 * len(NVN) <= FONT and FONT + 20 <= BL and BL % 8 == 0   # em_pend teste le bit 2 de BL
+n = lambda k: '%#x' % NVN[k]
 assert MASK + 0x140 <= DATA + 0x1800
 VIEW1, VIEW2 = M(0x38fbd4), M(0x41ec74)
+# correctifs de vitesse (instructions que DOSBox interprete, boucles a plusieurs blocs par pixel) : ecrits par le jeu
+# lui-meme a la 1re image 3D (pre_go), groupe par groupe, apres verification des octets d'origine
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import speed_fix
+GP_BLOB, GPAT, GP_GROUPS = speed_fix.build(not EN, GP, V['GPDONE'], V['GPOK'], V['GPBAD'])
+assert GP + len(GP_BLOB) <= FIN
 P = lambda v: struct.pack('<I', v & 0xffffffff)
 v = lambda k: '%#x' % V[k]
 # instructions du moteur qui visent ses tableaux par colonne (320 colonnes ; hd_fix.py) : repointees au 1er rendu
@@ -236,6 +249,7 @@ pre:
 pre_go:
     pushad
     call check_mode
+    call {GPAT:#x}
     inc dword ptr [{v('ESSAIS')}]
     cmp ebp, {VIEW1:#x}
     jne pre_lo
@@ -510,18 +524,39 @@ post_hd:
 post_row:
     cmp edx, dword ptr [{v('S_H0')}]
     jae post_rest
+    mov ecx, dword ptr [{v('W_CUR')}]
     mov eax, edx
     add eax, dword ptr [{v('VY0')}]
     lea eax, [eax+eax*2]
     shr eax, 1
     sub eax, dword ptr [{v('VB0')}]
-    imul eax, dword ptr [{v('W_CUR')}]
+    imul eax, ecx
     add eax, dword ptr [{v('HBUF')}]
     add eax, dword ptr [{v('SIDE')}]
     mov esi, eax
     mov ecx, dword ptr [{v('S_W0')}]
+    cmp ecx, 8
+    jb post_px8t
+post_px8:
+    mov al, byte ptr [esi+6]
+    mov ah, byte ptr [esi+9]
+    shl eax, 16
+    mov al, byte ptr [esi]
+    mov ah, byte ptr [esi+3]
+    mov bl, byte ptr [esi+18]
+    mov bh, byte ptr [esi+21]
+    shl ebx, 16
+    mov bl, byte ptr [esi+12]
+    mov bh, byte ptr [esi+15]
+    mov dword ptr [edi], eax
+    mov dword ptr [edi+4], ebx
+    add esi, 24
+    add edi, 8
+    sub ecx, 8
+    cmp ecx, 8
+    jae post_px8
     cmp ecx, 4
-    jb post_px
+    jb post_px1
 post_px4:
     mov al, byte ptr [esi+6]
     mov ah, byte ptr [esi+9]
@@ -534,6 +569,7 @@ post_px4:
     sub ecx, 4
     cmp ecx, 4
     jae post_px4
+post_px1:
     test ecx, ecx
     jz post_eol
 post_px:
@@ -547,6 +583,10 @@ post_eol:
     add edi, ebp
     inc edx
     jmp post_row
+post_px8t:
+    cmp ecx, 4
+    jb post_px1
+    jmp post_px4
 post_rest:
     mov ebx, dword ptr [0x35f974]
     mov eax, dword ptr [{v('S_RATIO')}]
@@ -756,13 +796,37 @@ fl_sig_ok:
     mov esi, dword ptr [{v('SBUF')}]
     xor edx, edx
 fl_p1:
-    push esi
-    push edi
-    mov ecx, 80
-    repe cmpsd dword ptr [esi], dword ptr es:[edi]
-    pop edi
-    pop esi
-    je fl_p1_same
+    xor ecx, ecx
+fp_c:
+    mov eax, dword ptr [esi+ecx]
+    xor eax, dword ptr [edi+ecx]
+    mov ebx, dword ptr [esi+ecx+4]
+    xor ebx, dword ptr [edi+ecx+4]
+    or eax, ebx
+    mov ebx, dword ptr [esi+ecx+8]
+    xor ebx, dword ptr [edi+ecx+8]
+    or eax, ebx
+    mov ebx, dword ptr [esi+ecx+12]
+    xor ebx, dword ptr [edi+ecx+12]
+    or eax, ebx
+    mov ebx, dword ptr [esi+ecx+16]
+    xor ebx, dword ptr [edi+ecx+16]
+    or eax, ebx
+    mov ebx, dword ptr [esi+ecx+20]
+    xor ebx, dword ptr [edi+ecx+20]
+    or eax, ebx
+    mov ebx, dword ptr [esi+ecx+24]
+    xor ebx, dword ptr [edi+ecx+24]
+    or eax, ebx
+    mov ebx, dword ptr [esi+ecx+28]
+    xor ebx, dword ptr [edi+ecx+28]
+    or eax, ebx
+    jnz fp_dirty
+    add ecx, 32
+    cmp ecx, 320
+    jb fp_c
+    jmp fl_p1_same
+fp_dirty:
     mov byte ptr [edx+{DIRTYP:#x}], 1
     push esi
     push edi
@@ -791,6 +855,8 @@ fl_p2:
     rep stosd dword ptr es:[edi], eax
 fl_p2_nc:
     mov dword ptr [{v('ROWN')}], 0
+    cmp dword ptr [{v('HUDW')}], 0
+    jne nr_start
 fl_row:
     mov eax, dword ptr [{v('ROWN')}]
     lea ecx, [eax+eax*2]
@@ -891,6 +957,7 @@ fl_skip:
     inc dword ptr [{v('ROWN')}]
     cmp dword ptr [{v('ROWN')}], 400
     jb fl_row
+fl_end:
     call fps_draw
     mov dword ptr [{v('FORCE')}], 0
 fl_out:
@@ -1170,6 +1237,495 @@ er_next:
 er_done:
     ret
 
+nr_start:
+    xor eax, eax
+    mov dword ptr [{n('Y')}], eax
+    mov dword ptr [{n('ANY3D')}], eax
+    mov dword ptr [{n('LAST3D')}], eax
+    mov dword ptr [{n('LASTB')}], -1
+nr_row:
+    mov eax, dword ptr [{n('Y')}]
+    cmp dword ptr [{v('VALID')}], 0
+    je nr_hudrow
+    mov edx, eax
+    sub edx, dword ptr [{v('FY0')}]
+    cmp edx, dword ptr [{v('FH')}]
+    jb nr_3drow
+nr_hudrow:
+    cmp dword ptr [{v('FORCE')}], 0
+    jne nr_hneed
+    cmp byte ptr [eax+{DIRTYP:#x}], 0
+    je nr_next
+nr_hneed:
+    mov dword ptr [{n('LASTB')}], eax
+    mov dword ptr [{n('LAST3D')}], 0
+    lea esi, [eax+eax*4]
+    shl esi, 7
+    add esi, dword ptr [{v('SBUF')}]
+    call nb_full
+    mov eax, dword ptr [{n('Y')}]
+    lea edi, [eax+eax*4]
+    shl edi, 8
+    add edi, dword ptr [{v('SHADB')}]
+    cmp dword ptr [{v('FORCE')}], 0
+    jne nr_hw
+    push edi
+    mov esi, {OUTROW:#x}
+    mov ecx, {OW // 4}
+    repe cmpsd dword ptr [esi], dword ptr es:[edi]
+    pop edi
+    je nr_next
+nr_hw:
+    mov esi, {OUTROW:#x}
+    mov ecx, {OW // 4}
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    mov eax, dword ptr [{n('Y')}]
+    lea ecx, [eax+eax*2]
+    lea edx, [ecx+3]
+    shr ecx, 1
+    shr edx, 1
+nr_hw2:
+    lea edi, [ecx+ecx*4]
+    shl edi, 8
+    add edi, dword ptr [{v('LFB')}]
+    mov esi, {OUTROW:#x}
+    mov ebx, ecx
+    mov ecx, {OW // 4}
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    lea ecx, [ebx+1]
+    cmp ecx, edx
+    jb nr_hw2
+nr_next:
+    mov eax, dword ptr [{n('Y')}]
+    inc eax
+    mov dword ptr [{n('Y')}], eax
+    cmp eax, 400
+    jb nr_row
+    mov dword ptr [{v('ROWN')}], 400
+    mov dword ptr [{v('RA')}], 598
+    mov dword ptr [{v('RB')}], 600
+    cmp dword ptr [{n('ANY3D')}], 0
+    je nr_fx2
+    mov eax, dword ptr [{n('HROW')}]
+    mov dword ptr [{v('HROW')}], eax
+    mov eax, dword ptr [{n('HCROW')}]
+    mov dword ptr [{v('HCROW')}], eax
+    mov eax, dword ptr [{v('FX0')}]
+    mov dword ptr [{v('HX0')}], eax
+    add eax, dword ptr [{v('FW')}]
+    mov dword ptr [{v('HX1')}], eax
+    mov eax, dword ptr [{n('HRW')}]
+    mov dword ptr [{v('HRW')}], eax
+    mov eax, 4
+    xor edx, edx
+    cmp dword ptr [{v('HSTR')}], 0
+    jne nr_fxe
+    mov eax, 3
+    mov edx, {OX}
+nr_fxe:
+    mov dword ptr [{v('ERS')}], eax
+    mov dword ptr [{v('ERO')}], edx
+    mov edi, dword ptr [{v('FX0')}]
+    add edi, {MASK:#x}
+    mov ecx, dword ptr [{v('FW')}]
+    xor eax, eax
+    rep stosb byte ptr es:[edi], al
+    mov ebx, {BL + 4:#x}
+nr_fxm:
+    cmp ebx, dword ptr [{n('BLAST')}]
+    jae nr_fx2
+    mov eax, dword ptr [ebx+4]
+    sub eax, dword ptr [{v('ERO')}]
+    xor edx, edx
+    div dword ptr [{v('ERS')}]
+    mov ecx, eax
+    mov eax, dword ptr [ebx]
+    sub eax, dword ptr [{v('ERO')}]
+    xor edx, edx
+    div dword ptr [{v('ERS')}]
+    sub ecx, eax
+    lea edi, [eax+{MASK:#x}]
+    mov al, 1
+    rep stosb byte ptr es:[edi], al
+    add ebx, 8
+    jmp nr_fxm
+nr_fx2:
+    cmp dword ptr [{n('LAST3D')}], 0
+    je fl_end
+    mov eax, dword ptr [{n('LASTB')}]
+    lea esi, [eax+eax*4]
+    shl esi, 7
+    add esi, dword ptr [{v('SBUF')}]
+    call nb_full
+    jmp fl_end
+
+nr_3drow:
+    mov dword ptr [{n('LASTB')}], eax
+    mov dword ptr [{n('LAST3D')}], 1
+    mov dword ptr [{n('ANY3D')}], 1
+    lea esi, [eax+eax*4]
+    shl esi, 7
+    add esi, dword ptr [{v('SBUF')}]
+    mov dword ptr [{n('S')}], esi
+    lea ecx, [eax+eax*2]
+    lea edx, [ecx+3]
+    shr ecx, 1
+    shr edx, 1
+    mov dword ptr [{n('RA')}], ecx
+    mov dword ptr [{n('RB')}], edx
+    mov edx, dword ptr [{v('FWW')}]
+    sub ecx, dword ptr [{v('VB0')}]
+    imul ecx, edx
+    add ecx, dword ptr [{v('HBUF')}]
+    add ecx, dword ptr [{v('FSIDE')}]
+    mov edx, dword ptr [{v('FX0')}]
+    lea edx, [edx+edx*2]
+    sub ecx, edx
+    mov dword ptr [{n('HROW')}], ecx
+    lea ebp, [eax+eax*4]
+    shl ebp, 7
+    add ebp, dword ptr [{v('HUDW')}]
+    mov dword ptr [{n('HCROW')}], ebp
+    mov ecx, dword ptr [{v('FX0')}]
+    mov ebx, ecx
+    add ebx, dword ptr [{v('FW')}]
+    mov dword ptr [{n('HX1')}], ebx
+    lea edx, [ebx-8]
+    mov dword ptr [{n('G8')}], edx
+    lea edx, [ebx-4]
+    mov dword ptr [{n('G4')}], edx
+    mov dword ptr [{BL:#x}], 0
+    mov dword ptr [{n('BLP')}], {BL + 4:#x}
+    lea edi, [ecx+ecx*2]
+    add edi, dword ptr [{n('HROW')}]
+    jmp enterH
+
+enter3:
+    cmp ecx, dword ptr [{n('G8')}]
+    jg tail3
+L3:
+    mov eax, dword ptr [esi+ecx]
+    mov dl, byte ptr [edi+6]
+    mov dh, byte ptr [edi+9]
+    shl edx, 16
+    mov dl, byte ptr [edi]
+    mov dh, byte ptr [edi+3]
+    xor eax, edx
+    mov edx, dword ptr [esi+ecx+4]
+    mov bl, byte ptr [edi+18]
+    mov bh, byte ptr [edi+21]
+    shl ebx, 16
+    mov bl, byte ptr [edi+12]
+    mov bh, byte ptr [edi+15]
+    xor edx, ebx
+    or eax, edx
+    mov edx, dword ptr [ebp+ecx*2]
+    or edx, dword ptr [ebp+ecx*2+4]
+    or edx, dword ptr [ebp+ecx*2+8]
+    or edx, dword ptr [ebp+ecx*2+12]
+    and edx, 0xff00ff00
+    or eax, edx
+    jnz mix3
+    add ecx, 8
+    add edi, 24
+    cmp ecx, dword ptr [{n('G8')}]
+    jle L3
+tail3:
+    mov ebx, dword ptr [{n('HX1')}]
+    cmp ecx, ebx
+    jl M3
+    mov edx, dword ptr [{n('BLP')}]
+    mov dword ptr [edx], ecx
+    add edx, 4
+    jmp cls_fin
+mix3:
+    lea ebx, [ecx+8]
+M3:
+    mov al, byte ptr [esi+ecx]
+    cmp al, byte ptr [edi]
+    jne M3_hud
+    cmp byte ptr [ebp+ecx*2+1], 0
+    je M3_nx
+    cmp byte ptr [ebp+ecx*2], al
+    je M3_sw
+    mov byte ptr [ebp+ecx*2+1], 0
+M3_nx:
+    inc ecx
+    add edi, 3
+    cmp ecx, ebx
+    jl M3
+    jmp enter3
+M3_hud:
+    mov byte ptr [ebp+ecx*2], al
+    mov byte ptr [ebp+ecx*2+1], 1
+M3_sw:
+    mov edx, dword ptr [{n('BLP')}]
+    mov dword ptr [edx], ecx
+    add edx, 4
+    mov dword ptr [{n('BLP')}], edx
+    jmp MH_nx
+MH:
+    mov al, byte ptr [esi+ecx]
+    cmp al, byte ptr [edi]
+    jne MH_hud
+    cmp byte ptr [ebp+ecx*2+1], 0
+    je MH_sw
+    cmp byte ptr [ebp+ecx*2], al
+    je MH_nx
+    mov byte ptr [ebp+ecx*2+1], 0
+MH_sw:
+    mov edx, dword ptr [{n('BLP')}]
+    mov dword ptr [edx], ecx
+    add edx, 4
+    mov dword ptr [{n('BLP')}], edx
+    jmp M3_nx
+MH_hud:
+    mov byte ptr [ebp+ecx*2], al
+    mov byte ptr [ebp+ecx*2+1], 1
+MH_nx:
+    inc ecx
+    add edi, 3
+    cmp ecx, ebx
+    jl MH
+enterH:
+    cmp ecx, dword ptr [{n('G4')}]
+    jg tailH
+LH:
+    mov eax, dword ptr [esi+ecx]
+    mov dl, byte ptr [edi+6]
+    mov dh, byte ptr [edi+9]
+    shl edx, 16
+    mov dl, byte ptr [edi]
+    mov dh, byte ptr [edi+3]
+    xor edx, eax
+    lea ebx, [edx-0x1010101]
+    not edx
+    and ebx, edx
+    test ebx, 0x80808080
+    jnz mixH
+    movzx edx, ah
+    shl edx, 16
+    mov dl, al
+    or edx, 0x1000100
+    mov dword ptr [ebp+ecx*2], edx
+    shr eax, 16
+    movzx edx, ah
+    shl edx, 16
+    mov dl, al
+    or edx, 0x1000100
+    mov dword ptr [ebp+ecx*2+4], edx
+    add ecx, 4
+    add edi, 12
+    cmp ecx, dword ptr [{n('G4')}]
+    jle LH
+tailH:
+    mov ebx, dword ptr [{n('HX1')}]
+    cmp ecx, ebx
+    jl MH
+    mov edx, dword ptr [{n('BLP')}]
+    jmp cls_fin
+mixH:
+    lea ebx, [ecx+4]
+    jmp MH
+
+cls_fin:
+    mov dword ptr [edx], 320
+    mov dword ptr [{n('BLAST')}], edx
+    add edx, 4
+    mov dword ptr [{n('BEND')}], edx
+    mov esi, dword ptr [{n('S')}]
+    mov eax, {BL:#x}
+spr_lp:
+    cmp eax, dword ptr [{n('BLAST')}]
+    jae spr_done
+    mov ecx, dword ptr [eax]
+    mov ebx, dword ptr [eax+4]
+    add eax, 8
+    mov dword ptr [{n('SP')}], eax
+    cmp dword ptr [{v('HSTR')}], 0
+    je spr_c
+    lea eax, [ecx+4]
+    cmp eax, ebx
+    jg sps_t
+sps4:
+    mov eax, dword ptr [esi+ecx]
+    add ecx, 4
+    movzx edx, al
+    imul edx, edx, 0x1010101
+    shr eax, 8
+    movzx edi, al
+    imul edi, edi, 0x1010101
+    shr eax, 8
+    movzx ebp, al
+    imul ebp, ebp, 0x1010101
+    shr eax, 8
+    imul eax, eax, 0x1010101
+    mov dword ptr [ecx*4+{OUTROW - 16:#x}], edx
+    mov dword ptr [ecx*4+{OUTROW - 12:#x}], edi
+    mov dword ptr [ecx*4+{OUTROW - 8:#x}], ebp
+    mov dword ptr [ecx*4+{OUTROW - 4:#x}], eax
+    lea eax, [ecx+4]
+    cmp eax, ebx
+    jle sps4
+sps_t:
+    cmp ecx, ebx
+    jge spr_nx
+sps1:
+    movzx eax, byte ptr [esi+ecx]
+    inc ecx
+    imul eax, eax, 0x1010101
+    mov dword ptr [ecx*4+{OUTROW - 4:#x}], eax
+    cmp ecx, ebx
+    jl sps1
+    jmp spr_nx
+spr_c:
+    lea edi, [ecx+ecx*2+{OUTROW + OX:#x}]
+    cmp ecx, ebx
+    jge spr_nx
+spc1:
+    movzx eax, byte ptr [esi+ecx]
+    inc ecx
+    imul eax, eax, 0x1010101
+    mov dword ptr [edi], eax
+    add edi, 3
+    cmp ecx, ebx
+    jl spc1
+spr_nx:
+    mov eax, dword ptr [{n('SP')}]
+    jmp spr_lp
+spr_done:
+    mov eax, {BL:#x}
+    mov edx, dword ptr [{n('BEND')}]
+    cmp dword ptr [{v('HSTR')}], 0
+    je cv_c
+cv_s:
+    mov ecx, dword ptr [eax]
+    shl ecx, 2
+    mov dword ptr [eax], ecx
+    add eax, 4
+    cmp eax, edx
+    jb cv_s
+    jmp cv_done
+cv_c:
+    mov ecx, dword ptr [eax]
+    lea ecx, [ecx+ecx*2+{OX}]
+    mov dword ptr [eax], ecx
+    add eax, 4
+    cmp eax, edx
+    jb cv_c
+cv_done:
+    mov eax, dword ptr [{n('RA')}]
+em_row:
+    mov dword ptr [{n('R')}], eax
+    lea edi, [eax+eax*4]
+    shl edi, 8
+    add edi, dword ptr [{v('LFB')}]
+    mov dword ptr [{n('DST')}], edi
+    mov edx, dword ptr [{v('FWW')}]
+    sub eax, dword ptr [{v('VB0')}]
+    imul eax, edx
+    add eax, dword ptr [{v('HBUF')}]
+    mov dword ptr [{n('HRW')}], eax
+    cmp dword ptr [{v('HSTR')}], 0
+    jne em_runs
+    cmp dword ptr [{v('SIDEOK')}], 0
+    je em_sz
+    mov esi, eax
+    mov ecx, {OX // 4}
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    lea esi, [eax+{OX + 960}]
+    mov edi, dword ptr [{n('DST')}]
+    add edi, {OX + 960}
+    mov ecx, {(OW - OX - 960) // 4}
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    jmp em_runs
+em_sz:
+    xor eax, eax
+    mov ecx, {OX // 4}
+    rep stosd dword ptr es:[edi], eax
+    mov edi, dword ptr [{n('DST')}]
+    add edi, {OX + 960}
+    mov ecx, {(OW - OX - 960) // 4}
+    rep stosd dword ptr es:[edi], eax
+em_runs:
+    mov ebx, {OUTROW:#x}
+    mov edx, {BL:#x}
+em_pass:
+    cmp edx, dword ptr [{n('BLAST')}]
+    jae em_pend
+em_r:
+    mov esi, dword ptr [edx]
+    mov ecx, dword ptr [edx+4]
+    sub ecx, esi
+    mov edi, dword ptr [{n('DST')}]
+    add edi, esi
+    add esi, ebx
+    mov eax, ecx
+    shr ecx, 2
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    mov ecx, eax
+    and ecx, 3
+    rep movsb byte ptr es:[edi], byte ptr [esi]
+    add edx, 8
+    cmp edx, dword ptr [{n('BLAST')}]
+    jb em_r
+em_pend:
+    test dl, 4
+    jnz em_rowdone
+    mov ebx, dword ptr [{n('HRW')}]
+    mov edx, {BL + 4:#x}
+    jmp em_pass
+em_rowdone:
+    mov eax, dword ptr [{n('R')}]
+    inc eax
+    cmp eax, dword ptr [{n('RB')}]
+    jb em_row
+    jmp nr_next
+
+nb_full:
+    cmp dword ptr [{v('HSTR')}], 0
+    je nbf_c
+    xor ecx, ecx
+nbf_s:
+    mov eax, dword ptr [esi+ecx]
+    add ecx, 4
+    movzx edx, al
+    imul edx, edx, 0x1010101
+    shr eax, 8
+    movzx edi, al
+    imul edi, edi, 0x1010101
+    shr eax, 8
+    movzx ebp, al
+    imul ebp, ebp, 0x1010101
+    shr eax, 8
+    imul eax, eax, 0x1010101
+    mov dword ptr [ecx*4+{OUTROW - 16:#x}], edx
+    mov dword ptr [ecx*4+{OUTROW - 12:#x}], edi
+    mov dword ptr [ecx*4+{OUTROW - 8:#x}], ebp
+    mov dword ptr [ecx*4+{OUTROW - 4:#x}], eax
+    cmp ecx, 320
+    jb nbf_s
+    ret
+nbf_c:
+    xor ecx, ecx
+    mov edi, {OUTROW + OX:#x}
+nbf_c1:
+    movzx eax, byte ptr [esi+ecx]
+    inc ecx
+    imul eax, eax, 0x1010101
+    mov dword ptr [edi], eax
+    add edi, 3
+    cmp ecx, 320
+    jb nbf_c1
+    xor eax, eax
+    mov edi, {OUTROW:#x}
+    mov ecx, {OX // 4}
+    rep stosd dword ptr es:[edi], eax
+    mov edi, {OUTROW + OX + 960:#x}
+    mov ecx, {(OW - OX - 960) // 4}
+    rep stosd dword ptr es:[edi], eax
+    ret
+
 occl:
     push eax
     mov eax, dword ptr [0x44b250]
@@ -1228,7 +1784,8 @@ def call_rel(src, dst):
 
 code, LBL = assemble()
 assert len(code) <= DATA - CODE, len(code)
-DATA_INIT = bytearray(DATA + 0x1800 - DATA)
+DATA_INIT = bytearray(FIN - DATA)
+DATA_INIT[GP - DATA:GP - DATA + len(GP_BLOB)] = GP_BLOB
 struct.pack_into('<I', DATA_INIT, V['HSTR'] - DATA, 1)        # HUD etire sur toute la largeur (TN+ : wide_hud)
 _F = ['111101101101111', '010110010010111', '111001111100111', '111001111001111', '101101111001001',
       '111100111001111', '111100111101111', '111001010010010', '111101111101111', '111101111001111']
@@ -1281,6 +1838,9 @@ def export(path, cls):
            '    public const uint FpsValue = 0x%x, FpsColour = 0x%x;   // frames per second shown top right (0 = hidden), palette index' % (V['FPSV'], V['FPSCOL']),
            '    public const uint PoolVar = 0x%x;' % M(0x43e360),
            '    public const uint XCode = 0x%x;' % V['XCODE'],
+           '    public const uint SpeedDone = 0x%x, SpeedOn = 0x%x, SpeedBad = 0x%x;   // speed fixes written by the game: done, bit per group' % (
+               V['GPDONE'], V['GPOK'], V['GPBAD']),
+           '    public static readonly string[] SpeedNames = { %s };' % ', '.join('"%s"' % n for n, r in GP_GROUPS),
            '    public static readonly byte[] CodeBytes = %s;' % arr(code),
            '    public static readonly byte[] DataInit = %s;' % arr(bytes(DATA_INIT)),
            '    public static readonly uint[] PatchAt = { %s };' % ', '.join('0x%x' % a for a, o, n in PATCHES + ECRAN),

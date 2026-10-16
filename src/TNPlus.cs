@@ -93,7 +93,7 @@ static partial class TNPlus
     // Left Shift), Right Shift, Alt (the game's own keys are checked against the KEYBOARD tab)
     static readonly int[] KEY_RESERVED = { 0x01, 0x18, 0x39, 0x1D, 0x2A, 0x36, 0x38 };
     static double NoclipSpeed = 15.0;               // game units per second (a walking PBA ~2.5)
-    static int CpuCycles = 1000000;                 // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
+    static int CpuCycles = 1400000;                 // DOSBox CPU cycles imposed at launch (0 = the edition's own setting)
     static readonly int[] CYCLE_CHOICES = { 500000, 700000, 1000000, 1200000, 1400000, 0 };
     static string GameDir = "";
 
@@ -423,6 +423,24 @@ static partial class TNPlus
         }
         Write(HdPayload.FpsColour, new byte[] { (byte)best });
         WriteInt(HdPayload.FpsValue, fps >= 1 ? (int)Math.Round(fps) : 0);
+    }
+
+    // Speed fixes of the HD 1280x720 code (tools/speed_fix.py): written by the game itself at its first 3D frame, each
+    // group after checking the game's own bytes. Off: the done flag is set before that frame, so nothing is written.
+    static bool OptSpeedFix = true;                 // ini speed_fixes
+    static bool speedSaid = false;
+    static void SpeedFixReport()
+    {
+        if (speedSaid || HdPayload.SpeedDone == 0 || hdState != 1 || !OptSpeedFix) return;
+        if (ReadInt(HdPayload.SpeedDone) == 0) return;
+        uint on = ReadUInt(HdPayload.SpeedOn), bad = ReadUInt(HdPayload.SpeedBad);
+        if (on == 0 && bad == 0) return;
+        speedSaid = true;
+        int n = HdPayload.SpeedNames.Length, k = 0;
+        var off = new List<string>();
+        for (int i = 0; i < n; i++) if ((on >> i & 1) != 0) k++; else off.Add(HdPayload.SpeedNames[i]);
+        if (off.Count == 0) Say("Speed fixes ON (" + k + ")", 0);
+        else Say("Speed fixes: " + k + " of " + n + " on, unexpected game code for " + string.Join(", ", off.ToArray()), 300, 300);
     }
 
     static void AdaptTerrain(double now)
@@ -1287,6 +1305,9 @@ static partial class TNPlus
     // emulated cycle (infrared: 0.55 -> 0.70 core at 700000 in the same scene, the game then runs code it
     // generates in memory), and when the host cannot keep up DOSBox lowers the cycles for a moment instead of
     // falling behind (lag and choppy sound). The game copes with a varying frame rate (hit and physics fixes).
+    // 1280x720 on a Ryzen 7 9800X3D, calm mission start: 50 fps at 1000000 (DOSBox at 0.85 core, held back by the
+    // cycles), 57-67 at 1400000 (0.95-0.99 core). cpu_cycles_protected: the game runs in protected mode, where a value
+    // from DOSBox's own config (dosbox-staging.conf) would otherwise win.
     static string CpuSection(string db)
     {
         if (CpuCycles <= 0) return "";
@@ -1298,7 +1319,7 @@ static partial class TNPlus
         }
         catch { }
         if (cur != CpuCycles.ToString()) Console.WriteLine("DOSBox CPU cycles: " + CpuCycles + " (the game's own config says " + cur + "; cpu_cycles in TNPlus.ini, 0 = leave it)");
-        return "[cpu]\r\ncpu_cycles = " + CpuCycles + "\r\ncpu_throttle = true\r\n";
+        return "[cpu]\r\ncpu_cycles = " + CpuCycles + "\r\ncpu_cycles_protected = auto\r\ncpu_throttle = true\r\n";
     }
 
     static string WriteLaunchConf(string db, int target)
@@ -1542,6 +1563,7 @@ static partial class TNPlus
                 if (changed || now - lastFix > 1.0) { lastFix = now; PeriodicFixes(distMode); }
                 AdaptTerrain(now);
                 FpsCounter(now);
+                SpeedFixReport();
 
                 // --- toggles (rising edges, game in the foreground only)
                 bool f = OptFreelook && fg && ((plain && Down(vkFree)) || toolMouse(0));
@@ -2144,6 +2166,8 @@ static partial class TNPlus
         WriteInt(HdPayload.Smoothing, 0);               // the HD smoothing: left in the payload, no longer offered
         WriteInt(HdPayload.HudFilter, 0);              // Scale2x HUD: left in the payload, no longer offered
         if (HdPayload.HudStretch != 0) WriteInt(HdPayload.HudStretch, OptWideHud ? 1 : 0);
+        if (HdPayload.SpeedDone != 0 && !OptSpeedFix) WriteInt(HdPayload.SpeedDone, 1);
+        speedSaid = false;
         hdState = 1;
         Say(HdNow() + " ready: missions in 320x400 will be in HD", 1000);
     }
@@ -2606,6 +2630,7 @@ static partial class TNPlus
                     case "terrain_fps": int.TryParse(v, out OptTerrainFps); break;
                     case "hd_720": if (v == "1" && OptWideTrue) OptHd720 = true; break;   // first test builds
                     case "fps_counter": OptFpsCounter = v != "0"; break;
+                    case "speed_fixes": OptSpeedFix = v != "0"; break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
                     case "keep_dos": OptKeepDos = v != "0"; break;
@@ -2635,6 +2660,7 @@ static partial class TNPlus
         // cycles, not by the PC (DOSBox used 0.6 core at 700000 in HD on the test PC)
         if (speedVer < 3 && (CpuCycles == 300000 || CpuCycles == 500000)) CpuCycles = 700000;
         if (speedVer < 4 && CpuCycles == 700000) CpuCycles = 1000000;   // the default before the true 16:9 measurements
+        if (speedVer < 5 && CpuCycles == 1000000) CpuCycles = 1400000;  // the default before the 1280x720 measurements
         // freelook was on H in beta 5 (Y before): back on Y, the game's previous target moves to K.
         if (keysVer < 3 && ScanFreelook == 0x23) ScanFreelook = 0x15;
         ResolveToolClashes();
@@ -2658,6 +2684,7 @@ static partial class TNPlus
                 "; 3 true 16:9 in 1280x720 (3D in 1280 columns and 1.5 x the lines, needs a fast PC)\r\nwidescreen = " + WideMode() + "\r\n" +
                 "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
                 "; HD 1280x720: 1 = small frame counter top right\r\nfps_counter = " + (OptFpsCounter ? 1 : 0) + "\r\n" +
+                "; HD 1280x720: 1 = speed fixes in the game's 3D code (same picture, fewer slow spots for DOSBox)\r\nspeed_fixes = " + (OptSpeedFix ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
                 "; SHARP (DOSBox in OpenGL with its sharp shader: every pixel the same size, less shimmer) or GAME'S OWN\r\n" +
                 "scaling = " + SCALING_NAMES[OptScaling] + "\r\n" +
@@ -2675,7 +2702,7 @@ static partial class TNPlus
                 "sensitivity_x = " + SensX + "\r\nsensitivity_y = " + SensY + "\r\ninvert_y = " + (InvertY ? 1 : 0) + "\r\n" +
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
-                "; raise it if the game feels slow, DOSBox lowers it for a moment when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 4\r\n" +
+                "; raise it if the game feels slow, DOSBox lowers it for a moment when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 5\r\n" +
                 "; keys as PHYSICAL key scancodes (hex): 23 = H, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (40 = F6, 41 = F7), 57 = F11, 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
