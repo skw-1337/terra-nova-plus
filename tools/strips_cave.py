@@ -6,9 +6,12 @@ W0, SAVE, VARS, SIN = 0x46A300, 0x469440, 0x469480, 0x469500
 MODE = 0x4694F0
 VSTART, VEND = 0x469410, 0x469414   # indice du premier sommet de la passe / sommets utilises a la fin
 VC1, VC2, VC3 = 0x46A9C0, 0x46A9D8, 0x46A9F0
-SORT = 0x46A7A0        # tri de la liste par anneau carre (proche -> loin), apres les bandes
+SORT = 0x46A7B0        # tri de la liste par anneau carre (proche -> loin), apres les bandes
 CNT = 0x469900         # 64 compteurs
-MASK8 = 0x46A790       # masques 1, 2, 4 .. 128 du bitmap des cellules, au bout du code principal
+# une case (1 unite) est prise des que son disque (rayon 0,75) touche la bande vue : avant, son centre devait etre
+# dans la bande ET a plus de 2 unites devant la camera, et les parois proches manquaient aux bords de l'image
+NEAR = 0xC00000         # 0,75 unite en unites x 2^24 (ecarts 8.8 x cos/sin 16.16)
+MASK8 = 0x46A7A0       # masques 1, 2, 4 .. 128 du bitmap des cellules, au bout du code principal
                        # (bt/bts ne sont pas traduits par le coeur dynamique de DOSBox)
 SINTAB = b''.join(struct.pack('<i', int(round(65536 * math.sin(2 * math.pi * i / 256)))) for i in range(256))
 out, pieces = {}, {}
@@ -289,7 +292,7 @@ mov ecx, eax
 imul ecx, dword ptr [{VARS + 60:#x}]
 imul edx, dword ptr [{VARS + 64:#x}]
 add ecx, edx
-cmp ecx, 0x2000000
+cmp ecx, {-NEAR}
 pop ecx
 pop edx
 pop eax
@@ -298,13 +301,15 @@ push eax
 push edx
 imul edx, dword ptr [{E1C:#x}]
 imul eax, dword ptr [{E1S:#x}]
-cmp edx, eax
+sub edx, eax
+cmp edx, {-NEAR}
 pop edx
 pop eax
 jl skip
 imul eax, dword ptr [{E2S:#x}]
 imul edx, dword ptr [{E2C:#x}]
-cmp eax, edx
+sub eax, edx
+cmp eax, {-NEAR}
 jl skip
 take:
 mov edx, dword ptr [{VARS + 100:#x}]
