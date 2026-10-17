@@ -1496,7 +1496,7 @@ static partial class TNPlus
                     gameSeen = false;
                     SpanGameLeft();
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; smallState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
@@ -1522,7 +1522,7 @@ static partial class TNPlus
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
                     (OptPhysFix && descrFixState == 0) || fillerFixState == 0 || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1 ||
-                    (OptSpeedFix && affineState == 0)))
+                    (OptSpeedFix && affineState == 0) || (OptSmallViews && smallState == 0)))
                 {
                     lastCave = now;
                     if (zoomFixState == 0) TryZoomFix();
@@ -1532,6 +1532,7 @@ static partial class TNPlus
                     if (irFixState == 0 || irFixState == 1) TryIrFix();
                     if (viewFixState == 0 || viewFixState == 1) TryViewFix();
                     if (OptSpeedFix && affineState == 0) TryAffineFix();
+                    if (OptSmallViews && smallState == 0) TrySmallViews();
                 }
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
@@ -2140,6 +2141,30 @@ static partial class TNPlus
         WriteInt(AffineFix.Table[L], (int)(P + (uint)AffineFix.Entry[L]));
         affineState = 1;
         Say("Polygon speed fix (affine) ON", 0);
+    }
+
+    // Small cockpit views (the two MFD cameras) drawn in HD too, 1280x720 only (tools/hd720.py, SV_ASM): their code is
+    // ours (no game code in it), position independent, copied into a page of the HD buffer (XCode) the game never ran
+    // code from, then its address goes to the HD code's pointer, which calls it around every view render and at the
+    // screen copy. Off: ini small_views = 0.
+    static bool OptSmallViews = true;               // ini small_views
+    static int smallState = 0;          // 0 to do, 1 on, -1 not for this display
+    static void TrySmallViews()
+    {
+        if (HdPayload.SvCode == null || HdPayload.SvPtr == 0) { smallState = -1; return; }
+        if (hdState != 1) return;
+        uint x = ReadUInt(HdPayload.XCode);
+        if (x == 0) return;                                         // no HD buffer yet
+        uint P = ((x + 0xFFF) & ~0xFFFu) + HdPayload.SvOff;
+        if (P + HdPayload.SvCode.Length > x + 12288) { smallState = -1; return; }
+        uint cur = ReadUInt(HdPayload.SvPtr);
+        if (cur == P) { smallState = 1; return; }
+        if (cur != 0) { smallState = -1; return; }
+        Write(P, HdPayload.SvCode);
+        if (!Same(Read(P, HdPayload.SvCode.Length), HdPayload.SvCode)) return;
+        WriteInt(HdPayload.SvPtr, (int)P);
+        smallState = 1;
+        Say("Cockpit cameras in HD ON", 0);
     }
 
     // Normal view: the same trouble in the two per-column routines the 3D library runs for each polygon edge: they
@@ -2760,6 +2785,7 @@ static partial class TNPlus
                     case "hd_720": if (v == "1" && OptWideTrue) OptHd720 = true; break;   // first test builds
                     case "fps_counter": OptFpsCounter = v != "0"; break;
                     case "speed_fixes": OptSpeedFix = v != "0"; break;
+                    case "small_views": OptSmallViews = v != "0"; break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "inplace_attach": OptInPlaceAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
@@ -2815,6 +2841,7 @@ static partial class TNPlus
                 "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
                 "; HD 1280x720: 1 = small frame counter top right\r\nfps_counter = " + (OptFpsCounter ? 1 : 0) + "\r\n" +
                 "; HD 1280x720: 1 = speed fixes in the game's 3D code (same picture, fewer slow spots for DOSBox)\r\nspeed_fixes = " + (OptSpeedFix ? 1 : 0) + "\r\n" +
+                "; HD 1280x720: 1 = the two cockpit cameras (MFD views) drawn in HD too\r\nsmall_views = " + (OptSmallViews ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
                 "; SHARP (DOSBox in OpenGL with its sharp shader: every pixel the same size, less shimmer) or GAME'S OWN\r\n" +
                 "scaling = " + SCALING_NAMES[OptScaling] + "\r\n" +

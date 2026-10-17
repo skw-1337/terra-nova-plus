@@ -48,7 +48,7 @@ V = {k: DATA + 4 * i for i, k in enumerate(
     'S_CANVAS S_W0 S_H0 S_CX W_CUR ROWK CXK CXSUM DLT S_V1_8 S_V2_8 S_V1_10 S_V2_10 '
     'FX0 FY0 FW FH FWW ROWN HX0 HX1 HROW PREVB SHADB FORCE SIG TRIED SIDE FSIDE SIDEOK HSTR HUDW HCROW XCODE '
     'H3 S_CLIPY S_V1_C S_V2_C S_V1_14 S_V2_14 S_V1_50 S_V2_50 CYTB CYK CYSUM VY0 VB0 ROWT NEWA NEWB TMP '
-    'RA RB ERS ERO HRW FPSV FPSCOL FD GPDONE GPOK GPBAD ROWB'.split())}
+    'RA RB ERS ERO HRW FPSV FPSCOL FD GPDONE GPOK GPBAD ROWB SVPTR SVB0 SVB1 SVCUR SVFAIL'.split())}
 ROWTAB = DATA + 0x200                             # tableaux par ligne : sites a repointer, puis copies (ROW_SITES)
 assert max(V.values()) < ROWTAB
 CXTAB = DATA + 0x500                              # 256 x 4
@@ -514,6 +514,13 @@ pre_cy_ok:
     mov dword ptr [0x427ea8], eax
     jmp pre_out
 pre_lo:
+    mov eax, dword ptr [{v('SVPTR')}]
+    test eax, eax
+    jz pl_old
+    call eax
+    test eax, eax
+    jnz pre_out
+pl_old:
     cmp dword ptr [0x35f978], 19
     jne pre_out
     mov ebx, dword ptr [0x35f974]
@@ -541,6 +548,14 @@ post:
     je post_go
     call 0x2ad1cc
 post_go:
+    cmp dword ptr [{v('SVCUR')}], 0
+    je pg_nosv
+    pushad
+    mov eax, dword ptr [{v('SVPTR')}]
+    add eax, SVOFF_POST
+    call eax
+    popad
+pg_nosv:
     cmp dword ptr [{v('RHALF')}], 0
     je post_hd
     push eax
@@ -1009,6 +1024,12 @@ fl_skip:
     cmp dword ptr [{v('ROWN')}], 400
     jb fl_row
 fl_end:
+    mov eax, dword ptr [{v('SVPTR')}]
+    test eax, eax
+    jz fe_nosv
+    add eax, SVOFF_FLUSH
+    call eax
+fe_nosv:
     call fps_draw
     mov dword ptr [{v('FORCE')}], 0
 fl_out:
@@ -1798,16 +1819,530 @@ rainx:
     push edx
     mov edx, dword ptr [0x44b250]
     cmp edx, dword ptr [{v('S_CANVAS')}]
-    jne rainx_ret
+    jne rainx_sv
     movzx edx, word ptr [edx+8]
     cmp edx, dword ptr [{v('W_CUR')}]
     jne rainx_ret
     lea ecx, [ecx+ecx*2]
     add ecx, dword ptr [{v('SIDE')}]
+    jmp rainx_ret
+rainx_sv:
+    mov edx, dword ptr [{v('SVCUR')}]
+    test edx, edx
+    jz rainx_ret
+    imul ecx, dword ptr [edx+40]
 rainx_ret:
     pop edx
     ret
 """
+# ---------------------------------------------------------------- small cockpit views in HD (MFD cameras)
+# Every other view the render function draws (the two MFD cameras: 82x104 game pixels in the cockpit) gets the main
+# view's treatment at a smaller scale: its canvas points to a buffer of its own, KX x wider (4 with the HUD stretched,
+# 3 centred) and 1.5 x taller, its view fields and 1/x, 1/y tables follow (the tables' checksum too), the library's
+# pixel ratio x KX/3; after the render the canvas gets every KX-th column back (the game composes its screen as
+# before) and the flush puts the HD pixels on the screen wherever the game's pixel is still that sample (the HUD
+# drawn over the view keeps its own). Position independent: TN+ copies it into the XCODE buffer (page + 0x1800),
+# then sets SVPTR. Two slots, allocated on the first small view; per slot a block: variables, row offsets, the two
+# tables, the buffer (up to 128 x 132 game pixels).
+SV_B = dict(VIEW=0, CANV=4, BITS=8, W=12, H=16, ROW=20, CLIP=24, CLIPY=28, X0=32, Y0=36, KX=40, WH=44, HS=48, R0=52,
+            STAMP=56, CXK=60, CYK=64, SV=68, RATIO=124, SUM=128, DLT=132, CXSUM=136, CYSUM=140, VALID=144, RTK=148)
+SV_ROWT, SV_CXT, SV_CYT, SV_BUF = 256, 1280, 2304, 3328
+SV_WMAX, SV_HMAX = 128, 132                       # game pixels
+SV_BLOCK = SV_BUF + 4 * SV_WMAX * 216             # 216 HD rows: 1.5 x 132 + 1 and a margin
+SV_XOFF = 0x1800                                  # in the XCODE buffer's first full page + 0x1800 (after affine)
+b = lambda k: '%d' % SV_B[k]
+SV_ASM = f"""
+sv_pre:
+    xor eax, eax
+    cmp dword ptr [0x35f978], 19
+    jne svp_ret
+    cmp dword ptr [{v('HBUF')}], 0
+    je svp_ret
+    cmp dword ptr [{v('SVCUR')}], 0
+    jne svp_ret
+    cmp dword ptr [{v('SVFAIL')}], 0
+    jne svp_ret
+    cmp ebp, {VIEW1:#x}
+    je svp_ret
+    mov esi, dword ptr [ebp+0x1c]
+    test esi, esi
+    je svp_ret
+    cmp dword ptr [0x44b250], esi
+    jne svp_ret
+    cmp dword ptr [ebp+0x4c], 0
+    je svp_ret
+    cmp dword ptr [ebp+0x50], 0
+    je svp_ret
+    movzx ecx, word ptr [esi+8]
+    cmp ecx, 16
+    jb svp_ret
+    cmp ecx, {SV_WMAX}
+    ja svp_ret
+    movzx ebx, word ptr [esi+0xa]
+    cmp ebx, 16
+    jb svp_ret
+    cmp ebx, {SV_HMAX}
+    ja svp_ret
+    mov edx, dword ptr [ebp+0x10]
+    lea edx, [edx+edx+1]
+    sub edx, ecx
+    cmp edx, 2
+    ja svp_ret
+    mov eax, dword ptr [esi]
+    sub eax, dword ptr [0x447028]
+    jb svp_no
+    movzx edi, word ptr [esi+0xc]
+    cmp edi, 320
+    jb svp_no
+    xor edx, edx
+    div edi
+    lea edi, [edx+ecx]
+    cmp edi, 320
+    ja svp_no
+    lea edi, [eax+ebx]
+    cmp edi, 400
+    ja svp_no
+    push ecx
+    push ebx
+    push eax
+    push edx
+    call sv_alloc
+    test eax, eax
+    jz svp_pop
+    mov edi, dword ptr [{v('SVB0')}]
+    mov edx, dword ptr [{v('SVB1')}]
+    cmp dword ptr [edi+{b('VIEW')}], ebp
+    je svp_have
+    cmp dword ptr [edx+{b('VIEW')}], ebp
+    je svp_have1
+    cmp dword ptr [edi+{b('VIEW')}], 0
+    je svp_have
+    cmp dword ptr [edx+{b('VIEW')}], 0
+    je svp_have1
+    mov eax, dword ptr [edi+{b('STAMP')}]
+    cmp eax, dword ptr [edx+{b('STAMP')}]
+    jbe svp_have
+svp_have1:
+    mov edi, edx
+svp_have:
+    mov dword ptr [edi+{b('VIEW')}], ebp
+    mov dword ptr [edi+{b('CANV')}], esi
+    pop edx
+    pop eax
+    pop ebx
+    pop ecx
+    mov dword ptr [edi+{b('X0')}], edx
+    mov dword ptr [edi+{b('Y0')}], eax
+    mov dword ptr [edi+{b('W')}], ecx
+    mov dword ptr [edi+{b('H')}], ebx
+    mov edx, 3
+    cmp dword ptr [{v('HSTR')}], 0
+    je svp_k3
+    inc edx
+svp_k3:
+    mov dword ptr [edi+{b('KX')}], edx
+    imul ecx, edx
+    mov dword ptr [edi+{b('WH')}], ecx
+    lea edx, [eax+eax*2]
+    shr edx, 1
+    mov dword ptr [edi+{b('R0')}], edx
+    add eax, ebx
+    lea eax, [eax+eax*2]
+    shr eax, 1
+    sub eax, edx
+    mov dword ptr [edi+{b('HS')}], eax
+    cmp ecx, dword ptr [edi+{b('RTK')}]
+    je svp_rt_ok
+    mov dword ptr [edi+{b('RTK')}], ecx
+    lea ebx, [edi+{SV_ROWT}]
+    xor edx, edx
+    mov eax, 256
+svp_rt:
+    mov dword ptr [ebx], edx
+    add edx, ecx
+    add ebx, 4
+    dec eax
+    jnz svp_rt
+svp_rt_ok:
+    mov ebx, dword ptr [ebp+0x10]
+    imul ebx, dword ptr [edi+{b('KX')}]
+    cmp ebx, dword ptr [edi+{b('CXK')}]
+    je svp_cx_ok
+    mov dword ptr [edi+{b('CXK')}], ebx
+    lea esi, [edi+{SV_CXT}]
+    call sv_tab
+    mov dword ptr [edi+{b('CXSUM')}], eax
+svp_cx_ok:
+    mov ebx, dword ptr [edi+{b('HS')}]
+    shr ebx, 1
+    cmp ebx, dword ptr [edi+{b('CYK')}]
+    je svp_cy_ok
+    mov dword ptr [edi+{b('CYK')}], ebx
+    lea esi, [edi+{SV_CYT}]
+    call sv_tab
+    mov dword ptr [edi+{b('CYSUM')}], eax
+svp_cy_ok:
+    mov esi, dword ptr [ebp+0x4c]
+    call sv_sum
+    mov edx, dword ptr [edi+{b('CXSUM')}]
+    sub edx, eax
+    mov esi, dword ptr [ebp+0x50]
+    call sv_sum
+    add edx, dword ptr [edi+{b('CYSUM')}]
+    sub edx, eax
+    mov dword ptr [edi+{b('DLT')}], edx
+    mov esi, dword ptr [edi+{b('CANV')}]
+    mov eax, dword ptr [esi]
+    mov dword ptr [edi+{b('BITS')}], eax
+    movzx eax, word ptr [esi+0xc]
+    mov dword ptr [edi+{b('ROW')}], eax
+    mov eax, dword ptr [esi+0x34]
+    mov dword ptr [edi+{b('CLIP')}], eax
+    mov eax, dword ptr [esi+0x38]
+    mov dword ptr [edi+{b('CLIPY')}], eax
+    lea eax, [edi+{SV_BUF}]
+    mov dword ptr [esi], eax
+    mov eax, dword ptr [edi+{b('WH')}]
+    mov word ptr [esi+8], ax
+    mov word ptr [esi+0xc], ax
+    shl eax, 16
+    mov dword ptr [esi+0x34], eax
+    mov eax, dword ptr [edi+{b('HS')}]
+    mov word ptr [esi+0xa], ax
+    shl eax, 16
+    mov dword ptr [esi+0x38], eax
+    mov esi, ebp
+    lea ebx, [edi+{b('SV')}]
+    call sv_vset
+    mov esi, {VIEW2:#x}
+    lea ebx, [edi+{SV_B['SV'] + 28}]
+    call sv_vset
+    mov ebx, dword ptr [0x35f974]
+    mov eax, dword ptr [ebx]
+    mov dword ptr [edi+{b('RATIO')}], eax
+    cmp dword ptr [edi+{b('KX')}], 3
+    je svp_r3
+    shl eax, 2
+    xor edx, edx
+    mov ecx, 3
+    div ecx
+svp_r3:
+    mov dword ptr [ebx], eax
+    mov eax, dword ptr [0x427ea8]
+    mov dword ptr [edi+{b('SUM')}], eax
+    add eax, dword ptr [edi+{b('DLT')}]
+    mov dword ptr [0x427ea8], eax
+    mov dword ptr [{v('SVCUR')}], edi
+    mov eax, 1
+    ret
+svp_pop:
+    add esp, 16
+svp_no:
+    xor eax, eax
+svp_ret:
+    ret
+
+sv_alloc:
+    cmp dword ptr [{v('SVB1')}], 0
+    jne sva_ok
+    pushad
+    mov eax, {SV_BLOCK}
+    call dword ptr [0x35f54c]
+    test eax, eax
+    jz sva_fail
+    mov dword ptr [{v('SVB0')}], eax
+    mov edi, eax
+    mov ecx, 64
+    xor eax, eax
+    rep stosd dword ptr es:[edi], eax
+    mov eax, {SV_BLOCK}
+    call dword ptr [0x35f54c]
+    test eax, eax
+    jz sva_fail
+    mov edi, eax
+    mov ecx, 64
+    xor eax, eax
+    rep stosd dword ptr es:[edi], eax
+    lea eax, [edi-256]
+    mov dword ptr [{v('SVB1')}], eax
+    popad
+sva_ok:
+    mov eax, 1
+    ret
+sva_fail:
+    mov dword ptr [{v('SVFAIL')}], 1
+    popad
+    xor eax, eax
+    ret
+
+sv_tab:
+    push ecx
+    push edx
+    push edi
+    mov edi, esi
+    mov ecx, 65536
+    xor esi, esi
+svt_l:
+    mov edx, ebx
+    xor eax, eax
+    div ecx
+    mov dword ptr [edi], eax
+    add esi, eax
+    add edi, 4
+    add ecx, 256
+    cmp ecx, 131072
+    jb svt_l
+    mov eax, esi
+    pop edi
+    pop edx
+    pop ecx
+    ret
+
+sv_sum:
+    push ecx
+    xor eax, eax
+    mov ecx, 256
+svs_l:
+    add eax, dword ptr [esi]
+    add esi, 4
+    dec ecx
+    jnz svs_l
+    pop ecx
+    ret
+
+sv_vset:
+    mov eax, dword ptr [esi+8]
+    mov dword ptr [ebx], eax
+    imul eax, dword ptr [edi+{b('KX')}]
+    mov dword ptr [esi+8], eax
+    mov eax, dword ptr [esi+0xc]
+    mov dword ptr [ebx+4], eax
+    imul dword ptr [edi+{b('HS')}]
+    idiv dword ptr [edi+{b('H')}]
+    mov dword ptr [esi+0xc], eax
+    mov eax, dword ptr [esi+0x10]
+    mov dword ptr [ebx+8], eax
+    imul eax, dword ptr [edi+{b('KX')}]
+    mov dword ptr [esi+0x10], eax
+    mov eax, dword ptr [esi+0x14]
+    mov dword ptr [ebx+12], eax
+    mov eax, dword ptr [edi+{b('HS')}]
+    shr eax, 1
+    mov dword ptr [esi+0x14], eax
+    mov eax, dword ptr [esi+0x48]
+    mov dword ptr [ebx+16], eax
+    lea eax, [edi+{SV_ROWT}]
+    mov dword ptr [esi+0x48], eax
+    mov eax, dword ptr [esi+0x4c]
+    mov dword ptr [ebx+20], eax
+    lea eax, [edi+{SV_CXT}]
+    mov dword ptr [esi+0x4c], eax
+    mov eax, dword ptr [esi+0x50]
+    mov dword ptr [ebx+24], eax
+    lea eax, [edi+{SV_CYT}]
+    mov dword ptr [esi+0x50], eax
+    ret
+
+sv_vrest:
+    mov eax, dword ptr [ebx]
+    mov dword ptr [esi+8], eax
+    mov eax, dword ptr [ebx+4]
+    mov dword ptr [esi+0xc], eax
+    mov eax, dword ptr [ebx+8]
+    mov dword ptr [esi+0x10], eax
+    mov eax, dword ptr [ebx+12]
+    mov dword ptr [esi+0x14], eax
+    mov eax, dword ptr [ebx+16]
+    mov dword ptr [esi+0x48], eax
+    mov eax, dword ptr [ebx+20]
+    mov dword ptr [esi+0x4c], eax
+    mov eax, dword ptr [ebx+24]
+    mov dword ptr [esi+0x50], eax
+    ret
+
+sv_post:
+    mov edi, dword ptr [{v('SVCUR')}]
+    test edi, edi
+    jz spo_ret
+    mov dword ptr [{v('SVCUR')}], 0
+    mov esi, dword ptr [edi+{b('CANV')}]
+    mov eax, dword ptr [edi+{b('BITS')}]
+    mov dword ptr [esi], eax
+    mov eax, dword ptr [edi+{b('W')}]
+    mov word ptr [esi+8], ax
+    mov eax, dword ptr [edi+{b('H')}]
+    mov word ptr [esi+0xa], ax
+    mov eax, dword ptr [edi+{b('ROW')}]
+    mov word ptr [esi+0xc], ax
+    mov eax, dword ptr [edi+{b('CLIP')}]
+    mov dword ptr [esi+0x34], eax
+    mov eax, dword ptr [edi+{b('CLIPY')}]
+    mov dword ptr [esi+0x38], eax
+    mov ebp, dword ptr [edi+{b('KX')}]
+    xor edx, edx
+spo_row:
+    cmp edx, dword ptr [edi+{b('H')}]
+    jae spo_rest
+    mov eax, edx
+    add eax, dword ptr [edi+{b('Y0')}]
+    lea eax, [eax+eax*2]
+    shr eax, 1
+    sub eax, dword ptr [edi+{b('R0')}]
+    imul eax, dword ptr [edi+{b('WH')}]
+    lea esi, [edi+eax+{SV_BUF}]
+    mov ebx, edx
+    imul ebx, dword ptr [edi+{b('ROW')}]
+    add ebx, dword ptr [edi+{b('BITS')}]
+    mov ecx, dword ptr [edi+{b('W')}]
+spo_px:
+    mov al, byte ptr [esi]
+    mov byte ptr [ebx], al
+    add esi, ebp
+    inc ebx
+    dec ecx
+    jnz spo_px
+    inc edx
+    jmp spo_row
+spo_rest:
+    mov esi, dword ptr [edi+{b('VIEW')}]
+    lea ebx, [edi+{b('SV')}]
+    call sv_vrest
+    mov esi, {VIEW2:#x}
+    lea ebx, [edi+{SV_B['SV'] + 28}]
+    call sv_vrest
+    mov ebx, dword ptr [0x35f974]
+    mov eax, dword ptr [edi+{b('RATIO')}]
+    mov dword ptr [ebx], eax
+    mov eax, dword ptr [edi+{b('SUM')}]
+    mov dword ptr [0x427ea8], eax
+    mov eax, dword ptr [edi+{b('W')}]
+    mov dword ptr [0x36237a], eax
+    shl eax, 15
+    mov dword ptr [0x362392], eax
+    mov dword ptr [0x36238a], eax
+    sar eax, 16
+    mov dword ptr [0x362382], eax
+    mov eax, dword ptr [edi+{b('H')}]
+    mov dword ptr [0x36237e], eax
+    shl eax, 15
+    mov dword ptr [0x36238e], eax
+    mov dword ptr [0x362396], eax
+    sar eax, 16
+    mov dword ptr [0x362386], eax
+    mov eax, dword ptr [{v('COPIES')}]
+    mov dword ptr [edi+{b('STAMP')}], eax
+    mov dword ptr [edi+{b('VALID')}], 1
+spo_ret:
+    ret
+
+sv_flush:
+    cmp dword ptr [{v('LFB')}], 0
+    je sf_ret
+    cmp dword ptr [{v('SBUF')}], 0
+    je sf_ret
+    mov edi, dword ptr [{v('SVB0')}]
+    test edi, edi
+    jz sf_ret
+    call sv_fl1
+    mov edi, dword ptr [{v('SVB1')}]
+    test edi, edi
+    jz sf_ret
+    call sv_fl1
+sf_ret:
+    ret
+
+sv_fl1:
+    cmp dword ptr [edi+{b('VALID')}], 0
+    je sf1_ret
+    mov eax, dword ptr [{v('COPIES')}]
+    sub eax, dword ptr [edi+{b('STAMP')}]
+    cmp eax, 2
+    jbe sf1_go
+    mov dword ptr [edi+{b('VALID')}], 0
+sf1_ret:
+    ret
+sf1_go:
+    xor edx, edx
+sf1_row:
+    cmp edx, dword ptr [edi+{b('H')}]
+    jae sf1_ret
+    mov eax, edx
+    add eax, dword ptr [edi+{b('Y0')}]
+    cmp dword ptr [{v('VALID')}], 0
+    je sf1_in
+    mov ecx, eax
+    sub ecx, dword ptr [{v('FY0')}]
+    cmp ecx, dword ptr [{v('FH')}]
+    jb sf1_next
+sf1_in:
+    push edx
+    imul esi, eax, 640
+    add esi, dword ptr [{v('SBUF')}]
+    add esi, dword ptr [edi+{b('X0')}]
+    lea ecx, [eax+eax*2]
+    mov ebx, ecx
+    shr ebx, 1
+    add ecx, 3
+    shr ecx, 1
+    push ecx
+    push ebx
+    mov eax, ebx
+    sub eax, dword ptr [edi+{b('R0')}]
+    imul eax, dword ptr [edi+{b('WH')}]
+    lea eax, [edi+eax+{SV_BUF}]
+    push eax
+sf1_hd:
+    mov eax, dword ptr [esp+4]
+    cmp eax, dword ptr [esp+8]
+    jae sf1_done
+    push esi
+    mov ebx, dword ptr [esp+4]
+    mov ecx, eax
+    sub ecx, dword ptr [edi+{b('R0')}]
+    imul ecx, dword ptr [edi+{b('WH')}]
+    lea ecx, [edi+ecx+{SV_BUF}]
+    imul edx, eax, {OW}
+    add edx, dword ptr [{v('LFB')}]
+    mov eax, dword ptr [edi+{b('X0')}]
+    imul eax, dword ptr [edi+{b('KX')}]
+    add edx, eax
+    cmp dword ptr [edi+{b('KX')}], 4
+    je sf1_x4
+    add edx, {OX}
+sf1_x4:
+    mov ebp, dword ptr [edi+{b('W')}]
+sf1_px:
+    mov al, byte ptr [esi]
+    cmp al, byte ptr [ebx]
+    jne sf1_skip
+    mov eax, dword ptr [ecx]
+    cmp dword ptr [edi+{b('KX')}], 4
+    jne sf1_k3
+    mov dword ptr [edx], eax
+    jmp sf1_skip
+sf1_k3:
+    mov word ptr [edx], ax
+    shr eax, 16
+    mov byte ptr [edx+2], al
+sf1_skip:
+    inc esi
+    mov eax, dword ptr [edi+{b('KX')}]
+    add ebx, eax
+    add ecx, eax
+    add edx, eax
+    dec ebp
+    jnz sf1_px
+    pop esi
+    inc dword ptr [esp+4]
+    jmp sf1_hd
+sf1_done:
+    add esp, 12
+    pop edx
+sf1_next:
+    inc edx
+    jmp sf1_row
+"""
+
 # auto-patch des tableaux par colonne (ecritures du jeu, une fois)
 sp = []
 for a, o, op in SITES_A: sp.append(f"    mov eax, dword ptr [{v('NEWA')}]\n    mov dword ptr [{M(a) + o:#x}], eax")
@@ -1817,6 +2352,26 @@ for a, o, op in SITES_B4: sp.append(f"    mov eax, dword ptr [{v('NEWB')}]\n    
 ASM = ASM.replace('SELFPATCH\n', '\n'.join(sp) + '\n')
 # adresses du jeu selon la version (pas celles deja anglaises : VIEW1/VIEW2 et les sites ci-dessus le sont)
 ASM = re.sub(r'0x[0-9a-fA-F]{5,6}', lambda m: '0x%x' % (M(int(m.group(), 16)) if int(m.group(), 16) in MAP and EN else int(m.group(), 16)), ASM)
+
+
+SV_ASM = re.sub(r'0x[0-9a-fA-F]{5,6}', lambda m: '0x%x' % (M(int(m.group(), 16)) if int(m.group(), 16) in MAP and EN else int(m.group(), 16)), SV_ASM)
+
+
+def sv_assemble():
+    ks = Ks(KS_ARCH_X86, KS_MODE_32)
+    a = bytes(ks.asm(SV_ASM, 0x100000)[0])
+    assert a == bytes(ks.asm(SV_ASM, 0x200000)[0]), 'SV code not position independent'
+    off = {}
+    for name in ('sv_post', 'sv_flush'):
+        r = bytes(ks.asm(SV_ASM + '\n    mov eax, %s\n' % name, 0)[0])
+        off[name] = struct.unpack('<I', r[-4:])[0]
+    assert SV_ASM.lstrip().startswith('sv_pre:')
+    assert len(a) <= 0x7E0, len(a)
+    return a, off
+
+
+SV_CODE, SV_OFF = sv_assemble()
+ASM = ASM.replace('SVOFF_POST', str(SV_OFF['sv_post'])).replace('SVOFF_FLUSH', str(SV_OFF['sv_flush']))
 
 
 def assemble():
@@ -1895,6 +2450,8 @@ def export(path, cls):
            '    public const uint FpsValue = 0x%x, FpsColour = 0x%x;   // frames per second shown top right (0 = hidden), palette index' % (V['FPSV'], V['FPSCOL']),
            '    public const uint PoolVar = 0x%x;' % M(0x43e360),
            '    public const uint XCode = 0x%x;' % V['XCODE'],
+           '    public const uint SvPtr = 0x%x, SvOff = 0x%x;   // small cockpit views in HD: code at the XCODE page + SvOff, then its address in SvPtr' % (V['SVPTR'], SV_XOFF),
+           '    public static readonly byte[] SvCode = %s;' % arr(SV_CODE),
            '    public const uint SpeedDone = 0x%x, SpeedOn = 0x%x, SpeedBad = 0x%x;   // speed fixes written by the game: done, bit per group' % (
                V['GPDONE'], V['GPOK'], V['GPBAD']),
            '    public static readonly string[] SpeedNames = { %s };' % ', '.join('"%s"' % n for n, r in GP_GROUPS),
