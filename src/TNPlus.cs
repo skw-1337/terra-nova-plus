@@ -851,7 +851,7 @@ static partial class TNPlus
     static readonly string[] PRESET_INFO = {
         "the game as it was",
         "sharper 320x400, freelook, a bit more view and detail",
-        "everything on: HD 848x480 in true 16:9, max view and detail" };
+        "everything on: HD 1280x720 in true 16:9, max view, dynamic SHARPER detail" };
     static int Display = 2;                         // 0 original, 1 320x400, 2 HD 640x400
 
     // HD is 640x400, or DOSBox's VESA 848x480 in true 16:9: the labels follow the settings, the messages what runs
@@ -909,8 +909,8 @@ static partial class TNPlus
         Display = p;                                // 0 original, 1 320x400, 2 HD (falls back to 320x400 by itself)
         OptWide = p == 2;
         OptWideTrue = p == 2;
-        OptHd720 = false;
-        OptDetail = p;                              // GAME / SHARP / SHARPER
+        OptHd720 = p == 2;                          // BEST: true 16:9 in 1280x720
+        OptDetail = p;                              // GAME / SHARP / SHARPER (dynamic in HD: terrain_fps)
         OptDistance = p;                            // NORMAL / FAR / MAX
         OptFreelook = p > 0;                        // noclip is a cheat: left to the player
     }
@@ -918,7 +918,7 @@ static partial class TNPlus
     static int CurrentPreset()
     {
         for (int p = 0; p < 3; p++)
-            if (Display == p && OptWide == (p == 2) && OptWideTrue == (p == 2) && !OptHd720 && OptDetail == p && OptDistance == p
+            if (Display == p && OptWide == (p == 2) && OptWideTrue == (p == 2) && OptHd720 == (p == 2) && OptDetail == p && OptDistance == p
                 && OptFreelook == (p > 0))
                 return p;
         return -1;
