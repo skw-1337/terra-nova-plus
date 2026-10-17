@@ -795,7 +795,7 @@ static partial class TNPlus
     static uint aStereo;
     static bool launchedWide = false;               // DOSBox started by us with the 16:9 overlay
     static bool OptWideAttach = false;              // ini only (tests): 16:9 also on a game we attached to
-    static bool OptInPlaceAttach = false;           // ini only (tests): in-place speed fixes on a DOSBox started before TN+
+    static bool OptInPlaceAttach = false;           // ini only, TESTS ONLY (not safe): in-place fixes on a DOSBox TN+ attached to
     static bool OptWideTrue = false;                // 16:9: false STRETCHED (DOSBox stretches, camera corrected), true TRUE
     static bool launchedTrue = false;               // DOSBox started by us for the true 16:9 (VESA 848x480)
     static readonly string[] WIDE_NAMES = { "OFF", "STRETCHED", "TRUE", "TRUE 720" };
@@ -1492,6 +1492,7 @@ static partial class TNPlus
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
                     gameSeen = false;
+                    SpanGameLeft();
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
                     hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
@@ -1503,6 +1504,7 @@ static partial class TNPlus
                 }
                 if (!gameSeen) { gameSeen = true; int g; pidGames.TryGetValue(gamePid, out g); pidGames[gamePid] = g + 1; }
                 bool fg = ForegroundIsGame();
+                SpanTick(now);
 
                 // --- HD: injected as soon as the game is loaded, before its first mission
                 if (OptHD && hdState == 0 && now - lastHd > 0.5) { lastHd = now; TryHdInject(); }
@@ -2030,10 +2032,10 @@ static partial class TNPlus
     // twice as fast per pixel as the rebuilt copies. Checked through a SHA-256 of the pristine bytes (slot
     // placeholders, entries without ir_fix's jmp); moved instructions are copied from memory before anything is
     // written. 1 = done, 0 = memory not readable yet, -1 = not pristine (ir_fix then).
-    // In-place rewrites from outside (IR in place, spans) only on the first game start of a DOSBox process TN+ has
-    // watched from its start: DOSBox keeps the code it translated while it runs, even across game starts, and a block
-    // translated from the original code before the rewrite would keep running against the new bytes (a crash).
-    static readonly DateTime tnStart = Process.GetCurrentProcess().StartTime;
+    // IR in place (rewritten from outside) only on the first game start of the DOSBox this TN+ started (watched from its
+    // start to its exit): DOSBox keeps the code it translated while it runs, even across game starts, and a block
+    // translated from the original code before the rewrite would keep running against the new bytes (a crash). Every
+    // detach / attach counts as a start. Spans: TNPlusSpanFix.cs (same rule, a few starts, checked all along).
     static readonly Dictionary<int, int> pidGames = new Dictionary<int, int>();   // game starts seen per DOSBox
     static bool gameSeen = false;
     static bool InPlaceSafe()
@@ -2041,9 +2043,7 @@ static partial class TNPlus
         int n;
         pidGames.TryGetValue(gamePid, out n);
         if (n != 1) return false;
-        if ((launched != null && gamePid == launched.Id) || OptInPlaceAttach) return true;
-        try { return Process.GetProcessById(gamePid).StartTime >= tnStart; }
-        catch { return false; }
+        return (launched != null && gamePid == launched.Id && !launchedDemo) || OptInPlaceAttach;
     }
 
     static int TryIrInPlace()
