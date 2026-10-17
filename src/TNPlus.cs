@@ -55,7 +55,7 @@ static partial class TNPlus
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
     static bool OptFreelook = true, OptNoclip = false, OptForce400 = true, OptWide = true, OptHD = false;   // defaults = preset BEST
-    static int OptDistance = 2;                     // 0 NORMAL, 1 FAR, 2 MAX
+    static int OptDistance = 1;                     // 0 NORMAL, 1 FAR
     static bool OptStereoFix = false;                // DOSBox: swap the Sound Blaster stereo (the game's SB16 driver reverses it)
     // how DOSBox scales the picture to the screen. The editions use Direct3D with nearest pixels: on most screens the
     // factor isn't a whole number (848 columns x 3.02 on 2560, 400 lines x 3.6 on 1440), pixels get uneven sizes and
@@ -97,7 +97,7 @@ static partial class TNPlus
     static readonly int[] CYCLE_CHOICES = { 500000, 700000, 1000000, 1400000, 1800000, 2200000, 0 };
     static string GameDir = "";
 
-    static readonly string[] DIST_NAMES = { "NORMAL", "FAR", "MAX" };
+    static readonly string[] DIST_NAMES = { "NORMAL", "FAR" };
     static readonly string[] DETAIL_NAMES = { "GAME", "SHARP", "SHARPER" };
     // terrain rings (full mesh, 1 point in 2, in 4, in 8) up to these distances; the game's MEDIUM is 30/64/100/240.
     // ULTRA (60/120/240/480) froze the game after a few minutes: the far ring stays close to the original.
@@ -499,7 +499,9 @@ static partial class TNPlus
         smoothState = -1;
         Say("Smooth terrain unavailable: unsupported game version", 300, 300);
     }
-    static readonly int[] DIST_R = { 0, 180, 600 }; // fog radius (0 = the game's own weather value)
+    // fog radius (0 = the game's own weather value). MAX (600, no fog in sight) was dropped: the edge of the map
+    // showed, which breaks the picture; an old ini's MAX is read as FAR.
+    static readonly int[] DIST_R = { 0, 180 };
 
     // ------------------------------------------------------------------ game constants
     const int PITCH_MIN = -7187, PITCH_MAX = 6127;  // the game's own head pitch limits
@@ -851,7 +853,7 @@ static partial class TNPlus
     static readonly string[] PRESET_INFO = {
         "the game as it was",
         "sharper 320x400, freelook, a bit more view and detail",
-        "everything on: HD 1280x720 in true 16:9, max view and detail" };
+        "everything on: HD 1280x720 in true 16:9, far view, max detail" };
     static int Display = 2;                         // 0 original, 1 320x400, 2 HD 640x400
 
     // HD is 640x400, or DOSBox's VESA 848x480 in true 16:9: the labels follow the settings, the messages what runs
@@ -911,14 +913,14 @@ static partial class TNPlus
         OptWideTrue = p == 2;
         OptHd720 = p == 2;                          // BEST: true 16:9 in 1280x720
         OptDetail = p;                              // GAME / SHARP / SHARPER (dynamic in HD: terrain_fps)
-        OptDistance = p;                            // NORMAL / FAR / MAX
+        OptDistance = Math.Min(p, 1);               // NORMAL / FAR
         OptFreelook = p > 0;                        // noclip is a cheat: left to the player
     }
 
     static int CurrentPreset()
     {
         for (int p = 0; p < 3; p++)
-            if (Display == p && OptWide == (p == 2) && OptWideTrue == (p == 2) && OptHd720 == (p == 2) && OptDetail == p && OptDistance == p
+            if (Display == p && OptWide == (p == 2) && OptWideTrue == (p == 2) && OptHd720 == (p == 2) && OptDetail == p && OptDistance == Math.Min(p, 1)
                 && OptFreelook == (p > 0))
                 return p;
         return -1;
@@ -1047,7 +1049,7 @@ static partial class TNPlus
                 case '1': Display = (Display + 1) % 3; break;
                 case '2': SetWideMode((WideMode() + 1) % 4); break;
                 case '3': OptDetail = (OptDetail + 1) % 3; break;
-                case '4': OptDistance = (OptDistance + 1) % 3; break;
+                case '4': OptDistance = (OptDistance + 1) % DIST_NAMES.Length; break;
                 case 'O': OptObjDist = (OptObjDist + 1) % 3; break;
                 case 'V': OptFov = (OptFov + 1) % FOV_NAMES.Length; break;
                 case '5': OptFreelook = !OptFreelook; break;
@@ -1573,7 +1575,7 @@ static partial class TNPlus
                 // --- view distance key + periodic fixes (fog, 320x400, widescreen)
                 bool d = fg && ((plain && Down(vkDist)) || toolMouse(2));
                 bool changed = d && !prevD; prevD = d;
-                if (changed) { distMode = (distMode + 1) % 3; Say("View distance: " + DIST_NAMES[distMode], 700 + 250 * distMode, 90); }
+                if (changed) { distMode = (distMode + 1) % DIST_NAMES.Length; Say("View distance: " + DIST_NAMES[distMode], 700 + 250 * distMode, 90); }
                 if (changed || now - lastFix > 1.0) { lastFix = now; PeriodicFixes(distMode); }
                 AdaptTerrain(now);
                 FpsCounter(now);
@@ -2823,7 +2825,7 @@ static partial class TNPlus
                 {
                     case "freelook": OptFreelook = v != "0"; break;
                     case "noclip": OptNoclip = v != "0"; break;
-                    case "view_distance": OptDistance = Math.Max(0, Array.IndexOf(DIST_NAMES, v.ToUpperInvariant())); break;
+                    case "view_distance": OptDistance = v.ToUpperInvariant() == "MAX" ? 1 : Math.Max(0, Array.IndexOf(DIST_NAMES, v.ToUpperInvariant())); break;
                     case "terrain_detail": OptDetail = Math.Max(0, Array.IndexOf(DETAIL_NAMES, v.ToUpperInvariant())); break;
                     case "force_320x400": oldForce = v != "0"; break;
                     case "display": Display = Math.Max(0, Array.IndexOf(DISPLAY_NAMES, v.ToUpperInvariant())); haveDisplay = true; break;
@@ -2888,7 +2890,7 @@ static partial class TNPlus
                 "; GAME, DEMO 1 or DEMO 2\r\nlaunch = " + TARGET_NAMES[LaunchTarget] + "\r\n" +
                 "freelook = " + (OptFreelook ? 1 : 0) + "\r\n" +
                 "noclip = " + (OptNoclip ? 1 : 0) + "\r\n" +
-                "; NORMAL, FAR or MAX\r\nview_distance = " + DIST_NAMES[OptDistance] + "\r\n" +
+                "; NORMAL or FAR (the fog pushed back)\r\nview_distance = " + DIST_NAMES[OptDistance] + "\r\n" +
                 "; GAME, SHARP or SHARPER (more terrain detail in the distance)\r\nterrain_detail = " + DETAIL_NAMES[OptDetail] + "\r\n" +
                 "; SHARPER with HD: frame rate kept by drawing the smooth terrain less far when needed (24 to 48 cells), 0 = always 48\r\nterrain_fps = " + OptTerrainFps + "\r\n" +
                 "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: the 3D drawn in 848 columns),\r\n" +
