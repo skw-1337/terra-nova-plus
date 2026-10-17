@@ -166,6 +166,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `fps_counter` | `1` | 1280x720: small frame counter top right |
 | `speed_fixes` | `1` | 1280x720: the speed fixes in the game's 3D code, `0` = leave the game's code as it is |
 | `small_views` | `1` | 1280x720: the cockpit cameras drawn in HD |
+| `update_check` | `1` | the launcher asks GitHub for the latest release number at start-up and shows UP TO DATE or UPDATE (click opens the download page), `0` = no check |
 | `wide_hud` | `1` | true 16:9: `1` cockpit and HUD stretched to the full width, `0` centred at their own proportions |
 | `edge_objects` | `1` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta) |
 | `view_distance` | `FAR` | `NORMAL` or `FAR` at start |
