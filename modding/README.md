@@ -95,7 +95,7 @@ Terra Nova Plus makes object 3 0x6000 bytes bigger in the exe file. The original
 | 0x46A100 – 0x46A19E | terrain sectors |
 | 0x46A1A0 – 0x46A1F7 | game keys: stuck key sweep |
 | 0x46A200 – 0x46A2AB | true 16:9 camera |
-| 0x46A300 – 0x46AA16 | edge objects code |
+| 0x46A300 – 0x46AA16 | edge objects code (bit masks at 0x46A790) |
 | 0x46AA20 – 0x46AE54 | game keys code |
 | 0x46AE54 – 0x46B000 | free |
 | 0x46B000 – 0x46B024 | heap headers (the game's, not ours) |

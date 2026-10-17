@@ -1010,7 +1010,7 @@
   {
    "from": "0x46A300",
    "to": "0x46AA16",
-   "what": "edge objects code"
+   "what": "edge objects code (bit masks 0x46A790-0x46A798)"
   },
   {
    "from": "0x46AA20",
