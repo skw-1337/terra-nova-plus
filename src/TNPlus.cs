@@ -1522,7 +1522,7 @@ static partial class TNPlus
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
                     (OptPhysFix && descrFixState == 0) || fillerFixState == 0 || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1 ||
-                    (OptSpeedFix && affineState == 0) || (OptSmallViews && smallState == 0)))
+                    (OptSpeedFix && affineState == 0) || smallState == 0))
                 {
                     lastCave = now;
                     if (zoomFixState == 0) TryZoomFix();
@@ -1532,7 +1532,7 @@ static partial class TNPlus
                     if (irFixState == 0 || irFixState == 1) TryIrFix();
                     if (viewFixState == 0 || viewFixState == 1) TryViewFix();
                     if (OptSpeedFix && affineState == 0) TryAffineFix();
-                    if (OptSmallViews && smallState == 0) TrySmallViews();
+                    if (smallState == 0) TrySmallViews();
                 }
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
@@ -1759,6 +1759,59 @@ static partial class TNPlus
         Write(aTerrain + 0x5C, r);
     }
 
+    // The cockpit cameras (MFD views) have rings of their own: polygons up to 9 cells, columns 1 point in 2 from 20 cells:
+    // drawn in HD (small_views) that shows as stair steps and blurred ground. With SHARP / SHARPER they get polygons up
+    // to 16 / 24 cells, full columns to 40 / 48, then 1 in 2, 4, 8 (about -2 % / -5 % fps while a camera is shown; the
+    // main view's rings cost -8 %). Only over the game's own 5-ring layout. The game keeps a zoomed copy of the
+    // distances (from, to x the camera's zoom scale, target camera): written with the scale it has now, and once ours
+    // are in place (types, steps, unscaled distances) nothing more is written.
+    static readonly int[][] SMALL_ENDS = { null, new[] { 16, 40, 80, 150, 256 }, new[] { 24, 48, 96, 160, 256 } };
+    static readonly int[] SMALL_STEPS_GAME = { 1, 1, 2, 2, 4 }, SMALL_STEPS = { 1, 1, 2, 4, 8 };
+    static void FixSmallRings()
+    {
+        if (!OptSmallViews) return;
+        int[] ends = SMALL_ENDS[OptDetail];
+        for (int s = 0; s < 3; s++)
+        {
+            uint blk = ReadUInt(HdPayload.SvPtr + 4 + 4 * (uint)s);
+            if (blk == 0 || !Inside(blk, 4)) continue;
+            uint v = ReadUInt(blk);
+            if (v == 0 || !Inside(v, 0xA8)) continue;
+            byte[] b = Read(v, 0xA8);
+            if (b == null || BitConverter.ToInt16(b, 0x5A) != 5 || BitConverter.ToInt16(b, 0x58) != 1) continue;
+            bool game = true, ours = true;
+            int from = 0;
+            for (int k = 0; k < 5; k++)
+            {
+                int o = 0x5C + 12 * k;
+                if (b[o] != (k == 0 ? 2 : 0)) { game = ours = false; break; }
+                int st = BitConverter.ToInt16(b, o + 5);
+                game &= st == SMALL_STEPS_GAME[k];
+                ours &= st == SMALL_STEPS[k] && BitConverter.ToInt16(b, o + 7) == from && BitConverter.ToInt16(b, o + 9) == ends[k];
+                from = ends[k];
+            }
+            if (ours || !game) continue;
+            int p1 = BitConverter.ToInt16(b, 0x5C + 48 + 3), p2 = BitConverter.ToInt16(b, 0x5C + 48 + 9);
+            double sc = p1 > 0 && p2 > 0 ? (double)p1 / p2 : 1.0;       // the game's zoom scale on this camera now
+            byte[] r = new byte[60];
+            from = 0;
+            for (int k = 0; k < 5; k++)
+            {
+                r[12 * k] = (byte)(k == 0 ? 2 : 0);
+                BitConverter.GetBytes((short)Math.Round(from * sc)).CopyTo(r, 12 * k + 1);
+                BitConverter.GetBytes((short)Math.Round(ends[k] * sc)).CopyTo(r, 12 * k + 3);
+                BitConverter.GetBytes((short)SMALL_STEPS[k]).CopyTo(r, 12 * k + 5);
+                BitConverter.GetBytes((short)from).CopyTo(r, 12 * k + 7);
+                BitConverter.GetBytes((short)ends[k]).CopyTo(r, 12 * k + 9);
+                from = ends[k];
+            }
+            Write(v + 0x5C, r);
+            byte[] d = new byte[6];
+            for (int k = 0; k < 3; k++) BitConverter.GetBytes((short)Math.Round(ends[k + 1] * sc)).CopyTo(d, 2 * k);
+            Write(v + 0x30, d);
+        }
+    }
+
     static void PeriodicFixes(int distMode)
     {
         // view distance: rewrite the fog table AND its check copy in one write (they are contiguous;
@@ -1778,6 +1831,7 @@ static partial class TNPlus
         }
         // terrain detail: rewrite the main view's rings when the game has (re)loaded its own preset
         if (OptDetail > 0 && haveDetail) FixDetail(DETAIL_RINGS[OptDetail]);
+        if (OptDetail > 0 && smallState == 1) FixSmallRings();
         // 320x400: same path as the options "Accept" button; applied by the game on the next mission frame
         // (the HD mode only kicks in for 320x400 missions)
         if ((OptForce400 || OptHD) && have400)
@@ -2143,10 +2197,10 @@ static partial class TNPlus
         Say("Polygon speed fix (affine) ON", 0);
     }
 
-    // Small cockpit views (the two MFD cameras) drawn in HD too, 1280x720 only (tools/hd720.py, SV_ASM): their code is
-    // ours (no game code in it), position independent, copied into a page of the HD buffer (XCode) the game never ran
-    // code from, then its address goes to the HD code's pointer, which calls it around every view render and at the
-    // screen copy. Off: ini small_views = 0.
+    // HD 1280x720 module (tools/hd720.py, SV_ASM): the cockpit cameras (MFD views) drawn in HD (ini small_views) and the
+    // main view's pick fix (squad orders by clicking a unit in the 3D view). Our code only (no game code in it),
+    // position independent, copied into the HD buffer (XCode) after the affine block, in a page the game never ran code
+    // from; then its address goes to the HD code's pointer, which calls it around every view render and at the screen copy.
     static bool OptSmallViews = true;               // ini small_views
     static int smallState = 0;          // 0 to do, 1 on, -1 not for this display
     static void TrySmallViews()
@@ -2155,8 +2209,9 @@ static partial class TNPlus
         if (hdState != 1) return;
         uint x = ReadUInt(HdPayload.XCode);
         if (x == 0) return;                                         // no HD buffer yet
-        uint P = ((x + 0xFFF) & ~0xFFFu) + HdPayload.SvOff;
-        if (P + HdPayload.SvCode.Length > x + 12288) { smallState = -1; return; }
+        uint page = (x + 0xFFF) & ~0xFFFu, P = page + HdPayload.SvOff;
+        if (P + HdPayload.SvCode.Length > page + 0x2000 || P + HdPayload.SvCode.Length > x + 12288) { smallState = -1; return; }
+        WriteInt(HdPayload.SvOn, OptSmallViews ? 1 : 0);
         uint cur = ReadUInt(HdPayload.SvPtr);
         if (cur == P) { smallState = 1; return; }
         if (cur != 0) { smallState = -1; return; }
@@ -2164,7 +2219,7 @@ static partial class TNPlus
         if (!Same(Read(P, HdPayload.SvCode.Length), HdPayload.SvCode)) return;
         WriteInt(HdPayload.SvPtr, (int)P);
         smallState = 1;
-        Say("Cockpit cameras in HD ON", 0);
+        if (OptSmallViews) Say("Cockpit cameras in HD ON", 0);
     }
 
     // Normal view: the same trouble in the two per-column routines the 3D library runs for each polygon edge: they

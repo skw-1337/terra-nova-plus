@@ -48,7 +48,7 @@ V = {k: DATA + 4 * i for i, k in enumerate(
     'S_CANVAS S_W0 S_H0 S_CX W_CUR ROWK CXK CXSUM DLT S_V1_8 S_V2_8 S_V1_10 S_V2_10 '
     'FX0 FY0 FW FH FWW ROWN HX0 HX1 HROW PREVB SHADB FORCE SIG TRIED SIDE FSIDE SIDEOK HSTR HUDW HCROW XCODE '
     'H3 S_CLIPY S_V1_C S_V2_C S_V1_14 S_V2_14 S_V1_50 S_V2_50 CYTB CYK CYSUM VY0 VB0 ROWT NEWA NEWB TMP '
-    'RA RB ERS ERO HRW FPSV FPSCOL FD GPDONE GPOK GPBAD ROWB SVPTR SVB0 SVB1 SVCUR SVFAIL'.split())}
+    'RA RB ERS ERO HRW FPSV FPSCOL FD GPDONE GPOK GPBAD ROWB SVPTR SVB0 SVB1 SVB2 SVCUR SVFAIL SVON S_PICK S_PICKF'.split())}
 ROWTAB = DATA + 0x200                             # tableaux par ligne : sites a repointer, puis copies (ROW_SITES)
 assert max(V.values()) < ROWTAB
 CXTAB = DATA + 0x500                              # 256 x 4
@@ -295,6 +295,10 @@ aa_ret:
 pre:
     cmp byte ptr [ebp+0x2c], 0
     je pre_go
+    push eax
+    mov eax, SVOFF_DROP
+    call svcall
+    pop eax
     call 0x2ad18c
     ret
 pre_go:
@@ -512,12 +516,12 @@ pre_cy_ok:
     mov dword ptr [{v('S_SUM')}], eax
     add eax, dword ptr [{v('DLT')}]
     mov dword ptr [0x427ea8], eax
+    mov eax, SVOFF_MPRE
+    call svcall
     jmp pre_out
 pre_lo:
-    mov eax, dword ptr [{v('SVPTR')}]
-    test eax, eax
-    jz pl_old
-    call eax
+    xor eax, eax
+    call svcall
     test eax, eax
     jnz pre_out
 pl_old:
@@ -531,6 +535,20 @@ pl_old:
     mov dword ptr [{v('RHALF')}], 1
 pre_out:
     popad
+    ret
+
+svcall:
+    push edx
+    mov edx, dword ptr [{v('SVPTR')}]
+    test edx, edx
+    jz svc_no
+    add eax, edx
+    call eax
+    pop edx
+    ret
+svc_no:
+    xor eax, eax
+    pop edx
     ret
 
 sum256:
@@ -551,9 +569,8 @@ post_go:
     cmp dword ptr [{v('SVCUR')}], 0
     je pg_nosv
     pushad
-    mov eax, dword ptr [{v('SVPTR')}]
-    add eax, SVOFF_POST
-    call eax
+    mov eax, SVOFF_POST
+    call svcall
     popad
 pg_nosv:
     cmp dword ptr [{v('RHALF')}], 0
@@ -654,6 +671,8 @@ post_px8t:
     jb post_px1
     jmp post_px4
 post_rest:
+    mov eax, SVOFF_MPOST
+    call svcall
     mov ebx, dword ptr [0x35f974]
     mov eax, dword ptr [{v('S_RATIO')}]
     mov dword ptr [ebx], eax
@@ -1024,12 +1043,8 @@ fl_skip:
     cmp dword ptr [{v('ROWN')}], 400
     jb fl_row
 fl_end:
-    mov eax, dword ptr [{v('SVPTR')}]
-    test eax, eax
-    jz fe_nosv
-    add eax, SVOFF_FLUSH
-    call eax
-fe_nosv:
+    mov eax, SVOFF_FLUSH
+    call svcall
     call fps_draw
     mov dword ptr [{v('FORCE')}], 0
 fl_out:
@@ -1835,25 +1850,40 @@ rainx_ret:
     pop edx
     ret
 """
-# ---------------------------------------------------------------- small cockpit views in HD (MFD cameras)
-# Every other view the render function draws (the two MFD cameras: 82x104 game pixels in the cockpit) gets the main
-# view's treatment at a smaller scale: its canvas points to a buffer of its own, KX x wider (4 with the HUD stretched,
-# 3 centred) and 1.5 x taller, its view fields and 1/x, 1/y tables follow (the tables' checksum too), the library's
-# pixel ratio x KX/3; after the render the canvas gets every KX-th column back (the game composes its screen as
-# before) and the flush puts the HD pixels on the screen wherever the game's pixel is still that sample (the HUD
-# drawn over the view keeps its own). Position independent: TN+ copies it into the XCODE buffer (page + 0x1800),
-# then sets SVPTR. Two slots, allocated on the first small view; per slot a block: variables, row offsets, the two
-# tables, the buffer (up to 128 x 132 game pixels).
+# ---------------------------------------------------------------- HD 720 module (cockpit cameras in HD, pick fix)
+# Placed by TN+ in the XCODE buffer (first full page + SV_XOFF, after the affine block), then SVPTR; the HD code calls
+# it through svcall. Position independent.
+# Cockpit cameras (MFD views, 82x104 game pixels): every view the render function draws other than the main one gets
+# the main view's treatment at a smaller scale: its canvas points to a buffer of its own, KX x wider (4 with the HUD
+# stretched, 3 centred) and 1.5 x taller, its view fields and 1/x, 1/y tables follow (the tables' checksum too), the
+# library's pixel ratio x KX/3; after the render the canvas gets one sample per KX columns back (the game composes its
+# screen as before) and the flush puts the HD pixels wherever the game's pixel is still that sample, while the camera's
+# rectangle still holds the camera (at most 1/4 of other pixels: HUD text over it; a 2D page, static or another
+# picture means nothing is drawn). Rear and side views: the game mirrors the canvas after the render (widget flag
+# canvas-2 bit 0x40, columns c < S and c >= W-S swapped, S = 2 x (W >> 2)): the HD rows get the same mirror and the
+# samples come from the other end of each group, so the screen and the HD buffer agree. A degraded render ([view+0x2c]
+# set: the game's own path) drops the slot. Three slots (three MFD views), keyed by view, allocated on first use.
+# A camera drawn over the main view's 3D rows (full view) stays the game's: those rows are the main composition's.
+# Pick fix: the main view's pick pointer (VIEW2+0xb1, a pixel the renderer tests to find the object under the mouse,
+# squad orders by click) points into the game canvas: moved to the same pixel of the HD buffer while the HD view is
+# drawn, put back after.
 SV_B = dict(VIEW=0, CANV=4, BITS=8, W=12, H=16, ROW=20, CLIP=24, CLIPY=28, X0=32, Y0=36, KX=40, WH=44, HS=48, R0=52,
-            STAMP=56, CXK=60, CYK=64, SV=68, RATIO=124, SUM=128, DLT=132, CXSUM=136, CYSUM=140, VALID=144, RTK=148)
+            STAMP=56, CXK=60, CYK=64, SV=68, RATIO=124, SUM=128, DLT=132, CXSUM=136, CYSUM=140, VALID=144, RTK=148,
+            MIRROR=152, SS=156)
 SV_ROWT, SV_CXT, SV_CYT, SV_BUF = 256, 1280, 2304, 3328
 SV_WMAX, SV_HMAX = 128, 132                       # game pixels
 SV_BLOCK = SV_BUF + 4 * SV_WMAX * 216             # 216 HD rows: 1.5 x 132 + 1 and a margin
-SV_XOFF = 0x1800                                  # in the XCODE buffer's first full page + 0x1800 (after affine)
+SV_XOFF = 0x17C0                                  # XCODE first full page + 0x17C0: after the affine block (0x1000-0x17BE)
+SV_MAX = 0x1FE0 - SV_XOFF
+MFD0 = 0x390010 if EN else 0x3900C0               # the three MFD camera views, 0xBA bytes apart
 b = lambda k: '%d' % SV_B[k]
+SVB = V['SVB0']
+L_Y, L_GP, L_GLO, L_GHI, L_R, L_REND, L_SAMP, L_SB = 0, 4, 8, 12, 16, 20, 24, 28
 SV_ASM = f"""
 sv_pre:
     xor eax, eax
+    cmp dword ptr [{v('SVON')}], 0
+    je svp_ret
     cmp dword ptr [0x35f978], 19
     jne svp_ret
     cmp dword ptr [{v('HBUF')}], 0
@@ -1902,6 +1932,15 @@ sv_pre:
     lea edi, [eax+ebx]
     cmp edi, 400
     ja svp_no
+    cmp dword ptr [{v('VALID')}], 0
+    je svp_vm
+    cmp edi, dword ptr [{v('FY0')}]
+    jbe svp_vm
+    mov edi, dword ptr [{v('FY0')}]
+    add edi, dword ptr [{v('FH')}]
+    cmp eax, edi
+    jb svp_no
+svp_vm:
     push ecx
     push ebx
     push eax
@@ -1909,21 +1948,46 @@ sv_pre:
     call sv_alloc
     test eax, eax
     jz svp_pop
-    mov edi, dword ptr [{v('SVB0')}]
-    mov edx, dword ptr [{v('SVB1')}]
-    cmp dword ptr [edi+{b('VIEW')}], ebp
-    je svp_have
-    cmp dword ptr [edx+{b('VIEW')}], ebp
-    je svp_have1
-    cmp dword ptr [edi+{b('VIEW')}], 0
-    je svp_have
-    cmp dword ptr [edx+{b('VIEW')}], 0
-    je svp_have1
-    mov eax, dword ptr [edi+{b('STAMP')}]
-    cmp eax, dword ptr [edx+{b('STAMP')}]
-    jbe svp_have
-svp_have1:
+    mov ebx, {SVB:#x}
+    mov ecx, 3
+    xor edi, edi
+    xor edx, edx
+svp_f:
+    mov eax, dword ptr [ebx]
+    cmp dword ptr [eax+{b('VIEW')}], ebp
+    je svp_take
+    cmp dword ptr [eax+{b('VIEW')}], 0
+    jne svp_fo
+    test edi, edi
+    jnz svp_fn
+    mov edi, eax
+    jmp svp_fn
+svp_fo:
+    push ecx
+    mov ecx, dword ptr [eax+{b('STAMP')}]
+    cmp ecx, dword ptr [{v('COPIES')}]
+    je svp_fo2
+    test edx, edx
+    jz svp_fo1
+    cmp ecx, dword ptr [edx+{b('STAMP')}]
+    jae svp_fo2
+svp_fo1:
+    mov edx, eax
+svp_fo2:
+    pop ecx
+svp_fn:
+    add ebx, 4
+    dec ecx
+    jnz svp_f
+    test edi, edi
+    jnz svp_have
     mov edi, edx
+    test edi, edi
+    jz svp_pop
+    mov dword ptr [edi+{b('VALID')}], 0
+    jmp svp_have
+svp_take:
+    mov edi, eax
 svp_have:
     mov dword ptr [edi+{b('VIEW')}], ebp
     mov dword ptr [edi+{b('CANV')}], esi
@@ -1935,6 +1999,23 @@ svp_have:
     mov dword ptr [edi+{b('Y0')}], eax
     mov dword ptr [edi+{b('W')}], ecx
     mov dword ptr [edi+{b('H')}], ebx
+    mov edx, ecx
+    shr edx, 2
+    add edx, edx
+    mov dword ptr [edi+{b('SS')}], edx
+    xor edx, edx
+    cmp ebp, {MFD0:#x}
+    je svp_mf
+    cmp ebp, {MFD0 + 0xBA:#x}
+    je svp_mf
+    cmp ebp, {MFD0 + 0x174:#x}
+    jne svp_nm
+svp_mf:
+    test byte ptr [esi-2], 0x40
+    jz svp_nm
+    inc edx
+svp_nm:
+    mov dword ptr [edi+{b('MIRROR')}], edx
     mov edx, 3
     cmp dword ptr [{v('HSTR')}], 0
     je svp_k3
@@ -2043,34 +2124,32 @@ svp_ret:
     ret
 
 sv_alloc:
-    cmp dword ptr [{v('SVB1')}], 0
+    cmp dword ptr [{v('SVB2')}], 0
     jne sva_ok
     pushad
+    xor ebx, ebx
+sva_l:
+    push ebx
     mov eax, {SV_BLOCK}
     call dword ptr [0x35f54c]
+    pop ebx
     test eax, eax
     jz sva_fail
-    mov dword ptr [{v('SVB0')}], eax
+    mov dword ptr [ebx*4+{SVB:#x}], eax
     mov edi, eax
     mov ecx, 64
     xor eax, eax
     rep stosd dword ptr es:[edi], eax
-    mov eax, {SV_BLOCK}
-    call dword ptr [0x35f54c]
-    test eax, eax
-    jz sva_fail
-    mov edi, eax
-    mov ecx, 64
-    xor eax, eax
-    rep stosd dword ptr es:[edi], eax
-    lea eax, [edi-256]
-    mov dword ptr [{v('SVB1')}], eax
+    inc ebx
+    cmp ebx, 3
+    jb sva_l
     popad
 sva_ok:
     mov eax, 1
     ret
 sva_fail:
     mov dword ptr [{v('SVFAIL')}], 1
+    mov dword ptr [{v('SVB2')}], 0
     popad
     xor eax, eax
     ret
@@ -2182,7 +2261,7 @@ sv_post:
     xor edx, edx
 spo_row:
     cmp edx, dword ptr [edi+{b('H')}]
-    jae spo_rest
+    jae spo_mir
     mov eax, edx
     add eax, dword ptr [edi+{b('Y0')}]
     lea eax, [eax+eax*2]
@@ -2193,16 +2272,61 @@ spo_row:
     mov ebx, edx
     imul ebx, dword ptr [edi+{b('ROW')}]
     add ebx, dword ptr [edi+{b('BITS')}]
-    mov ecx, dword ptr [edi+{b('W')}]
+    xor ecx, ecx
 spo_px:
-    mov al, byte ptr [esi]
-    mov byte ptr [ebx], al
+    xor eax, eax
+    cmp dword ptr [edi+{b('MIRROR')}], 0
+    je spo_s
+    cmp ecx, dword ptr [edi+{b('SS')}]
+    jb spo_sw
+    mov eax, dword ptr [edi+{b('W')}]
+    sub eax, dword ptr [edi+{b('SS')}]
+    cmp ecx, eax
+    mov eax, 0
+    jb spo_s
+spo_sw:
+    lea eax, [ebp-1]
+spo_s:
+    mov al, byte ptr [esi+eax]
+    mov byte ptr [ebx+ecx], al
     add esi, ebp
-    inc ebx
-    dec ecx
-    jnz spo_px
+    inc ecx
+    cmp ecx, dword ptr [edi+{b('W')}]
+    jb spo_px
     inc edx
     jmp spo_row
+spo_mir:
+    cmp dword ptr [edi+{b('MIRROR')}], 0
+    je spo_rest
+    mov eax, dword ptr [edi+{b('SS')}]
+    imul eax, ebp
+    test eax, eax
+    jz spo_rest
+    push eax
+    xor edx, edx
+spo_mr:
+    cmp edx, dword ptr [edi+{b('HS')}]
+    jae spo_mdone
+    mov esi, edx
+    imul esi, dword ptr [edi+{b('WH')}]
+    lea esi, [edi+esi+{SV_BUF}]
+    mov ebx, esi
+    add ebx, dword ptr [edi+{b('WH')}]
+    dec ebx
+    mov ecx, dword ptr [esp]
+spo_ms:
+    mov al, byte ptr [esi]
+    mov ah, byte ptr [ebx]
+    mov byte ptr [esi], ah
+    mov byte ptr [ebx], al
+    inc esi
+    dec ebx
+    dec ecx
+    jnz spo_ms
+    inc edx
+    jmp spo_mr
+spo_mdone:
+    pop eax
 spo_rest:
     mov esi, dword ptr [edi+{b('VIEW')}]
     lea ebx, [edi+{b('SV')}]
@@ -2235,68 +2359,147 @@ spo_rest:
 spo_ret:
     ret
 
+sv_drop:
+    pushad
+    mov ebx, {SVB:#x}
+    mov ecx, 3
+sd_l:
+    mov eax, dword ptr [ebx]
+    test eax, eax
+    jz sd_n
+    cmp dword ptr [eax+{b('VIEW')}], ebp
+    jne sd_n
+    mov dword ptr [eax+{b('VALID')}], 0
+sd_n:
+    add ebx, 4
+    dec ecx
+    jnz sd_l
+    popad
+    ret
+
+sv_mpre:
+    mov dword ptr [{v('S_PICKF')}], 0
+    mov esi, {VIEW2:#x}
+    cmp word ptr [esi+0xa9], 0
+    je smp_ret
+    movsx eax, word ptr [esi+0xab]
+    movsx edx, word ptr [esi+0xad]
+    test eax, eax
+    jl smp_ret
+    cmp eax, dword ptr [{v('S_W0')}]
+    jge smp_ret
+    test edx, edx
+    jl smp_ret
+    cmp edx, dword ptr [{v('S_H0')}]
+    jge smp_ret
+    mov ecx, dword ptr [esi+0xb1]
+    mov dword ptr [{v('S_PICK')}], ecx
+    mov dword ptr [{v('S_PICKF')}], 1
+    add edx, dword ptr [{v('VY0')}]
+    lea edx, [edx+edx*2]
+    shr edx, 1
+    sub edx, dword ptr [{v('VB0')}]
+    imul edx, dword ptr [{v('W_CUR')}]
+    lea eax, [eax+eax*2]
+    add eax, edx
+    add eax, dword ptr [{v('SIDE')}]
+    add eax, dword ptr [{v('HBUF')}]
+    inc eax
+    mov dword ptr [esi+0xb1], eax
+smp_ret:
+    ret
+
+sv_mpost:
+    cmp dword ptr [{v('S_PICKF')}], 0
+    je smq_ret
+    mov dword ptr [{v('S_PICKF')}], 0
+    mov eax, dword ptr [{v('S_PICK')}]
+    mov esi, {VIEW2:#x}
+    mov dword ptr [esi+0xb1], eax
+smq_ret:
+    ret
+
 sv_flush:
     cmp dword ptr [{v('LFB')}], 0
     je sf_ret
     cmp dword ptr [{v('SBUF')}], 0
     je sf_ret
+    cmp dword ptr [{v('SVB2')}], 0
+    je sf_ret
     mov edi, dword ptr [{v('SVB0')}]
-    test edi, edi
-    jz sf_ret
     call sv_fl1
     mov edi, dword ptr [{v('SVB1')}]
-    test edi, edi
-    jz sf_ret
+    call sv_fl1
+    mov edi, dword ptr [{v('SVB2')}]
     call sv_fl1
 sf_ret:
     ret
 
 sv_fl1:
     cmp dword ptr [edi+{b('VALID')}], 0
-    je sf1_ret
-    mov eax, dword ptr [{v('COPIES')}]
-    sub eax, dword ptr [edi+{b('STAMP')}]
-    cmp eax, 2
-    jbe sf1_go
-    mov dword ptr [edi+{b('VALID')}], 0
-sf1_ret:
-    ret
-sf1_go:
+    je sf1_x
+    xor ebp, ebp
     xor edx, edx
-sf1_row:
+sfc_row:
     cmp edx, dword ptr [edi+{b('H')}]
-    jae sf1_ret
+    jae sfc_done
     mov eax, edx
     add eax, dword ptr [edi+{b('Y0')}]
-    cmp dword ptr [{v('VALID')}], 0
-    je sf1_in
-    mov ecx, eax
-    sub ecx, dword ptr [{v('FY0')}]
-    cmp ecx, dword ptr [{v('FH')}]
-    jb sf1_next
-sf1_in:
-    push edx
     imul esi, eax, 640
     add esi, dword ptr [{v('SBUF')}]
     add esi, dword ptr [edi+{b('X0')}]
+    lea eax, [eax+eax*2]
+    shr eax, 1
+    sub eax, dword ptr [edi+{b('R0')}]
+    imul eax, dword ptr [edi+{b('WH')}]
+    lea ebx, [edi+eax+{SV_BUF}]
+    mov ecx, dword ptr [edi+{b('W')}]
+sfc_px:
+    mov al, byte ptr [esi]
+    cmp al, byte ptr [ebx]
+    je sfc_ok
+    inc ebp
+sfc_ok:
+    inc esi
+    add ebx, dword ptr [edi+{b('KX')}]
+    dec ecx
+    jnz sfc_px
+    inc edx
+    jmp sfc_row
+sfc_done:
+    mov eax, dword ptr [edi+{b('W')}]
+    imul eax, dword ptr [edi+{b('H')}]
+    shr eax, 2
+    cmp ebp, eax
+    ja sf1_x
+    sub esp, 32
+    mov dword ptr [esp+{L_Y}], 0
+sf1_row:
+    mov edx, dword ptr [esp+{L_Y}]
+    cmp edx, dword ptr [edi+{b('H')}]
+    jae sf1_end
+    mov eax, edx
+    add eax, dword ptr [edi+{b('Y0')}]
+    imul esi, eax, 640
+    add esi, dword ptr [{v('SBUF')}]
+    add esi, dword ptr [edi+{b('X0')}]
+    mov dword ptr [esp+{L_SB}], esi
     lea ecx, [eax+eax*2]
     mov ebx, ecx
     shr ebx, 1
+    mov dword ptr [esp+{L_R}], ebx
     add ecx, 3
     shr ecx, 1
-    push ecx
-    push ebx
-    mov eax, ebx
-    sub eax, dword ptr [edi+{b('R0')}]
-    imul eax, dword ptr [edi+{b('WH')}]
-    lea eax, [edi+eax+{SV_BUF}]
-    push eax
+    mov dword ptr [esp+{L_REND}], ecx
+    sub ebx, dword ptr [edi+{b('R0')}]
+    imul ebx, dword ptr [edi+{b('WH')}]
+    lea ebx, [edi+ebx+{SV_BUF}]
+    mov dword ptr [esp+{L_SAMP}], ebx
 sf1_hd:
-    mov eax, dword ptr [esp+4]
-    cmp eax, dword ptr [esp+8]
-    jae sf1_done
-    push esi
-    mov ebx, dword ptr [esp+4]
+    mov eax, dword ptr [esp+{L_R}]
+    cmp eax, dword ptr [esp+{L_REND}]
+    jae sf1_next
+    mov ebx, dword ptr [esp+{L_SAMP}]
     mov ecx, eax
     sub ecx, dword ptr [edi+{b('R0')}]
     imul ecx, dword ptr [edi+{b('WH')}]
@@ -2310,9 +2513,10 @@ sf1_hd:
     je sf1_x4
     add edx, {OX}
 sf1_x4:
-    mov ebp, dword ptr [edi+{b('W')}]
+    mov esi, dword ptr [esp+{L_SB}]
+    xor ebp, ebp
 sf1_px:
-    mov al, byte ptr [esi]
+    mov al, byte ptr [esi+ebp]
     cmp al, byte ptr [ebx]
     jne sf1_skip
     mov eax, dword ptr [ecx]
@@ -2325,22 +2529,22 @@ sf1_k3:
     shr eax, 16
     mov byte ptr [edx+2], al
 sf1_skip:
-    inc esi
     mov eax, dword ptr [edi+{b('KX')}]
     add ebx, eax
     add ecx, eax
     add edx, eax
-    dec ebp
-    jnz sf1_px
-    pop esi
-    inc dword ptr [esp+4]
+    inc ebp
+    cmp ebp, dword ptr [edi+{b('W')}]
+    jb sf1_px
+    inc dword ptr [esp+{L_R}]
     jmp sf1_hd
-sf1_done:
-    add esp, 12
-    pop edx
 sf1_next:
-    inc edx
+    inc dword ptr [esp+{L_Y}]
     jmp sf1_row
+sf1_end:
+    add esp, 32
+sf1_x:
+    ret
 """
 
 # auto-patch des tableaux par colonne (ecritures du jeu, une fois)
@@ -2362,16 +2566,17 @@ def sv_assemble():
     a = bytes(ks.asm(SV_ASM, 0x100000)[0])
     assert a == bytes(ks.asm(SV_ASM, 0x200000)[0]), 'SV code not position independent'
     off = {}
-    for name in ('sv_post', 'sv_flush'):
+    for name in ('sv_post', 'sv_flush', 'sv_drop', 'sv_mpre', 'sv_mpost'):
         r = bytes(ks.asm(SV_ASM + '\n    mov eax, %s\n' % name, 0)[0])
         off[name] = struct.unpack('<I', r[-4:])[0]
     assert SV_ASM.lstrip().startswith('sv_pre:')
-    assert len(a) <= 0x7E0, len(a)
+    assert len(a) <= SV_MAX, (len(a), SV_MAX)
     return a, off
 
 
 SV_CODE, SV_OFF = sv_assemble()
-ASM = ASM.replace('SVOFF_POST', str(SV_OFF['sv_post'])).replace('SVOFF_FLUSH', str(SV_OFF['sv_flush']))
+for _n in ('POST', 'FLUSH', 'DROP', 'MPRE', 'MPOST'):
+    ASM = ASM.replace('SVOFF_' + _n, str(SV_OFF['sv_' + _n.lower()]))
 
 
 def assemble():
@@ -2450,7 +2655,7 @@ def export(path, cls):
            '    public const uint FpsValue = 0x%x, FpsColour = 0x%x;   // frames per second shown top right (0 = hidden), palette index' % (V['FPSV'], V['FPSCOL']),
            '    public const uint PoolVar = 0x%x;' % M(0x43e360),
            '    public const uint XCode = 0x%x;' % V['XCODE'],
-           '    public const uint SvPtr = 0x%x, SvOff = 0x%x;   // small cockpit views in HD: code at the XCODE page + SvOff, then its address in SvPtr' % (V['SVPTR'], SV_XOFF),
+           '    public const uint SvPtr = 0x%x, SvOff = 0x%x, SvOn = 0x%x;   // HD 720 module: code at the XCODE page + SvOff, then its address in SvPtr; SvOn = cockpit cameras in HD' % (V['SVPTR'], SV_XOFF, V['SVON']),
            '    public static readonly byte[] SvCode = %s;' % arr(SV_CODE),
            '    public const uint SpeedDone = 0x%x, SpeedOn = 0x%x, SpeedBad = 0x%x;   // speed fixes written by the game: done, bit per group' % (
                V['GPDONE'], V['GPOK'], V['GPBAD']),
