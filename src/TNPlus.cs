@@ -54,7 +54,7 @@ static partial class TNPlus
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
-    static bool OptFreelook = true, OptNoclip = false, OptForce400 = true, OptWide = false, OptHD = false;
+    static bool OptFreelook = true, OptNoclip = false, OptForce400 = true, OptWide = true, OptHD = false;   // defaults = preset BEST
     static int OptDistance = 2;                     // 0 NORMAL, 1 FAR, 2 MAX
     static bool OptStereoFix = false;                // DOSBox: swap the Sound Blaster stereo (the game's SB16 driver reverses it)
     // how DOSBox scales the picture to the screen. The editions use Direct3D with nearest pixels: on most screens the
@@ -121,7 +121,7 @@ static partial class TNPlus
     // the target the ring shrinks by 8 cells (down to 24); it grows back (to 48) only after 3 s well above the target
     // (a step costs 15-20 %) and not within 10 s of a shrink: growing back too soon made it swing every 3 s.
     static int OptTerrainFps = 60;                  // ini terrain_fps, 0 = fixed SHARPER ring
-    static bool OptHd720 = false;                   // true 16:9 in 1280x720 instead of 848x480 (widescreen = 3)
+    static bool OptHd720 = true;                    // true 16:9 in 1280x720 instead of 848x480 (widescreen = 3)
     static int adaptCells = 0;                      // current end of the polygon ring when adapting, 0 = not adapting
     static double adaptT = -1, adaptHold = 0, adaptNoGrow = 0;
     static int adaptFrames = 0, adaptGood = 0;
@@ -798,7 +798,7 @@ static partial class TNPlus
     static bool launchedWide = false;               // DOSBox started by us with the 16:9 overlay
     static bool OptWideAttach = false;              // ini only (tests): 16:9 also on a game we attached to
     static bool OptInPlaceAttach = false;           // ini only, TESTS ONLY (not safe): in-place fixes on a DOSBox TN+ attached to
-    static bool OptWideTrue = false;                // 16:9: false STRETCHED (DOSBox stretches, camera corrected), true TRUE
+    static bool OptWideTrue = true;                 // 16:9: false STRETCHED (DOSBox stretches, camera corrected), true TRUE
     static bool launchedTrue = false;               // DOSBox started by us for the true 16:9 (VESA 848x480)
     static readonly string[] WIDE_NAMES = { "OFF", "STRETCHED", "TRUE", "TRUE 720" };
     static int WideMode() { return OptWide ? (OptWideTrue ? (OptHd720 ? 3 : 2) : 1) : 0; }
