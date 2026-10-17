@@ -48,8 +48,9 @@ V = {k: DATA + 4 * i for i, k in enumerate(
     'S_CANVAS S_W0 S_H0 S_CX W_CUR ROWK CXK CXSUM DLT S_V1_8 S_V2_8 S_V1_10 S_V2_10 '
     'FX0 FY0 FW FH FWW ROWN HX0 HX1 HROW PREVB SHADB FORCE SIG TRIED SIDE FSIDE SIDEOK HSTR HUDW HCROW XCODE '
     'H3 S_CLIPY S_V1_C S_V2_C S_V1_14 S_V2_14 S_V1_50 S_V2_50 CYTB CYK CYSUM VY0 VB0 ROWT NEWA NEWB TMP '
-    'RA RB ERS ERO HRW FPSV FPSCOL FD GPDONE GPOK GPBAD'.split())}
-assert max(V.values()) < DATA + 0x500
+    'RA RB ERS ERO HRW FPSV FPSCOL FD GPDONE GPOK GPBAD ROWB'.split())}
+ROWTAB = DATA + 0x200                             # tableaux par ligne : sites a repointer, puis copies (ROW_SITES)
+assert max(V.values()) < ROWTAB
 CXTAB = DATA + 0x500                              # 256 x 4
 OUTROW = DATA + 0x900                             # ligne de sortie du HUD (1280 + 4)
 DIRTYP = DATA + 0xE10                             # lignes modifiees de l'ecran du jeu (2 o de marge)
@@ -76,6 +77,29 @@ SITES_A = [(0x2a849d, 1, 'bf'), (0x2a869b, 2, '8b92')]                      # mo
 SITES_N = [(0x2a84a2, 1, 'b9')]                                               # mov ecx, octets a copier
 SITES_B = [(0x29e1fe, 2, '899a'), (0x29e239, 3, '891c85'), (0x29e362, 2, '8998')]
 SITES_B4 = [(0x29e3de, 1, 'b9')]                                              # mov ecx, B + 4
+# tableaux par LIGNE du moteur (adresses anglaises ; francais : code -0x10, donnees +0xB0) : 512 lignes pour le voile
+# (pointeur de table de brume par ligne), 480 pour le sol infrarouge (6 tableaux) ; la vue complete fait 585 lignes HD
+# (390 x 1,5) : le tableau du voile debordait sur la table des couleurs a voiler (0x424980, faite une fois par mission :
+# infrarouge casse au loin jusqu'a la fin de la mission), ceux du sol IR sur leurs voisins. Repointes au 1er rendu vers
+# NROWS lignes chacun (alloc_all), contenu d'origine recopie d'abord.
+ROW_ARRAYS = [(0x424140, 512), (0x424a80, 480), (0x425400, 480), (0x425f80, 480), (0x426700, 480), (0x426e80, 480),
+              (0x427600, 480)]
+ROW_SITES = [  # (instruction, decalage du champ, opcode verifie, tableau, cible d'origine)
+    (0x2a85c6, 2, '8982', 0, 0x42413c), (0x2a860a, 2, '8981', 0, 0x42413c), (0x2a8628, 2, '8981', 0, 0x42413c),
+    (0x2a87b6, 1, 'ba', 0, 0x424140), (0x2b22f5, 1, 'bb', 0, 0x424140),
+    (0x2a79f7, 2, '8b96', 1, 0x424a80), (0x2a7a4a, 2, '8b96', 1, 0x424a80), (0x2a7a1c, 2, '89b9', 1, 0x424a7c),
+    (0x2a7622, 2, '8987', 2, 0x425400), (0x2a76d1, 2, '8b90', 2, 0x425400), (0x2a775f, 3, '8b0c8d', 2, 0x425400),
+    (0x2a73ad, 2, '8987', 3, 0x425f80), (0x2a757d, 2, '8987', 3, 0x425f80), (0x2a7616, 2, '898f', 3, 0x425f80),
+    (0x2a76b3, 2, '8bb8', 3, 0x425f80),
+    (0x2a75c5, 2, '8997', 4, 0x426700), (0x2a76c0, 2, '8ba8', 4, 0x426700),
+    (0x2a75bd, 2, '8987', 5, 0x426e80), (0x2a76a0, 2, '8bb8', 5, 0x426e80),
+    (0x2a73b3, 2, '8987', 6, 0x427600), (0x2a7530, 2, '8987', 6, 0x427600), (0x2a761c, 2, '898f', 6, 0x427600),
+    (0x2a76aa, 2, '8bb8', 6, 0x427600)]
+RC = (lambda a: a) if EN else (lambda a: a - 0x10)            # code
+RD = (lambda a: a) if EN else (lambda a: a + 0xB0)            # donnees
+ROWSZ = NROWS * 4
+ROWCPY = ROWTAB + 8 * len(ROW_SITES) + 4
+assert ROWCPY + 12 * len(ROW_ARRAYS) + 4 <= CXTAB
 
 ASM = f"""
 check_mode:
@@ -234,6 +258,34 @@ alloc_all:
     mov dword ptr [{v('NEWA')}], eax
     add eax, {WMAX * 4 + 32:#x}
     mov dword ptr [{v('NEWB')}], eax
+    mov eax, {len(ROW_ARRAYS) * ROWSZ:#x}
+    call dword ptr [0x35f54c]
+    test eax, eax
+    jz aa_ret
+    mov dword ptr [{v('ROWB')}], eax
+    mov ebx, {ROWCPY}
+aa_rc:
+    mov esi, dword ptr [ebx]
+    test esi, esi
+    jz aa_rp
+    mov edi, dword ptr [{v('ROWB')}]
+    add edi, dword ptr [ebx+4]
+    mov ecx, dword ptr [ebx+8]
+    rep movsd dword ptr es:[edi], dword ptr [esi]
+    add ebx, 12
+    jmp aa_rc
+aa_rp:
+    mov ebx, {ROWTAB}
+aa_rs:
+    mov edi, dword ptr [ebx]
+    test edi, edi
+    jz aa_rd
+    mov eax, dword ptr [{v('ROWB')}]
+    add eax, dword ptr [ebx+4]
+    mov dword ptr [edi], eax
+    add ebx, 8
+    jmp aa_rs
+aa_rd:
 SELFPATCH
     mov eax, dword ptr [{v('TMP')}]
     mov dword ptr [{v('HBUF')}], eax
@@ -1789,10 +1841,16 @@ struct.pack_into('<I', DATA_INIT, V['HSTR'] - DATA, 1)        # HUD etire sur to
 _F = ['111101101101111', '010110010010111', '111001111100111', '111001111001111', '101101111001001',
       '111100111001111', '111100111101111', '111001010010010', '111101111101111', '111101111001111']
 for _i, _b in enumerate(_F): struct.pack_into('<H', DATA_INIT, FONT - DATA + 2 * _i, int(_b, 2))
+# tableaux par ligne : (champ, ecart depuis ROWB) par site, puis (origine, ecart, dwords) par tableau ; 0 = fin
+for _k, (a, o, op, t, tg) in enumerate(ROW_SITES):
+    struct.pack_into('<Ii', DATA_INIT, ROWTAB - DATA + 8 * _k, RC(a) + o, t * ROWSZ + tg - ROW_ARRAYS[t][0])
+for _k, (a, n) in enumerate(ROW_ARRAYS):
+    struct.pack_into('<III', DATA_INIT, ROWCPY - DATA + 12 * _k, RD(a), _k * ROWSZ, n)
 
 PATCHES = [
     # les tableaux par colonne : verifies ici, repointes par le jeu au 1er rendu (alloc_all)
 ] + [(M(a), bytes.fromhex(op), bytes.fromhex(op)) for a, o, op in SITES_A + SITES_N + SITES_B + SITES_B4] + [
+    (RC(a), bytes.fromhex(op), bytes.fromhex(op)) for a, o, op, t, tg in ROW_SITES] + [
     # segment de nuages : compteur 16 bits
     (M(0x2b274a), bytes.fromhex('8ac8c1e51081e60000ffff33c090'), bytes.fromhex('668bc8c1e51081e60000ffff33c0')),
     (M(0x2b276f), bytes.fromhex('fec9'), bytes.fromhex('6649')),
