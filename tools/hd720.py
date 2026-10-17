@@ -59,15 +59,17 @@ FONT = DATA + 0x1200                              # chiffres 3x5 du compteur d'i
 NV = DATA + 0x1140                                # variables du chemin rapide (page 0x467000 : pas de code, ecritures directes)
 BL = DATA + 0x1240                                # bascules HUD/3D d'une ligne du jeu (x), 322 dwords max
 assert BL + 4 * 322 <= DATA + 0x1800
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import speed_fix
 NVN = {k: NV + 4 * i for i, k in enumerate('Y BLP G8 G4 HX1 RA RB HROW HCROW BEND BLAST DST HRW R SP LASTB LAST3D ANY3D S'.split())}
 assert NV + 4 * len(NVN) <= FONT and FONT + 20 <= BL and BL % 8 == 0   # em_pend teste le bit 2 de BL
+assert NV + 4 * len(NVN) <= min(speed_fix.VS_VARS.values()) and max(speed_fix.VS_VARS.values()) + 4 <= FONT   # ombrage des colonnes
 n = lambda k: '%#x' % NVN[k]
 assert MASK + 0x140 <= DATA + 0x1800
 VIEW1, VIEW2 = M(0x38fbd4), M(0x41ec74)
 # correctifs de vitesse (instructions que DOSBox interprete, boucles a plusieurs blocs par pixel) : ecrits par le jeu
 # lui-meme a la 1re image 3D (pre_go), groupe par groupe, apres verification des octets d'origine
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import speed_fix
 GP_BLOB, GPAT, GP_GROUPS = speed_fix.build(not EN, GP, V['GPDONE'], V['GPOK'], V['GPBAD'])
 assert GP + len(GP_BLOB) <= FIN
 P = lambda v: struct.pack('<I', v & 0xffffffff)

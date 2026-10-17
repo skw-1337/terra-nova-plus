@@ -352,6 +352,374 @@ def column_group(L, at):
     return ('terrain columns', [rec(L['entry'], L['old'], hook.hex() + L['old'][2 * len(hook):])])
 
 
+# ---------------------------------------------------------------- terrain shading down the columns (EN 0x2B29B0)
+# Beyond the polygon ring the ground is drawn as column slabs, one call per projected cell edge: the shade is
+# interpolated across the columns but constant down each column, so it jumps at every edge along the jagged ring lines
+# (stair steps on shaded slopes, at medium and long range). The renderer is replaced as a whole (jmp at its entry):
+# each column keeps E[x] = (top row, ring tag, shade 8.8) of the last slab call that reached it, drawn or hidden, in the
+# y-buffer's own block (allocated 0x1400 bytes larger, E cleared); when E[x] belongs to the previous ring, the shade
+# runs down the column along the line through (top, s) and (top_e, s_e), per pixel ('add / adc' on the S row), so the
+# slab below meets it without a step and a silhouette gets the value between the two ring crossings. Otherwise
+# (first slab above the polygon ring, older ring, same level at both ends) the slab is flat as before. The ring tag is
+# counted by the per-ring call (EN 0x2B5826), reset by the y-buffer allocation (once per view: main view and cockpit
+# cameras). Unshaded calls (shade step 0) take the same routine; a canvas whose S is not a shade row (remap / infrared)
+# is drawn flat and never matches. P (fog row, per ring) and the stride (per view) live in disp32 fields written only
+# when they change. Same y-buffer as the game's; checked in Unicorn on a whole terrain frame (EN): with the tags off
+# the same pixels as the game, with them on only the shading inside slabs changes. FR: code -0x10, data +0xB0, the
+# allocator FR 0x2C4FD0.
+VS = dict(en=dict(entry=0x2B29B0, alloc=0x2AB65E, ring=0x2B5826, SB=0x41C228, ROWT=0x2B2A6A, STR=0x2B2AA0,
+                  AC33C=0x2AC33C, RECIP=0x427F54, MALLOC=0x2C4F40, CANVAS=0x44B1A0, ABACK=0x2AB666, BLK=0x427E10),
+          fr=dict(entry=0x2B29A0, alloc=0x2AB64E, ring=0x2B5816, SB=0x41C2D8, ROWT=0x2B2A5A, STR=0x2B2A90,
+                  AC33C=0x2AC32C, RECIP=0x428004, MALLOC=0x2C4FD0, CANVAS=0x44B250, ABACK=0x2AB656, BLK=0x427EC0))
+VS_VARS = dict(RING=0x467AF0, RTAG=0x467AF4, PTAG=0x467AF8)    # a page without code (HD data, after its NV block)
+EOFF = 0x1400                   # E[x] after the y-buffer in its block: 4 x 1280 columns
+VS_MARK = 0x7E570000
+VS_NAMES = ['P%d' % k for k in range(10)] + ['S%d' % k for k in range(6)]
+
+
+def px_flat(k, store):
+    return '''
+    mov al, byte ptr [esi+edx]
+    inc dl
+    mov al, byte ptr [eax+ecx]
+    .byte 0x8a, 0x80
+    .long {P%d}
+    %s''' % (k, store)
+
+
+def px_grad(k, store):
+    return '''
+    mov al, byte ptr [esi+edx]
+    inc dl
+    add ebx, ebp
+    adc ch, dh
+    mov al, byte ptr [eax+ecx]
+    .byte 0x8a, 0x80
+    .long {P%d}
+    %s''' % (k, store)
+
+
+def st_field(j):
+    return '.byte 0x88, 0x87\n    .long {S%d}' % j
+
+
+def vs_src():
+    s = '''
+vs_entry:
+    push ebp
+    mov ebp, dword ptr [ebx+0x18]
+    mov eax, ebp
+    sub eax, {SB}
+    cmp eax, 0x1000
+    jae vs_special
+    push dword ptr [{PTAG}]
+    push {SB}
+    add eax, dword ptr [ebx+0x28]
+    or eax, 0x80
+    mov ebp, eax
+    jmp vs_frame
+vs_special:
+    push 0xfffff000
+    push ebp
+    mov ebp, 0x80
+vs_frame:
+    push dword ptr [{STR}]
+    push dword ptr [{ROWT}]
+    push dword ptr [ebx]
+    push dword ptr [ebx+0x2c]
+    push dword ptr [ebx+0x14]
+    mov eax, dword ptr [ebx+0xc]
+    add eax, ecx
+    sub eax, dword ptr [ebx+0x24]
+    push eax
+    mov eax, dword ptr [ebx+8]
+    lea eax, [eax+ecx*4]
+    push eax
+    mov eax, dword ptr [ebx+0x1c]
+    cmp eax, dword ptr [{FP0}]
+    je vs_pok
+''' + ''.join('    mov dword ptr [{FP%d}], eax\n' % k for k in range(10)) + '''
+vs_pok:
+    mov eax, dword ptr [esp+24]
+    cmp eax, dword ptr [{FS0}]
+    je vs_sok
+    mov dword ptr [{FS0}], eax
+    mov dword ptr [{FS5}], eax
+    add eax, eax
+    mov dword ptr [{FS1}], eax
+    add eax, dword ptr [esp+24]
+    mov dword ptr [{FS2}], eax
+    add eax, dword ptr [esp+24]
+    mov dword ptr [{FS3}], eax
+    mov dword ptr [{FS4}], eax
+vs_sok:
+    mov edx, dword ptr [ebx+4]
+    mov esi, dword ptr [ebx+0x10]
+    mov edi, dword ptr [esp]
+    neg ecx
+vs_col:
+    mov eax, esi
+    sar eax, 16
+    mov ebx, dword ptr [edi+ecx*4]
+    cmp eax, ebx
+    jl vs_draw
+vs_hide:
+    shl eax, 20
+    mov ebx, ebp
+    and ebx, 0xfff
+    or eax, ebx
+    or eax, dword ptr [{RTAG}]
+    mov dword ptr [edi+ecx*4+{EOFF}], eax
+    add esi, dword ptr [esp+8]
+    add ebp, dword ptr [esp+12]
+    inc ecx
+    jne vs_col
+vs_exit:
+    cmp dword ptr [esp+28], {SB}
+    jne vs_x2
+    mov eax, ebp
+    add eax, {SB}
+    sub eax, dword ptr [{BLK18}]
+    mov dword ptr [{BLK28}], eax
+vs_x2:
+    add esp, 36
+    pop ebp
+    ret
+
+vs_draw:
+    mov dword ptr [edi+ecx*4], eax
+    sub ebx, eax
+    push ecx
+    push esi
+    mov esi, ebp
+    and esi, 0xfff
+    or esi, dword ptr [{RTAG}]
+    push ebp
+    mov ebp, eax
+    shl ebp, 20
+    or ebp, esi
+    mov esi, dword ptr [edi+ecx*4+{EOFF}]
+    mov dword ptr [edi+ecx*4+{EOFF}], ebp
+    mov ebp, dword ptr [esp]
+    mov edi, dword ptr [esp+32]
+    mov edi, dword ptr [edi+eax*4]
+    cmp ebp, 0xfff
+    ja vs_fl0
+    add edi, dword ptr [esp+16]
+    add edi, ecx
+    mov ecx, esi
+    xor ecx, dword ptr [esp+44]
+    test ecx, 0xff000
+    jnz vs_flat
+    mov ecx, esi
+    xor ecx, ebp
+    test ecx, 0xf00
+    jz vs_flat
+    mov ecx, esi
+    shr ecx, 20
+    sub ecx, eax
+    cmp ecx, ebx
+    jl vs_flat
+    dec ecx
+    cmp ecx, 255
+    ja vs_slow
+    and esi, 0xfff
+    sub esi, ebp
+    imul esi, dword ptr [ecx*4+{RECIP4}]
+    sar esi, 8
+vs_step:
+    mov ecx, ebp
+    shl ecx, 8
+    sub ecx, esi
+    mov eax, ecx
+    shl eax, 16
+    or ebx, eax
+    sar ecx, 8
+    and ecx, 0xffffff00
+    add ecx, dword ptr [esp+40]
+    mov ebp, esi
+    shl ebp, 16
+    sar esi, 16
+    mov eax, esi
+    mov dh, al
+    movzx eax, al
+    shl eax, 8
+    mov esi, dword ptr [esp+28]
+    sub esi, eax
+    xor eax, eax
+    sub bx, 4
+    jl g_rem
+g_4:''' + px_grad(5, st_field(0)) + px_grad(6, st_field(1)) + px_grad(7, st_field(2)) + px_grad(8, st_field(3)) + '''
+    .byte 0x8d, 0xbf
+    .long {S4}
+    sub bx, 4
+    jge g_4
+g_rem:
+    add bx, 4
+    jz g_done
+g_1:''' + px_grad(9, '.byte 0x8d, 0xbf\n    .long {S5}\n    mov byte ptr [edi], al') + '''
+    dec bx
+    jnz g_1
+g_done:
+    and edx, 0xff
+    jmp vs_after
+
+vs_slow:
+    inc ecx
+    jle vs_flat
+    and esi, 0xfff
+    sub esi, ebp
+    shl esi, 8
+    mov eax, esi
+    push edx
+    cdq
+    idiv ecx
+    pop edx
+    mov esi, eax
+    jmp vs_step
+
+vs_fl0:
+    add edi, dword ptr [esp+16]
+    add edi, ecx
+vs_flat:
+    mov ecx, ebp
+    and ecx, 0xff00
+    add ecx, dword ptr [esp+40]
+    mov esi, dword ptr [esp+28]
+    mov ebp, dword ptr [esp+36]
+    xor eax, eax
+    sub ebx, 4
+    jl f_rem
+f_4:''' + px_flat(0, 'mov byte ptr [edi+ebp], al') + px_flat(1, 'mov byte ptr [edi+ebp*2], al\n    lea edi, [edi+ebp*2]') + \
+        px_flat(2, 'mov byte ptr [edi+ebp], al') + px_flat(3, 'mov byte ptr [edi+ebp*2], al\n    lea edi, [edi+ebp*2]') + '''
+    sub ebx, 4
+    jge f_4
+f_rem:
+    add ebx, 4
+    jz vs_after
+f_1:''' + px_flat(4, 'add edi, ebp\n    mov byte ptr [edi], al') + '''
+    dec ebx
+    jnz f_1
+vs_after:
+    pop ebp
+    pop esi
+    pop ecx
+    mov edi, dword ptr [esp]
+    add esi, dword ptr [esp+8]
+    add ebp, dword ptr [esp+12]
+    inc ecx
+    je vs_exit
+    mov eax, esi
+    sar eax, 16
+    mov ebx, dword ptr [edi+ecx*4]
+    cmp eax, ebx
+    jl vs_draw
+    jmp vs_hide
+
+'''
+    return s
+
+
+# retarget of the per-ring call at EN 0x2B5826 (call 0x2AC33C): next ring tag. RING is set to 1 by the y-buffer
+# allocation (once per view); 1..254, then 0 = off for the rest of the view (no entry matches 0xFF).
+RING_SRC = '''
+    push eax
+    mov eax, dword ptr [{RING}]
+    test eax, eax
+    jz r_off
+    inc eax
+    cmp eax, 0xff
+    jb r_ok
+    xor eax, eax
+r_ok:
+    mov dword ptr [{RING}], eax
+r_off:
+    shl eax, 12
+    mov dword ptr [{RTAG}], eax
+    sub eax, 0x1000
+    mov dword ptr [{PTAG}], eax
+    pop eax
+    jmp {AC33C}
+'''
+
+# EN 0x2AB65E 'shl eax,2 / call 0x2C4F40' (8 bytes) -> jmp here: one block for the y-buffer and E, E cleared
+ALLOC_SRC = '''
+    shl eax, 2
+    add eax, {EOFF}
+    call {MALLOC}
+    push edi
+    push ecx
+    push eax
+    lea edi, [eax+{EOFF}]
+    mov ecx, dword ptr [{CANVAS}]
+    mov ecx, dword ptr [ecx+6]
+    sar ecx, 16
+    xor eax, eax
+    rep stosd dword ptr es:[edi], eax
+    mov dword ptr [{RING}], 1
+    pop eax
+    pop ecx
+    pop edi
+    jmp {ABACK}
+'''
+
+
+
+def _vs_fmt(src, keys):
+    return src.format(**{k: (hex(v) if isinstance(v, int) else v) for k, v in keys.items()})
+
+
+def _vs_column(L, at):
+    """the column renderer at 'at': (bytes, {field: address}); no self-written field crosses a page"""
+    keys = dict(L); keys.update(VS_VARS); keys['EOFF'] = EOFF; keys['RECIP4'] = L['RECIP'] + 4
+    keys['BLK18'] = L['BLK'] + 0x18; keys['BLK28'] = L['BLK'] + 0x28
+    k1 = dict(keys); k1.update({n: VS_MARK + i for i, n in enumerate(VS_NAMES)})
+    k1.update({'F' + n: 0x7E560000 + 4 * i for i, n in enumerate(VS_NAMES)})
+    c1 = asm(_vs_fmt(vs_src(), k1), at)
+    F = {}
+    for i, n in enumerate(VS_NAMES):
+        m = struct.pack('<I', VS_MARK + i)
+        j = c1.find(m)
+        assert j > 0 and c1.find(m, j + 1) < 0, n
+        F[n] = at + j
+    k2 = dict(keys); k2.update({n: 0 for n in VS_NAMES}); k2.update({'F' + n: F[n] for n in VS_NAMES})
+    c2 = asm(_vs_fmt(vs_src(), k2), at)
+    assert len(c2) == len(c1)
+    return c2, F
+
+
+def vs_cave(L, at):
+    """column renderer, then the ring counter and the y-buffer allocation: (bytes, column, ring, alloc addresses)"""
+    pad = 0
+    while True:
+        col = at + pad
+        code, F = _vs_column(L, col)
+        if all((a & 0xFFF) <= 0xFFC for a in F.values()):
+            break
+        pad += 4
+    keys = dict(L); keys.update(VS_VARS); keys['EOFF'] = EOFF
+    ring = (col + len(code) + 15) & ~15
+    rc = asm(_vs_fmt(RING_SRC, keys), ring)
+    alloc = (ring + len(rc) + 15) & ~15
+    ac = asm(_vs_fmt(ALLOC_SRC, keys), alloc)
+    blob = bytearray(alloc + len(ac) - at)
+    blob[:pad] = b'\xcc' * pad
+    blob[col - at:col - at + len(code)] = code
+    blob[ring - at:ring - at + len(rc)] = rc
+    blob[alloc - at:alloc - at + len(ac)] = ac
+    return bytes(blob), col, ring, alloc
+
+
+def vs_group(L, at):
+    _, col, ring, alloc = vs_cave(L, at)
+    e, a, r = L['entry'], L['alloc'], L['ring']
+    call = lambda src, to: 'e8' + struct.pack('<i', to - (src + 5)).hex()
+    return ('terrain shading', [
+        rec(e, '558b432c0bc0', asm('jmp %#x' % col, e).hex() + 'c0'),
+        rec(a, 'c1e002' + call(a + 3, L['MALLOC']), asm('jmp %#x' % alloc, a).hex() + '909090'),
+        rec(r, call(r, L['AC33C']), call(r, ring))])
+
+
 # ---------------------------------------------------------------- hash probe (EN 0x2A1433, once per bucket lookup)
 # The bucket lookup 0x2A13B8 compares the 4-byte key of the bucket head with 'repe cmpsb' (run by DOSBox's
 # interpreter). Same 20 bytes, a translated byte loop that leaves what repe cmpsb leaves: ECX = 3-k, ESI/EDI += k+1
@@ -1056,7 +1424,7 @@ def caves(fr, T):
     return [('sky', lambda at: asm(sky_cave(SKY[L], T), at)),
             ('ir', lambda at: ir_cave(IRROW[L], at)),
             ('ret', lambda at: ret_caves(TERRAIN[L], at)[0]),
-            ('column', lambda at: column_cave(COLUMN[L], at)),
+            ('shading', lambda at: vs_cave(VS[L], at)[0]),
             ('terrain p4', lambda at: tp4_groups(fr, at)[1])]
 
 
@@ -1087,7 +1455,7 @@ def groups(fr, cv, T):
     out.append(('infrared ground', [rec(r['hook'], old[:10], hook.hex()), rec(r['hook'] + 5, old[10:]),
                                     rec(r['epi'], '83c4145d5f5e59c3')]))
     out += terrain_groups(TERRAIN[L], cv['ret'])      # after 'horizon test': its returns check the new bytes
-    out.append(column_group(COLUMN[L], cv['column']))
+    out.append(vs_group(VS[L], cv['shading']))      # in the place of 'terrain columns' (its routine is no longer reached)
     out.append(hash_group(HASH[L]))                    # after the 13 groups of lot 2: their bits stay
     out += tp4_groups(fr, cv['terrain p4'])[0]   # last: after every shipped group, their bits stay
     return out
