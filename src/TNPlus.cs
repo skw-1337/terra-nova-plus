@@ -795,6 +795,7 @@ static partial class TNPlus
     static uint aStereo;
     static bool launchedWide = false;               // DOSBox started by us with the 16:9 overlay
     static bool OptWideAttach = false;              // ini only (tests): 16:9 also on a game we attached to
+    static bool OptInPlaceAttach = false;           // ini only (tests): in-place speed fixes on a DOSBox started before TN+
     static bool OptWideTrue = false;                // 16:9: false STRETCHED (DOSBox stretches, camera corrected), true TRUE
     static bool launchedTrue = false;               // DOSBox started by us for the true 16:9 (VESA 848x480)
     static readonly string[] WIDE_NAMES = { "OFF", "STRETCHED", "TRUE", "TRUE 720" };
@@ -1490,6 +1491,7 @@ static partial class TNPlus
                         ShowWindow(GetConsoleWindow(), 4);
                         Say("Game closed. Waiting for Terra Nova again (close this window to quit).", 0);
                     }
+                    gameSeen = false;
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
                     hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
@@ -1499,6 +1501,7 @@ static partial class TNPlus
                     if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
                     mouse.Take(); Thread.Sleep(50); continue;
                 }
+                if (!gameSeen) { gameSeen = true; int g; pidGames.TryGetValue(gamePid, out g); pidGames[gamePid] = g + 1; }
                 bool fg = ForegroundIsGame();
 
                 // --- HD: injected as soon as the game is loaded, before its first mission
@@ -1966,7 +1969,7 @@ static partial class TNPlus
         if (!FreeAreaReady()) return;
         if (irFixState == 0)
         {
-            int ip = TryIrInPlace();
+            int ip = InPlaceSafe() ? TryIrInPlace() : -1;
             if (ip == 0) return;                                    // memory not readable yet
             if (ip == 1) { irFixState = 3; Say("Infrared speed fix ON (in place)", 0); return; }
             irFixState = -1;
@@ -2027,6 +2030,22 @@ static partial class TNPlus
     // twice as fast per pixel as the rebuilt copies. Checked through a SHA-256 of the pristine bytes (slot
     // placeholders, entries without ir_fix's jmp); moved instructions are copied from memory before anything is
     // written. 1 = done, 0 = memory not readable yet, -1 = not pristine (ir_fix then).
+    // In-place rewrites from outside (IR in place, spans) only on the first game start of a DOSBox process TN+ has
+    // watched from its start: DOSBox keeps the code it translated while it runs, even across game starts, and a block
+    // translated from the original code before the rewrite would keep running against the new bytes (a crash).
+    static readonly DateTime tnStart = Process.GetCurrentProcess().StartTime;
+    static readonly Dictionary<int, int> pidGames = new Dictionary<int, int>();   // game starts seen per DOSBox
+    static bool gameSeen = false;
+    static bool InPlaceSafe()
+    {
+        int n;
+        pidGames.TryGetValue(gamePid, out n);
+        if (n != 1) return false;
+        if ((launched != null && gamePid == launched.Id) || OptInPlaceAttach) return true;
+        try { return Process.GetProcessById(gamePid).StartTime >= tnStart; }
+        catch { return false; }
+    }
+
     static int TryIrInPlace()
     {
         return TryInPlace(IrInPlace.At, IrInPlace.Size, IrInPlace.Pieces, IrInPlace.CheckAt, IrInPlace.CheckSize, IrInPlace.Sha);
@@ -2740,6 +2759,7 @@ static partial class TNPlus
                     case "fps_counter": OptFpsCounter = v != "0"; break;
                     case "speed_fixes": OptSpeedFix = v != "0"; break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
+                    case "inplace_attach": OptInPlaceAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
                     case "keep_dos": OptKeepDos = v != "0"; break;
                     case "edge_objects": OptEdge = v != "0"; break;
@@ -2804,6 +2824,7 @@ static partial class TNPlus
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
                 "; 1 = terrain and objects up to the screen edges with a wider field of view or true 16:9 (beta)\r\nedge_objects = " + (OptEdge ? 1 : 0) + "\r\n" +
                 (OptWideAttach ? "wide_attach = 1\r\n" : "") +
+                (OptInPlaceAttach ? "inplace_attach = 1\r\n" : "") +
                 (OptKeepDos ? "keep_dos = 1\r\n" : "") +
                 (OptSmoothCells > 0 ? "; tests: forced end of the smooth terrain (cells)\r\nsmooth_cells = " + OptSmoothCells + "\r\n" : "") +
                 "; mouse sensitivity (heading / pitch units per mouse count), 1 = inverted vertical look\r\n" +
