@@ -352,6 +352,32 @@ def column_group(L, at):
     return ('terrain columns', [rec(L['entry'], L['old'], hook.hex() + L['old'][2 * len(hook):])])
 
 
+# ---------------------------------------------------------------- hash probe (EN 0x2A1433, once per bucket lookup)
+# The bucket lookup 0x2A13B8 compares the 4-byte key of the bucket head with 'repe cmpsb' (run by DOSBox's
+# interpreter). Same 20 bytes, a translated byte loop that leaves what repe cmpsb leaves: ECX = 3-k, ESI/EDI += k+1
+# (k = first differing byte, 4 on a match), the same bytes read in the same order; the first byte's mismatch (most
+# probes) leaves from the block before. EAX and the flags differ only where they are dead: on a mismatch EAX is
+# reloaded at 0x2A1451 and the flags rewritten by 'xor edx,edx'; on a match EAX bits 16-31 are killed by 'cwde' at
+# 0x2A1465, the flags by 'test ax,ax'. The code before (0x2A141E) and the kept exits up to 'test ax,ax' are checked.
+# Assumes DF = 0 (Watcom ABI) and flat segments: DS:[EDI] read where the original read ES:[EDI] (EDI = ESP+28h), as
+# 'hash chain' already does. FR: code -0x10, data +0xB0. Checked in Unicorn (perf/lot3/hash_2a1433): every first
+# differing byte x every XOR value, 1200 lookups on planted tables, 1014 whole calls (real EN tables, planted FR ones).
+HASH = dict(en=dict(at=0x2A1433, word=0x3C5DC2, tab=0x3BA990, keys=0x3BDF10),
+            fr=dict(at=0x2A1423, word=0x3C5E72, tab=0x3BAA40, keys=0x3BDFC0))
+
+
+def hash_group(L):
+    h = lambda v: struct.pack('<I', v).hex()
+    at = L['at']
+    new = asm('add esi, eax\n xor ecx, ecx\n mov cl, 3\n lodsb\n inc edi\n cmp al, byte ptr [edi - 1]\n jne %#x\n'
+              'lp: lodsb\n inc edi\n cmp al, byte ptr [edi - 1]\n loope lp' % (at + 0x1E), at)
+    assert len(new) == 20
+    return ('hash probe', [rec(at, 'b90400000001c631c0f3a6740519c083d8ff85c0', new.hex()),
+                           rec(at - 0x15, '8b80%sbe%sc1f8108d7c2428c1e004' % (h(L['tab'] - 2), h(L['keys']))),
+                           rec(at + 0x14, '750866a1%seb148b4424288b1d%s31d2c1fb10e89748ffff98668b0485%s66894424386685c0' % (
+                               h(L['word']), h(L['word'] - 2), h(L['tab'])))])
+
+
 # ---------------------------------------------------------------- sky / haze pass (EN 0x2A8658, once per frame)
 # Its two column loops replace "flagged" colours (byte table FLAGS) with the haze colour: 3 blocks / 10 instructions
 # per pixel. A 256-byte table T[v] = flag[v] ? colour : v is built at each call (the game changes one flag just
@@ -784,6 +810,7 @@ def groups(fr, cv, T):
                                     rec(r['epi'], '83c4145d5f5e59c3')]))
     out += terrain_groups(TERRAIN[L], cv['ret'])      # after 'horizon test': its returns check the new bytes
     out.append(column_group(COLUMN[L], cv['column']))
+    out.append(hash_group(HASH[L]))                    # after the 13 groups of lot 2: their bits stay
     return out
 
 
