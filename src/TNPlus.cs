@@ -2028,24 +2028,32 @@ static partial class TNPlus
     // written. 1 = done, 0 = memory not readable yet, -1 = not pristine (ir_fix then).
     static int TryIrInPlace()
     {
-        for (int l = 0; l < IrInPlace.Sha.Length; l++)
+        return TryInPlace(IrInPlace.At, IrInPlace.Size, IrInPlace.Pieces, IrInPlace.CheckAt, IrInPlace.CheckSize, IrInPlace.Sha);
+    }
+
+    // In-place rewrite of game code from pieces (tools/ir_inplace.py and the like), per exe: only if the SHA-256 of the
+    // bytes at check* matches (the pristine code, slot placeholders included); every C piece is read before anything
+    // is written. 1 = done, 0 = memory not readable yet, -1 = not as expected.
+    static int TryInPlace(uint[][] at, int[][] size, string[][][] pieces, uint[][] checkAt, int[][] checkSize, string[] sha)
+    {
+        for (int l = 0; l < sha.Length; l++)
         {
             var old = new System.IO.MemoryStream();
-            for (int i = 0; i < IrInPlace.CheckAt[l].Length; i++)
+            for (int i = 0; i < checkAt[l].Length; i++)
             {
-                byte[] b = Read(IrInPlace.CheckAt[l][i], IrInPlace.CheckSize[l][i]);
+                byte[] b = Read(checkAt[l][i], checkSize[l][i]);
                 if (b == null) return 0;
                 old.Write(b, 0, b.Length);
             }
             byte[] sum;
             using (var h = System.Security.Cryptography.SHA256.Create()) sum = h.ComputeHash(old.ToArray());
-            if (BitConverter.ToString(sum).Replace("-", "").ToLowerInvariant() != IrInPlace.Sha[l]) continue;
-            int n = IrInPlace.At[l].Length;
+            if (BitConverter.ToString(sum).Replace("-", "").ToLowerInvariant() != sha[l]) continue;
+            int n = at[l].Length;
             var news = new byte[n][];
             for (int e = 0; e < n; e++)                             // everything read first
             {
                 var nb = new System.IO.MemoryStream();
-                foreach (string piece in IrInPlace.Pieces[l][e])
+                foreach (string piece in pieces[l][e])
                 {
                     byte[] part;
                     if (piece[0] == 'C')
@@ -2058,10 +2066,10 @@ static partial class TNPlus
                     nb.Write(part, 0, part.Length);
                 }
                 news[e] = nb.ToArray();
-                if (news[e].Length != IrInPlace.Size[l][e]) return -1;
+                if (news[e].Length != size[l][e]) return -1;
             }
-            for (int e = 0; e < n; e++) Write(IrInPlace.At[l][e], news[e]);
-            for (int e = 0; e < n; e++) if (!Same(Read(IrInPlace.At[l][e], news[e].Length), news[e])) return -1;
+            for (int e = 0; e < n; e++) Write(at[l][e], news[e]);
+            for (int e = 0; e < n; e++) if (!Same(Read(at[l][e], news[e].Length), news[e])) return -1;
             return 1;
         }
         return -1;

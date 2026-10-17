@@ -506,6 +506,10 @@ def ir_cave(L, at):
 
 
 # ---------------------------------------------------------------- the patcher (guest code)
+# Table: per group u16 size, u8 records; per record u32 address, u8 length, u8 flags (1 old bytes follow, 2 new bytes
+# follow, 4 a mask byte per byte follows: 1 check old, 2 write new, 4 check new). Without a mask: check the old
+# bytes, write the new ones that differ, check them; old bytes only = check only; new bytes only = write and check.
+# Scratch at install time: the first 16 bytes of T (the sky routine rebuilds T at each call).
 PATCHER = '''
 gpatch:
     cmp dword ptr [{done}], 0
@@ -524,61 +528,128 @@ gp_group:
     push esi
     push ecx
     xor ebx, ebx
+    push dword ptr [esp]
 gp_ra:
-    mov edi, dword ptr [esi]
-    movzx edx, byte ptr [esi + 4]
-    add esi, 5
+    call gp_hdr
+    xor edx, edx
 gp_ba:
-    mov al, byte ptr [edi]
-    test byte ptr [esi + 2], 1
+    call gp_byte
+    push ecx
+    mov cl, byte ptr [edi + edx]
+    test eax, 0x10000
     jz gp_a1
-    cmp al, byte ptr [esi]
+    cmp cl, al
     je gp_a1
     or bl, 2
 gp_a1:
-    test byte ptr [esi + 2], 4
+    test eax, 0x40000
     jz gp_a2
-    cmp al, byte ptr [esi + 1]
+    cmp cl, ah
     je gp_a2
     or bl, 1
 gp_a2:
-    inc edi
-    add esi, 3
-    dec edx
-    jnz gp_ba
-    dec ecx
-    jnz gp_ra
     pop ecx
-    pop esi
+    inc edx
+    cmp edx, ecx
+    jb gp_ba
+    dec dword ptr [esp]
+    jnz gp_ra
+    add esp, 4
     test bl, 1
     jz gp_ok
     test bl, 2
     jnz gp_bad
+    mov esi, dword ptr [esp + 4]
+    push dword ptr [esp]
 gp_rb:
-    mov edi, dword ptr [esi]
-    movzx edx, byte ptr [esi + 4]
-    add esi, 5
+    call gp_hdr
+    xor edx, edx
 gp_bb:
-    test byte ptr [esi + 2], 2
+    call gp_byte
+    test eax, 0x20000
     jz gp_b1
-    mov al, byte ptr [esi + 1]
-    mov byte ptr [edi], al
+    mov byte ptr [edi + edx], ah
 gp_b1:
-    inc edi
-    add esi, 3
-    dec edx
-    jnz gp_bb
-    dec ecx
+    inc edx
+    cmp edx, ecx
+    jb gp_bb
+    dec dword ptr [esp]
     jnz gp_rb
+    add esp, 4
 gp_ok:
     or dword ptr [{ok}], ebp
     jmp gp_nx
 gp_bad:
     or dword ptr [{bad}], ebp
 gp_nx:
+    add esp, 8
     pop esi
     add ebp, ebp
     jmp gp_group
+gp_hdr:
+    mov edi, dword ptr [esi]
+    movzx ecx, byte ptr [esi + 4]
+    movzx eax, byte ptr [esi + 5]
+    mov dword ptr [{fl}], eax
+    add esi, 6
+    mov dword ptr [{po}], esi
+    test al, 1
+    jz gh_1
+    add esi, ecx
+gh_1:
+    mov dword ptr [{pn}], esi
+    test al, 2
+    jz gh_2
+    add esi, ecx
+gh_2:
+    mov dword ptr [{pm}], esi
+    test al, 4
+    jz gp_ret
+    add esi, ecx
+    ret
+gp_byte:
+    push ebx
+    push esi
+    mov ebx, dword ptr [{fl}]
+    xor eax, eax
+    test bl, 1
+    jz gb_1
+    mov esi, dword ptr [{po}]
+    mov al, byte ptr [esi + edx]
+gb_1:
+    mov ah, al
+    test bl, 2
+    jz gb_2
+    mov esi, dword ptr [{pn}]
+    mov ah, byte ptr [esi + edx]
+gb_2:
+    test bl, 4
+    jz gb_derive
+    mov esi, dword ptr [{pm}]
+    movzx esi, byte ptr [esi + edx]
+    jmp gb_done
+gb_derive:
+    xor esi, esi
+    test bl, 1
+    jz gd_1
+    or esi, 1
+gd_1:
+    test bl, 2
+    jnz gd_2
+    or esi, 4
+    jmp gb_done
+gd_2:
+    or esi, 6
+    test bl, 1
+    jz gb_done
+    cmp al, ah
+    jne gb_done
+    and esi, 0xfffffffd
+gb_done:
+    shl esi, 16
+    or eax, esi
+    pop esi
+    pop ebx
 gp_ret:
     ret
 '''
@@ -624,17 +695,38 @@ def groups(fr, cv, T):
     return out
 
 
+def derived(flags, o, n):
+    """the mask the patcher derives for a byte when the record carries none"""
+    if not flags & 2: return 5
+    if not flags & 1: return 6
+    return 5 if o == n else 7
+
+
+def encode(bs):
+    """record bytes -> (flags, payload): old and/or new arrays, a mask array only when the derived one differs"""
+    olds = any(m & 1 for o, n, m in bs)
+    news = any(m & 2 or (m & 4 and not (m & 1 and o == n)) for o, n, m in bs)
+    f = (1 if olds else 0) | (2 if news else 0)
+    if not all(derived(f, o, n) == m for o, n, m in bs):
+        f = 7
+    pay = (bytes(o for o, n, m in bs) if f & 1 else b'') + (bytes(n for o, n, m in bs) if f & 2 else b'') + \
+          (bytes(m for o, n, m in bs) if f & 4 else b'')
+    return f, pay
+
+
 def table(gs, where=None):
-    """groups -> bytes: per group u16 size, u8 records; per record u32 address, u8 length, (old, new, mask) per byte.
-    where: {address: offset in the table of the new value of that byte}, filled if given"""
+    """groups -> bytes (format: see PATCHER). where: {address: offset in the table of the new value of that byte}, filled
+    if given (records that carry new bytes)"""
     t = b''
     for name, recs in gs:
         body = b''
         for at, bs in recs:
-            assert len(bs) < 256
-            if where is not None:
-                for k in range(len(bs)): where.setdefault(at + k, len(t) + 3 + len(body) + 5 + 3 * k + 1)
-            body += struct.pack('<IB', at, len(bs)) + bytes(x for o, n, m in bs for x in (o, n, m))
+            assert 0 < len(bs) < 256
+            f, pay = encode(bs)
+            if where is not None and f & 2:
+                for k in range(len(bs)):
+                    where.setdefault(at + k, len(t) + 3 + len(body) + 6 + (len(bs) if f & 1 else 0) + k)
+            body += struct.pack('<IBB', at, len(bs), f) + pay
         t += struct.pack('<HB', 3 + len(body), len(recs)) + body
     return t + b'\0\0'
 
@@ -654,7 +746,8 @@ def build(fr, base, done, ok, bad):
     at = base + 0x100
     where = {}
     table(groups(fr, {n: at for n, f in caves(fr, T)}, T), where)
-    pat_len = len(asm(PATCHER.format(done=done, ok=ok, bad=bad, table=at, pre=tf_mode(fr, at, where)), at))
+    scr = dict(fl=T, po=T + 4, pn=T + 8, pm=T + 12)
+    pat_len = len(asm(PATCHER.format(done=done, ok=ok, bad=bad, table=at, pre=tf_mode(fr, at, where), **scr), at))
     cv, code, nxt = {}, {}, (at + pat_len + 15) & ~15
     for name, mk in caves(fr, T):
         cv[name] = nxt; code[name] = mk(nxt); nxt = (nxt + len(code[name]) + 15) & ~15
@@ -662,7 +755,7 @@ def build(fr, base, done, ok, bad):
     gs = groups(fr, cv, T)
     where = {}
     tab = table(gs, where)
-    pat = asm(PATCHER.format(done=done, ok=ok, bad=bad, table=tab_at, pre=tf_mode(fr, tab_at, where)), at)
+    pat = asm(PATCHER.format(done=done, ok=ok, bad=bad, table=tab_at, pre=tf_mode(fr, tab_at, where), **scr), at)
     assert len(pat) == pat_len
     blob = bytearray(tab_at - base) + tab
     blob[at - base:at - base + len(pat)] = pat
