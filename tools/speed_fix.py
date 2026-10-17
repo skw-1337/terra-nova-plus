@@ -378,6 +378,283 @@ def hash_group(L):
                                h(L['word']), h(L['word'] - 2), h(L['tab'])))])
 
 
+# ---------------------------------------------------------------- terrain shade columns and ground texture rows
+# The shaded column renderer (EN 0x2B29B0) and the texture-only span (EN 0x2B26E0) draw 1 pixel per translated block.
+# Shade: its per-column pixel loop runs in our routine (jmp over 'push ebp / and ebp,0xFF00' at EN 0x2B2A78, back
+# to 0x2B2AAF), 4 pixels per block, reading S / T / stride / P from the game's own slots; P sits in 5 [eax+disp32]
+# fields rewritten only when the slot changes. Span: the routine is replaced as a whole (jmp at EN 0x2B26E0), 4 pixels
+# per block, its texture in 5 [ebx+disp32] fields refreshed from the slot the per-frame writer fills, the end of
+# the span on the stack. Same pixels, accesses in the same order, same exit registers and flags (lot3/terrain_p4:
+# Unicorn, EN and FR, raw / shipped / new machines, whole memory compared). FR: code -0x10.
+from capstone import Cs, CS_ARCH_X86, CS_MODE_32
+
+TP4_CAVE_MAX = 420          # bytes, padding for page placement included
+TP4_MARK = 0x7E570000       # marker displacements of the self-written fields (pass 1)
+TP4_PAD = b'\xcc'           # dead bytes in front of a routine when a field would end too close to a page end
+_tp4_md = Cs(CS_ARCH_X86, CS_MODE_32)
+
+
+def tp4_lang(fr):
+    """the per-language addresses: FR code is EN - 0x10 for both routines"""
+    d = -0x10 if fr else 0
+    L = dict(s_hook=0x2B2A78, s_back=0x2B2AAF, S=0x2B2A81, T=0x2B2A92, STR=0x2B2AA0, P=0x2B2AA6,
+             s_scol=0x2B2A9A, s_base=0x2B2A1F, s_pro=0x2B29BC, s_wr=0x2B2AD8,
+             t_hook=0x2B26E0, TEX=0x2B2722, t_end=0x2B2739, t_wr=0x2B27DA, t_texf=0x2B2726)
+    L = {k: v + d for k, v in L.items()}
+    L['d'] = d
+    return L
+
+
+def _tp4_le(v):
+    return struct.pack('<I', v & 0xffffffff).hex()
+
+
+def _tp4_spx(k, store):
+    return '''
+    mov al, byte ptr [esi+edx]
+    inc dl
+    mov al, byte ptr [eax+ecx]
+    .byte 0x8a, 0x80
+    .long %#x
+    %s''' % (TP4_MARK + k, store)
+
+
+def tp4_shade_src(L, f):
+    """shade column pixel loop; f: {k: address of P field k} (pass 2) or {} (pass 1)"""
+    s = '''
+    push ecx
+    push esi
+    push ebp
+    mov ecx, ebp
+    and ecx, 0xff00
+    add ecx, dword ptr [%(S)#x]
+    mov esi, dword ptr [%(T)#x]
+    mov ebp, dword ptr [%(STR)#x]
+    mov eax, dword ptr [%(P)#x]
+    cmp eax, dword ptr [%(F0)#x]
+    je m_go
+    mov dword ptr [%(F0)#x], eax
+    mov dword ptr [%(F1)#x], eax
+    mov dword ptr [%(F2)#x], eax
+    mov dword ptr [%(F3)#x], eax
+    mov dword ptr [%(F4)#x], eax
+m_go:
+    xor eax, eax
+    sub ebx, 4
+    jl m_rem
+m_4:''' + _tp4_spx(0, 'mov byte ptr [edi+ebp], al') + \
+        _tp4_spx(1, 'mov byte ptr [edi+ebp*2], al\n    lea edi, [edi+ebp*2]') + \
+        _tp4_spx(2, 'mov byte ptr [edi+ebp], al') + \
+        _tp4_spx(3, 'mov byte ptr [edi+ebp*2], al\n    lea edi, [edi+ebp*2]') + '''
+    sub ebx, 4
+    jge m_4
+m_rem:
+    add ebx, 4
+    jz m_done
+m_1:''' + _tp4_spx(4, 'add edi, ebp\n    mov byte ptr [edi], al') + '''
+    dec ebx
+    jnz m_1
+m_done:
+    pop ebp
+    pop esi
+    pop ecx
+    jmp %(BACK)#x
+'''
+    d = dict(S=L['S'], T=L['T'], STR=L['STR'], P=L['P'], BACK=L['s_back'])
+    for k in range(5): d['F%d' % k] = f.get(k, 0x7E560000)
+    return s % d
+
+
+def _tp4_tpx(k):
+    return '''
+    .byte 0x8a, 0x83
+    .long %#x
+    add ecx, esi
+    adc bh, dl
+    add edx, ebp
+    adc bl, cl
+    mov byte ptr [edi+%d], al''' % (TP4_MARK + k, k)
+
+
+def tp4_span_src(L, f):
+    """texture span (whole routine); f as above (texture fields)"""
+    s = '''
+    push ebp
+    mov eax, dword ptr [%(TEX)#x]
+    cmp eax, dword ptr [%(F0)#x]
+    je s_go
+    mov dword ptr [%(F0)#x], eax
+    mov dword ptr [%(F1)#x], eax
+    mov dword ptr [%(F2)#x], eax
+    mov dword ptr [%(F3)#x], eax
+    mov dword ptr [%(F4)#x], eax
+s_go:
+    xor eax, eax
+    mov ax, word ptr [esi+0x16]
+    add eax, edi
+    push eax
+    sub eax, 4
+    sbb edx, edx
+    not edx
+    and eax, edx
+    push eax
+    mov edx, ecx
+    shl edx, 0x10
+    mov ebp, dword ptr [esi]
+    shl ebp, 0x10
+    mov eax, dword ptr [esi+0x10]
+    mov esi, dword ptr [esi+4]
+    and ebx, 0xffff
+    and ecx, 0xffff0000
+    and edx, 0xffff0000
+    mov dl, ah
+    mov cl, al
+    cmp edi, dword ptr [esp]
+    jae s_tail
+s_four:''' + _tp4_tpx(0) + _tp4_tpx(1) + _tp4_tpx(2) + _tp4_tpx(3) + '''
+    add edi, 4
+    cmp edi, dword ptr [esp]
+    jb s_four
+s_tail:
+    .byte 0x8a, 0x83
+    .long %(M4)#x
+    add ecx, esi
+    adc bh, dl
+    add edx, ebp
+    adc bl, cl
+    mov byte ptr [edi], al
+    add edi, 1
+    cmp edi, dword ptr [esp+4]
+    jne s_tail
+    lea esp, [esp+8]
+    pop ebp
+    ret
+'''
+    d = dict(TEX=L['TEX'], M4=TP4_MARK + 4)
+    for k in range(5): d['F%d' % k] = f.get(k, 0x7E560000)
+    return s % d
+
+
+TP4_SRC = {'shade': tp4_shade_src, 'span': tp4_span_src}
+TP4_LOOP = {'shade': 'jge', 'span': 'jb'}         # the 4-pixel loop's backward branch
+
+
+def tp4_page_ok(fields):
+    """dyn_x86 reads a dword field from memory only if it starts below page index 4093 (decode_fetchd_imm); kept with
+    the stricter rule of the IR cave: index + 4 <= 0xFFD"""
+    return all((a & 0xFFF) + 4 <= 0xFFD for a in fields)
+
+
+def _tp4_assemble(kind, L, at):
+    """two passes; returns (code with the 5 fields set to 0, [field addresses])"""
+    fn = TP4_SRC[kind]
+    c1 = asm(fn(L, {}), at)
+    f = {}
+    for k in range(5):
+        m = struct.pack('<I', TP4_MARK + k)
+        i = c1.find(m)
+        assert i > 0 and c1.find(m, i + 1) < 0, (kind, k)
+        f[k] = at + i
+    c2 = asm(fn(L, f), at)
+    assert len(c2) == len(c1), kind
+    for k in range(5):
+        o = f[k] - at
+        assert c2[o:o + 4] == struct.pack('<I', TP4_MARK + k)
+        c2 = c2[:o] + b'\0\0\0\0' + c2[o + 4:]          # every field starts at 0: the first refresh writes them
+    return c2, [f[k] for k in range(5)]
+
+
+def tp4_checks(kind, L, at, code, fields):
+    """DOSBox placement rules (asserts): the writer stores are exactly the 5 fields and start a block (right after the
+    'je' that skips them) which ends in a branch before the first field (a field write never lands in the running
+    block); the fields are disp32 of 8A 80 / 8A 83 (mod 2: read from memory once rewritten); the 4-pixel loop block
+    is at most 32 instructions (CreateCacheBlock limit) and branches back to its own start; the routine ends in jmp /
+    ret; the fields are page_ok. Returns the loop block's instruction count."""
+    ins = list(_tp4_md.disasm(code, at))
+    assert sum(i.size for i in ins) == len(code), kind
+    stores = [i for i in ins if i.mnemonic == 'mov' and i.bytes[0] == 0xA3]
+    assert [struct.unpack_from('<I', i.bytes, 1)[0] for i in stores] == fields, kind
+    k0 = ins.index(stores[0])
+    assert ins[k0 - 1].mnemonic == 'je', kind
+    assert [i.address for i in ins[k0:k0 + 5]] == [s.address for s in stores]
+    kb = k0 + 5
+    while ins[kb].mnemonic[0] != 'j': kb += 1
+    assert ins[kb].address + ins[kb].size <= min(fields) - 2, kind
+    assert ins[-1].mnemonic in ('jmp', 'ret'), kind
+    for a in fields:
+        i = [x for x in ins if x.address < a < x.address + x.size][0]
+        assert i.bytes[:2] in (b'\x8a\x80', b'\x8a\x83') and i.address + 2 == a and i.size == 6, (kind, hex(a))
+    j = ins.index([x for x in ins if x.address + 2 == fields[0]][0])
+    while ins[j - 1].mnemonic[0] != 'j': j -= 1
+    start, n = ins[j].address, 1
+    while ins[j].mnemonic[0] != 'j': j += 1; n += 1
+    assert ins[j].mnemonic == TP4_LOOP[kind] and int(ins[j].op_str, 16) == start, (kind, ins[j].mnemonic)
+    assert n <= 32, (kind, n)
+    assert tp4_page_ok(fields), (kind, [hex(a) for a in fields])
+    return n
+
+
+def tp4_caves(fr, at):
+    """(both routines assembled at 'at', {'shade': entry, 'span': entry, 'fields': [10 addresses], 'pads': [p0, p1],
+    'loop_ins': [n0, n1]}). A routine is moved forward by dead int3 bytes when a field would end past page index
+    0xFFC (at most 6 bytes each)."""
+    L = tp4_lang(fr)
+    blob = b''
+    info = dict(fields=[], pads=[], loop_ins=[])
+    for kind in ('shade', 'span'):
+        pad = 0
+        while True:
+            entry = at + len(blob) + pad
+            code, fields = _tp4_assemble(kind, L, entry)
+            if tp4_page_ok(fields): break
+            pad += 1
+            assert pad < 16
+        info['loop_ins'].append(tp4_checks(kind, L, entry, code, fields))
+        blob += TP4_PAD * pad + code
+        info[kind] = entry
+        info['fields'] += fields
+        info['pads'].append(pad)
+    assert len(blob) <= TP4_CAVE_MAX, len(blob)
+    return blob, info
+
+
+def tp4_records(fr, info):
+    """the two groups: each hook, then every fixed byte of the code our routines reproduce as check-only context
+    (slots the game rewrites are left out; the relocated base operands bind each group to its exe)"""
+    L = tp4_lang(fr)
+    le = _tp4_le
+    hs = asm('jmp %#x' % info['shade'], L['s_hook']).hex()
+    ht = asm('jmp %#x' % info['span'], L['t_hook']).hex()
+    assert len(hs) == len(ht) == 10
+    shade = [
+        rec(L['s_hook'], '5581e500ff000081c5', hs + '000081c5'),       # push ebp / and ebp,0xFF00 / add ebp,S..
+        rec(L['s_hook'] + 0x0D, '892d' + le(L['s_scol']) + '5d33c0eb008a82'),   # mov [Scol],ebp / pop ebp / xor
+        rec(L['s_hook'] + 0x1E, 'fec28a80'),           # (eax,eax / jmp +0 / mov al,[edx+T]..) inc dl / mov al,[eax+
+        rec(L['s_hook'] + 0x26, '81c7'),               # Scol].. / add edi,stride..
+        rec(L['s_hook'] + 0x2C, '8a80'),               # mov al,[eax+P]..
+        rec(L['s_hook'] + 0x32, '88074b75e181c6'),     # mov [edi],al / dec ebx / jne loop / add esi,..
+        rec(L['s_pro'], 'ba' + le(L['s_base'])),       # mov edx,0x2B2A1F: per-call slot writer base
+        rec(L['s_wr'], 'ba' + le(L['s_base'])),        # the same in the per-frame stride writer
+    ]
+    span = [
+        rec(L['t_hook'], '5533c0668b4616', ht + '4616'),   # push ebp / xor eax,eax / mov ax,[esi+16h]
+        # add eax,edi / mov edx,END+4 / mov [edx-4],eax / steppers set-up / mov cl,al / jmp loop / padding /
+        # mov al,[ebx+TEX]..
+        rec(L['t_hook'] + 7, '03c7ba' + le(L['t_end']) + '8942fc8bd1c1e2108b2ec1e5108b46108b760481e3ffff000081e1'
+                                                        '0000ffff81e20000ffff8ad48ac8eb072e8bc02e8bc0908a83'),
+        rec(L['t_hook'] + 0x46, '03ce12fa03d512d9880783c70181ff'),   # add/adc steppers, store, add edi,1, cmp edi,..
+        rec(L['t_hook'] + 0x59, '75e55dc3'),           # jne loop / pop ebp / ret
+        rec(L['t_wr'], 'b8' + le(L['t_texf']) + '8970fc'),   # per-frame writer: mov eax,TEX+4 / mov [eax-4],esi
+    ]
+    return [('terrain shade columns', shade), ('ground texture rows', span)]
+
+
+def tp4_groups(fr, cave_at):
+    """([(group name, [records])], both routines assembled at cave_at)"""
+    blob, info = tp4_caves(fr, cave_at)
+    return tp4_records(fr, info), blob
+
+
 # ---------------------------------------------------------------- sky / haze pass (EN 0x2A8658, once per frame)
 # Its two column loops replace "flagged" colours (byte table FLAGS) with the haze colour: 3 blocks / 10 instructions
 # per pixel. A 256-byte table T[v] = flag[v] ? colour : v is built at each call (the game changes one flag just
@@ -779,7 +1056,8 @@ def caves(fr, T):
     return [('sky', lambda at: asm(sky_cave(SKY[L], T), at)),
             ('ir', lambda at: ir_cave(IRROW[L], at)),
             ('ret', lambda at: ret_caves(TERRAIN[L], at)[0]),
-            ('column', lambda at: column_cave(COLUMN[L], at))]
+            ('column', lambda at: column_cave(COLUMN[L], at)),
+            ('terrain p4', lambda at: tp4_groups(fr, at)[1])]
 
 
 def groups(fr, cv, T):
@@ -811,6 +1089,7 @@ def groups(fr, cv, T):
     out += terrain_groups(TERRAIN[L], cv['ret'])      # after 'horizon test': its returns check the new bytes
     out.append(column_group(COLUMN[L], cv['column']))
     out.append(hash_group(HASH[L]))                    # after the 13 groups of lot 2: their bits stay
+    out += tp4_groups(fr, cv['terrain p4'])[0]   # last: after every shipped group, their bits stay
     return out
 
 
