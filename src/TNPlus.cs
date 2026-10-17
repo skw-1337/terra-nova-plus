@@ -43,14 +43,14 @@ using System.Reflection;
 [assembly: AssemblyCompany("skw-1337")]
 [assembly: AssemblyProduct("Terra Nova Plus")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 skw-1337 - MIT License - github.com/skw-1337/terra-nova-plus")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
-[assembly: AssemblyInformationalVersion("1.2.0")]
+[assembly: AssemblyVersion("1.2.1.0")]
+[assembly: AssemblyFileVersion("1.2.1.0")]
+[assembly: AssemblyInformationalVersion("1.2.1")]
 [assembly: ComVisible(false)]
 
 static partial class TNPlus
 {
-    const string VERSION = "1.2.0";
+    const string VERSION = "1.2.1";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
@@ -2204,6 +2204,7 @@ static partial class TNPlus
     // position independent, copied into the HD buffer (XCode) after the affine block, in a page the game never ran code
     // from; then its address goes to the HD code's pointer, which calls it around every view render and at the screen copy.
     static bool OptSmallViews = true;               // ini small_views
+    static bool OptUpdateCheck = true;              // ini update_check: the launcher asks GitHub for the latest release
     static int smallState = 0;          // 0 to do, 1 on, -1 not for this display
     static void TrySmallViews()
     {
@@ -2842,6 +2843,7 @@ static partial class TNPlus
                     case "hd_720": if (v == "1" && OptWideTrue) OptHd720 = true; break;   // first test builds
                     case "fps_counter": OptFpsCounter = v != "0"; break;
                     case "speed_fixes": OptSpeedFix = v != "0"; break;
+                    case "update_check": OptUpdateCheck = v != "0"; break;
                     case "small_views": OptSmallViews = v != "0"; break;
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "inplace_attach": OptInPlaceAttach = v != "0"; break;
@@ -2899,6 +2901,7 @@ static partial class TNPlus
                 "; HD 1280x720: 1 = small frame counter top right\r\nfps_counter = " + (OptFpsCounter ? 1 : 0) + "\r\n" +
                 "; HD 1280x720: 1 = speed fixes in the game's 3D code (same picture, fewer slow spots for DOSBox)\r\nspeed_fixes = " + (OptSpeedFix ? 1 : 0) + "\r\n" +
                 "; HD 1280x720: 1 = the two cockpit cameras (MFD views) drawn in HD too\r\nsmall_views = " + (OptSmallViews ? 1 : 0) + "\r\n" +
+                "; 1 = the launcher checks GitHub for a newer release at start-up (it only asks for the latest version number)\r\nupdate_check = " + (OptUpdateCheck ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
                 "; SHARP (DOSBox in OpenGL with its sharp shader: every pixel the same size, less shimmer) or GAME'S OWN\r\n" +
                 "scaling = " + SCALING_NAMES[OptScaling] + "\r\n" +

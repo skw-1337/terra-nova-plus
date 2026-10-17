@@ -314,6 +314,36 @@ static partial class TNPlus
         try { f.Icon = Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location); } catch { }
         f.Paint += delegate(object s, PaintEventArgs e) { PaintHeader(e.Graphics, f.ClientSize.Width); };
 
+        // update badge, top right of the title band: filled in by a background check (update_check = 0: none)
+        Label upd = new Label(); upd.AutoSize = true; upd.Font = TKey; upd.BackColor = TPanel; upd.ForeColor = TDim;
+        upd.Text = OptUpdateCheck ? "CHECKING FOR UPDATES..." : "";
+        upd.Location = new Point(GUI_W - 20 - upd.PreferredWidth, 8);
+        f.Controls.Add(upd);
+        if (OptUpdateCheck)
+        {
+            System.Threading.Thread t = new System.Threading.Thread(delegate()
+            {
+                string latest = LatestRelease() ?? LatestRelease();   // the first request can be slow (proxy detection)
+                try
+                {
+                    f.BeginInvoke((Action)delegate
+                    {
+                        if (latest == null) { upd.Text = "UPDATE CHECK FAILED"; upd.ForeColor = TDim; }
+                        else if (NewerVersion(latest, VERSION))
+                        {
+                            upd.Text = "\u25B2 UPDATE " + latest + " AVAILABLE"; upd.ForeColor = TAmber; upd.Cursor = Cursors.Hand;
+                            upd.Click += delegate { try { System.Diagnostics.Process.Start(RELEASES_URL); } catch { } };
+                            upd.MouseEnter += delegate { guiHelp.Text = "> A newer Terra Nova Plus is out: click to open its download page."; };
+                        }
+                        else { upd.Text = "\u2713 UP TO DATE"; upd.ForeColor = TLed; }
+                        upd.Location = new Point(GUI_W - 20 - upd.PreferredWidth, 8);
+                    });
+                }
+                catch { }                           // window already closed
+            });
+            t.IsBackground = true; t.Start();
+        }
+
         // header: game line under the title band
         Panel gameRow = new Panel(); gameRow.Location = new Point(20, 86); gameRow.Size = new Size(GUI_W - 40, 28); gameRow.BackColor = TBack; f.Controls.Add(gameRow);
         Action drawGame = delegate
@@ -492,6 +522,38 @@ static partial class TNPlus
     }
 
     // ---- drawing
+    // update check: the latest release on GitHub (pre-releases are not 'latest'), nothing else is sent
+    const string RELEASES_URL = "https://github.com/skw-1337/terra-nova-plus/releases/latest";
+    static string LatestRelease()
+    {
+        try
+        {
+            System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)3072;   // TLS 1.2
+            System.Net.HttpWebRequest req = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(
+                "https://api.github.com/repos/skw-1337/terra-nova-plus/releases/latest");
+            req.UserAgent = "TerraNovaPlus/" + VERSION; req.Accept = "application/vnd.github+json";
+            req.Timeout = 10000; req.ReadWriteTimeout = 10000;
+            using (System.Net.WebResponse r = req.GetResponse())
+            using (StreamReader sr = new StreamReader(r.GetResponseStream()))
+            {
+                System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(sr.ReadToEnd(),
+                    "\"tag_name\"\\s*:\\s*\"v?([0-9][0-9.]*)");
+                return m.Success ? m.Groups[1].Value.TrimEnd('.') : null;
+            }
+        }
+        catch { return null; }
+    }
+
+    static bool NewerVersion(string latest, string current)
+    {
+        try
+        {
+            string cur = current.Split('-')[0];
+            return new Version(latest) > new Version(cur);
+        }
+        catch { return false; }
+    }
+
     static void PaintHeader(Graphics g, int width)
     {
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
