@@ -6,10 +6,12 @@ The Python scripts that generate the machine code in `src/` (each C# payload say
 - `port_en.py`, `port_en.json`: the French to English address table used by `hd_mod.py --en`. The table is included. Rebuilding it needs RAM snapshots of both games (`tnre.py snap`) and a disassembly, which aren't shipped.
 - `le.py`: reads the LE executable (`__FF.EXE`) and maps it to the emulated RAM.
 - `kb_cave.py`: the key remapping routine (KEYBOARD tab). Assembles it, tests it in unicorn, writes `kb_cave.json`.
-- `strips_cave.py`: extra terrain strips outside the game's 3 octants (edge objects, wider field of view).
+- `strips_cave.py`: extra terrain strips outside the game's 3 octants (edge objects, wider field of view). Prints the `EDGE_CAVES` array of `src/TNPlus.cs`.
 - `turret_fix.py`: shots through turrets (Callemann's three fixes, ported). Writes `src/TNPlusTurret.cs`, `test` checks the cylinder code in unicorn.
 - `descrambler_fix.py`: descrambler text at the original pace. Writes `src/TNPlusDescrambler.cs`, `test` runs it in unicorn at several frame rates.
 - `ir_fix.py`: infrared terrain routines without self-modifying code (Callemann's edits). Needs two memory images taken at the main menu (English and French game); writes `src/TNPlusIr.cs`, which holds no game code: TN+ rebuilds the routines from the player's own memory.
+- `view_fix.py`: the same for the two per-column routines of the normal view. Same images, writes `src/TNPlusView.cs`.
+- `filler_fix.py`: polygon filler without rewritten opcodes (pixel loop cave, edge roundings). Same images, writes `src/TNPlusFiller.cs`.
 - `tnre.py`: reads and writes DOSBox Staging's emulated RAM, sends keys, captures the window. Used for live tests.
 
 Python 3 with `pip install keystone-engine numpy pillow psutil`, plus `unicorn` for the kb_cave tests and `capstone` for `port_en.py` / `le.py`.

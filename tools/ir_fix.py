@@ -111,9 +111,13 @@ def layout(read, rec, hooked):
             stop, text = edits[a]
             assert stop in bounds | {high}
             items.append(('L', a))
-            for part in re.split(r'(L[0-9a-f]+):', text):
+            for part in re.split(r'(L[0-9a-f]+):|@(j[a-z]+ 0x[0-9a-f]+);', text):   # @jcc 0xADDR; = a branch
+                if not part or not part.strip(): continue
                 if re.fullmatch(r'L[0-9a-f]+', part): items.append(('L', int(part[1:], 16)))
-                elif part.strip(): items.append(('B', ks(part)))
+                elif re.fullmatch(r'j[a-z]+ 0x[0-9a-f]+', part):
+                    m, t = part.split(); t = int(t, 16); assert low <= t < high and t in bounds
+                    items.append(('J', m, t))
+                else: items.append(('B', ks(part)))
             end = stop
             continue
         items.append(('L', a))
@@ -147,12 +151,14 @@ def layout(read, rec, hooked):
     return pieces, copied, lab, off
 
 
-def same_shape(en_read, fr_read, low, high, d):
-    """the French routine = the English one, addresses inside the routine moved by d (others may differ)"""
+def same_shape(en_read, fr_read, low, high, d, slots=()):
+    """the French routine = the English one, addresses inside the routine moved by d (others may differ); the
+    instructions at `slots` only keep their size (the game rewrites their operands)"""
     _, a = disasm(en_read, low, high); _, b = disasm(fr_read, low + d, high + d)
     assert len(a) == len(b)
     for x, y in zip(a, b):
         assert x.mnemonic == y.mnemonic and x.size == y.size, (hex(x.address), x.mnemonic, y.mnemonic)
+        if x.address in slots: continue
         nx = re.findall(r'0x[0-9a-f]+', x.op_str); ny = re.findall(r'0x[0-9a-f]+', y.op_str)
         assert len(nx) == len(ny)
         for p, q in zip(nx, ny):

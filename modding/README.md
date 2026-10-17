@@ -95,7 +95,7 @@ Terra Nova Plus makes object 3 0x6000 bytes bigger in the exe file. The original
 | 0x46A100 – 0x46A19E | terrain sectors |
 | 0x46A1A0 – 0x46A1F7 | game keys: stuck key sweep |
 | 0x46A200 – 0x46A2AB | true 16:9 camera |
-| 0x46A300 – 0x46AA16 | edge objects code |
+| 0x46A300 – 0x46AA16 | edge objects code (bit masks at 0x46A790) |
 | 0x46AA20 – 0x46AE54 | game keys code |
 | 0x46AE54 – 0x46B000 | free |
 | 0x46B000 – 0x46B024 | heap headers (the game's, not ours) |
@@ -152,6 +152,30 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
   buffer the HD code allocates (pointer at 0x466228). Each entry becomes `jmp [0x4693A8]` / `jmp [0x4693AC]`; until
   the buffer exists those point to stubs (0x46A0E0, 0x4650E8) that run the original routines. Checked by running
   both versions on frozen real calls in Unicorn: identical bytes.
+
+- **Normal view slowed by self-modifying code** (busy scenes). For each polygon edge the 3D library calls two
+  routines that test (0x317DF0) and update (0x317EA0) a per-column buffer. Both write the buffer's end into the
+  displacements of their loop at every call, the second one also its return value (0x317FA6) and the target of a
+  jump (0x317F9F), so DOSBox retranslates them all the time. `tools/view_fix.py` rebuilds them the IR way: the loops
+  read those slots as data, the jump always takes the "first update" path (once a column is updated it only rewrites
+  the same values). Entries `jmp [0x4693F0]` / `jmp [0x4693F4]`, stubs at 0x469F40 / 0x469F50, the block at +0x600 in
+  the IR buffer. Checked in Unicorn on frozen real calls, with the buffer forced so both results come out: identical.
+  Panama, SHARPER, true 16:9: 43 -> 47 fps standing at the locks, 40 -> 46 turning. The textured span loop
+  (0x34D390) has the same habit, but DOSBox already reads nearly all its rewritten operands from memory (see the
+  polygon filler below): its rewrite was slower.
+
+- **Polygon filler partly interpreted by DOSBox.** DOSBox Staging's dyn_x86 core reads rewritten immediates
+  (mov/add/and eax, 81, C1, mov reg) and [reg+disp32] displacements from memory once they have changed, so most of
+  the game's self-modifying code costs little. Not jump targets, other immediates (15, 83, ...) or absolute
+  addresses (retranslated at each change), and an instruction whose opcode byte has been rewritten 4 times runs
+  through the interpreter from then on. The textured polygon filler does that twice: the line set-up writes a dword
+  over 0x32E150 ("mov al,[ebx+eax+table]" or "mov al,dl"), inside the pixel loop, and the two edge set-ups
+  (0x32D8E0, 0x32DB40) round three steps by writing 40h/48h (inc/dec eax). `tools/filler_fix.py`: the six writers
+  go to two words (0x4693F8 state, 0x4693FC table), the loop jumps at 0x32E14C to a cave (0x469F60) that does the
+  lookup from them, and each edge block tests the word again and adjusts eax without patching. Checked in Unicorn
+  on frozen calls (both line states forced): identical. Panama: +5 % with models on screen. Applied only while
+  that code is still as loaded (main menu, before the first mission). The transparent filler (0x3316A0, adc
+  eax,imm32 per line) is left: it already runs in the menus, too late to patch from outside.
 
 - **Shots go through turrets** (particle beam in mission 26, sometimes the multipulsar). Three original bugs,
   found and fixed by Callemann in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved),

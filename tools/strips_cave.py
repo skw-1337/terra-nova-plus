@@ -6,10 +6,31 @@ W0, SAVE, VARS, SIN = 0x46A300, 0x469440, 0x469480, 0x469500
 MODE = 0x4694F0
 VSTART, VEND = 0x469410, 0x469414   # indice du premier sommet de la passe / sommets utilises a la fin
 VC1, VC2, VC3 = 0x46A9C0, 0x46A9D8, 0x46A9F0
-SORT = 0x46A780        # tri de la liste par anneau carre (proche -> loin), apres les bandes
+SORT = 0x46A7B0        # tri de la liste par anneau carre (proche -> loin), apres les bandes
 CNT = 0x469900         # 64 compteurs
+# une case (1 unite) est prise des que son disque (rayon 0,75) touche la bande vue : avant, son centre devait etre
+# dans la bande ET a plus de 2 unites devant la camera, et les parois proches manquaient aux bords de l'image
+NEAR = 0xC00000         # 0,75 unite en unites x 2^24 (ecarts 8.8 x cos/sin 16.16)
+MASK8 = 0x46A7A0       # masques 1, 2, 4 .. 128 du bitmap des cellules, au bout du code principal
+                       # (bt/bts ne sont pas traduits par le coeur dynamique de DOSBox)
 SINTAB = b''.join(struct.pack('<i', int(round(65536 * math.sin(2 * math.pi * i / 256)))) for i in range(256))
-out = {}
+out, pieces = {}, {}
+
+
+def cs_caves(pieces):
+    # le tableau EDGE_CAVES de src/TNPlus.cs, a coller tel quel (adresses et octets ensemble)
+    s = '    static readonly string[][][] EDGE_CAVES = {\n'
+    for lang, name in (('FR', 'French'), ('EN', 'English (GOG, Steam)')):
+        s += '        new[] {   // %s\n' % name
+        for k, (at, b) in enumerate(pieces[lang]):
+            h = bytes(b).hex().upper()
+            s += '            new[] { "0x%X",\n' % at
+            s += ' +\n'.join('            "%s"' % h[i:i + 200] for i in range(0, len(h), 200))
+            s += ' },\n' if k < len(pieces[lang]) - 1 else ' }\n'
+        s += '        },\n'
+    return s + '    };\n'
+
+
 for lang, builder, hook, setup in (('FR', 0x2AA388, 0x29E2F0, 0x2A8968), ('EN', 0x2AA398, 0x29E300, 0x2A8978)):
     H, h, B, T, OFF, HALF, C1, HS, E1C, E1S, E2C, E2S = (VARS + 4 * i for i in range(12))
     alloc, free = (0x2C4FD0, 0x2C5074) if lang == 'FR' else (0x2C4F40, 0x2C4FE4)
@@ -98,8 +119,12 @@ shl eax, 7
 movzx edx, word ptr [ebx+0x10]
 and edx, 0x7f
 or eax, edx
-mov edx, dword ptr [{VARS + 100:#x}]
-bts dword ptr [edx], eax
+mov edx, eax
+shr edx, 3
+and eax, 7
+mov al, byte ptr [eax + {MASK8:#x}]
+add edx, dword ptr [{VARS + 100:#x}]
+or byte ptr [edx], al
 add ebx, 32
 dec ecx
 jnz bmark
@@ -242,8 +267,12 @@ shl eax, 7
 movzx ebp, word ptr [ebx+0x10]
 and ebp, 0x7f
 or eax, ebp
-bt dword ptr [edx], eax
-jb skip
+mov ebp, eax
+shr ebp, 3
+and eax, 7
+mov al, byte ptr [eax + {MASK8:#x}]
+test byte ptr [edx + ebp], al
+jnz skip
 nobt:
 movsx eax, word ptr [ebx+0x10]
 shl eax, 16
@@ -263,7 +292,7 @@ mov ecx, eax
 imul ecx, dword ptr [{VARS + 60:#x}]
 imul edx, dword ptr [{VARS + 64:#x}]
 add ecx, edx
-cmp ecx, 0x2000000
+cmp ecx, {-NEAR}
 pop ecx
 pop edx
 pop eax
@@ -272,13 +301,15 @@ push eax
 push edx
 imul edx, dword ptr [{E1C:#x}]
 imul eax, dword ptr [{E1S:#x}]
-cmp edx, eax
+sub edx, eax
+cmp edx, {-NEAR}
 pop edx
 pop eax
 jl skip
 imul eax, dword ptr [{E2S:#x}]
 imul edx, dword ptr [{E2C:#x}]
-cmp eax, edx
+sub eax, edx
+cmp eax, {-NEAR}
 jl skip
 take:
 mov edx, dword ptr [{VARS + 100:#x}]
@@ -290,7 +321,11 @@ shl eax, 7
 movzx ebp, word ptr [ebx+0x10]
 and ebp, 0x7f
 or eax, ebp
-bts dword ptr [edx], eax
+mov ebp, eax
+shr ebp, 3
+and eax, 7
+mov al, byte ptr [eax + {MASK8:#x}]
+or byte ptr [edx + ebp], al
 nomark:
 mov eax, edi
 sub eax, dword ptr [{B:#x}]
@@ -523,7 +558,9 @@ ret"""
     assert SORT + len(v4) <= VC1, len(v4)
     assert VC1 + len(v1) <= VC2 and VC2 + len(v2) <= VC3 and VC3 + len(v3) <= 0x46AA40, (len(v1), len(v2), len(v3))
     e, _ = ks.asm(a, W0)
-    assert W0 + len(e) <= SORT, len(e)
+    assert W0 + len(e) <= MASK8 and MASK8 + 8 <= SORT, len(e)
+    e = bytes(e) + bytes(MASK8 - W0 - len(e)) + bytes(1 << i for i in range(8))   # masques dans le morceau du code
+    pieces[lang] = [(W0, e), (SORT, v4), (VC1, v1), (VC2, v2), (VC3, v3)]
     rel = lambda at, to: bytes([0xE8]) + (to - (at + 5)).to_bytes(4, 'little', signed=True)
     out[lang] = (bytes(e).hex().upper(), rel(hook, builder).hex().upper(), rel(hook, W0).hex().upper(), SINTAB.hex().upper())
     print(lang, len(e)); [print('  ', x) for x in out[lang][:3]]
@@ -533,7 +570,8 @@ ret"""
         hooks = [(h1, '8b1d' + VBUF.to_bytes(4, 'little').hex(), rel(h1, VC1) + bytes([0x90])),
                  (h2, '31c980fc030f94c0', rel(h2, VC2) + bytes([0x90]) * 3),
                  (h3, '81c4300100005d5f5ec3', jmp(h3, VC3) + bytes([0x90]) * 5)]
-        parts = ['poke=%x:%s:%s' % (a, '00' * len(c), bytes(c).hex()) for a, c in ((SORT, v4), (VC1, v1), (VC2, v2), (VC3, v3))]
+        parts = ['poke=%x:%s:%s' % (a, '00' * len(c), bytes(c).hex()) for a, c in pieces[lang]]
         parts += ['poke=%x:%s:%s' % (a, o, n.hex()) for a, o, n in hooks]
         print(('VPOKES ' if lang == 'FR' else 'VPOKES_EN ') + ' '.join(parts))
 print('SIN', out['FR'][3])
+print(cs_caves(pieces), end='')

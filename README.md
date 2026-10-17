@@ -8,7 +8,7 @@ One small external tool. Pick your options in its window, click Launch, and the 
 |---|---|---|
 | **Mouse freelook** | `Y` | Mouse left/right turns your PBA, up/down looks up/down, the aiming reticle stays centred: you fire where you look. Smooth (~500 updates per second), no screen shake, no reticle trails on the cockpit. |
 | **Noclip** | `U` | Free flight: your usual move keys, `Space` / `Left Ctrl` up/down, `Left Shift` ×4 speed. Great to explore the maps and look at the scenery. |
-| **View distance** | `J` | `NORMAL` / `FAR` / `MAX`: the fog is pushed back, the horizon opens up. |
+| **View distance** | `J` | `NORMAL` / `FAR`: the fog is pushed back, the horizon opens up. |
 | **Display** | — | `ORIGINAL`, `320x400` (the engine's best resolution, applied in every mission: the game normally only keeps it in save files) or `HD`: the 3D drawn at twice the width, 640x400 (848x480 in true 16:9). |
 | **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD, beta): the 3D is drawn in a real 16:9 picture (848 columns, sharper than STRETCHED), the cockpit and HUD are stretched to the full width like in STRETCHED. |
 | **Scaling** | — | `SHARP` (default): DOSBox draws with OpenGL and its sharp shader, every pixel the same size on screen, less shimmer when the view moves. `GAME'S OWN`: the edition's setting. |
@@ -72,7 +72,7 @@ The turret, descrambler and infrared fixes come from Callemann's [TNova Native](
 
 ### Terrain detail
 - More ground detail far away. Steep walls in the distance no longer turn into a saw blade.
-- Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 32 cells and SHARPER to 48.
+- Since beta 4, smoother ground too. Near the camera the game draws the terrain as textured polygons, but only up to 12 cells; farther it uses columns that turn slopes and cliff edges into stair steps. SHARP extends the polygons to 32 cells and SHARPER to 48. In HD, SHARPER draws them less far (down to 24 cells) when the frame rate drops below 60, and back to 48 when it can.
 - The engine could not go past 31 cells: its vertex grid is 64x64 and its polygon buffers are small. TNPlus patches `TNOVA\__FF.EXE` once (128x128 grid, bigger buffers, 1 MB render memory) and keeps the untouched file as `__FF.EXE.tnplus-original`.
 
 ### Sound
@@ -106,6 +106,8 @@ Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, ad
 - **End-of-mission freeze guard** (beta 4, always on). The game frees the cockpit's click zones when a mission ends but keeps testing the mouse against them for a moment, and could get stuck there forever on a black screen. The routine that walks those zones now gives up after 255 steps, and freelook stops writing the cursor as soon as the game stops running frames.
 - **Zoom fix** (1.1, always on). Back from the Options screen the view came back unzoomed while the game kept its zoom level, so the next zoom step jumped. The view is now set up at the current level.
 - **Infrared speed fix** (1.1, with HD). In infrared the game writes texture steps into the code of its terrain routines many times a frame, and DOSBox has to translate that code again each time: turning fast in IR dropped to about 35 fps, uneven. Those two routines now read the values as data (Callemann's fix for [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved), ported here): IR runs as fast as the normal view. The routines are rebuilt from your own game files at run time, nothing of the game is shipped.
+- **Normal view speed fix** (with HD). Same trouble in the normal view: the two routines the game runs for every polygon edge rewrite their own code at each call. They read those values as data now, rebuilt the same way: on Panama with SHARPER, 43 -> 47 fps at the locks, 40 -> 46 when turning there.
+- **Polygon speed fix** (prepared exe). The routine that fills textured polygons (models, buildings) rewrites an instruction of its pixel loop line after line, and DOSBox ends up running that instruction through its slow interpreter at every pixel. Same for a rounding in the edge set-up. Both are fixed code now: about 5 % more fps where models fill the screen.
 - **Smoother walking** (beta 4, part of the physics fix). The physics skipped any frame shorter than 10 ms; above ~80 fps DOSBox gives 8 ms frames, so one frame in six had no movement and walking stuttered. Every frame is simulated now.
 - **Object distance** (beta 4, GAME / FAR / MAX, MAX by default). Bushes, trees and rocks were only drawn within 20 terrain cells whatever the detail setting, and units and buildings within a range per type (20 cells for PBAs). FAR draws scenery up to 30 cells and doubles the ranges, MAX goes to 40 cells and triples them (120 cells at most). The engine's fixed-size object list and the limits of its entity walk are raised first so the extra objects fit. The game has no model LOD to improve: objects are always drawn with the same model.
 
@@ -139,10 +141,11 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `display` | `HD` | `ORIGINAL`, `320X400` or `HD` (640x400, 848x480 in true 16:9) |
 | `freelook`, `noclip` | `1`, `0` | the launcher options |
 | `terrain_detail` | `SHARPER` | `GAME`, `SHARP` or `SHARPER` |
+| `terrain_fps` | `60` | SHARPER in HD: frame rate it keeps by drawing the smooth terrain less far, `0` = always 48 cells |
 | `widescreen` | `0` | `0` off, `1` stretched, `2` true 16:9 (HD) |
 | `wide_hud` | `1` | true 16:9: `1` cockpit and HUD stretched to the full width, `0` centred at their own proportions |
 | `edge_objects` | `1` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta) |
-| `view_distance` | `MAX` | `NORMAL`, `FAR` or `MAX` at start |
+| `view_distance` | `FAR` | `NORMAL` or `FAR` at start |
 | `sensitivity_x`, `sensitivity_y` | `12`, `8` | mouse speed (heading / pitch units per mouse count) |
 | `invert_y` | `0` | `1` = inverted vertical look |
 | `noclip_speed` | `15` | game units per second (a walking PBA does about 2) |
