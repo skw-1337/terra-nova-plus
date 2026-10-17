@@ -9,8 +9,8 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **Mouse freelook** | `Y` | Mouse left/right turns your PBA, up/down looks up/down, the aiming reticle stays centred: you fire where you look. Smooth (~500 updates per second), no screen shake, no reticle trails on the cockpit. |
 | **Noclip** | `U` | Free flight: your usual move keys, `Space` / `Left Ctrl` up/down, `Left Shift` ×4 speed. Great to explore the maps and look at the scenery. |
 | **View distance** | `J` | `NORMAL` / `FAR`: the fog is pushed back, the horizon opens up. |
-| **Display** | — | `ORIGINAL`, `320x400` (the engine's best resolution, applied in every mission: the game normally only keeps it in save files) or `HD`: the 3D drawn at twice the width, 640x400 (848x480 in true 16:9). |
-| **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD, beta): the 3D is drawn in a real 16:9 picture (848 columns, sharper than STRETCHED), the cockpit and HUD are stretched to the full width like in STRETCHED. |
+| **Display** | — | `ORIGINAL`, `320x400` (the engine's best resolution, applied in every mission: the game normally only keeps it in save files), or HD: `640x400` (the 3D drawn at twice the width), `848x480` or `1280x720` (true 16:9). |
+| **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD, beta): the 3D is drawn in a real 16:9 picture (848 columns, sharper than STRETCHED), the cockpit and HUD are stretched to the full width like in STRETCHED. `TRUE 720`: the same in 1280x720. |
 | **Scaling** | — | `SHARP` (default): DOSBox draws with OpenGL and its sharp shader, every pixel the same size on screen, less shimmer when the view moves. `GAME'S OWN`: the edition's setting. |
 | **Field of view** | — | `GAME` / `90` / `100` / `110` degrees for the 3D view, cockpit and full view, at every zoom level (the game: 84.5). The small cockpit cameras keep theirs. Works in 4:3 and in 16:9. |
 | **Terrain and object distance** | — | More ground detail far away, and scenery, units and buildings drawn farther. |
@@ -20,11 +20,31 @@ One small external tool. Pick your options in its window, click Launch, and the 
 
 Everything happens in memory while you play, except one thing: for HD, terrain detail, field of view and 16:9 TNPlus patches `TNOVA\__FF.EXE` once, and keeps the untouched file as `__FF.EXE.tnplus-original`.
 
+## 1.2
+
+**Latest: [1.2.0](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.0)**
+
+![Terra Nova Plus launcher](docs/launcher_v12.png)
+
+- **HD 1280x720**: the 3D is drawn 1280 pixels wide and 1.5 times taller, in true 16:9. It's the new BEST preset and the default for a new install. A small frame counter sits top right (`fps_counter = 0` hides it).
+- **Much faster in DOSBox**: a lot of the game's 3D code rewrote itself while running, which DOSBox handles badly. Those spots are fixed, same picture: on Panama I get about 75 to 100 fps in 1280x720. The default CPU speed is now 1800000. If your PC can't keep up, try HD 848x480 or a lower CPU speed.
+- **No more stair steps on far slopes**: the distant ground was shaded in blocks along the terrain grid. It's shaded smoothly now.
+
+![Far terrain, 1.1.0 and 1.2](docs/v12_terrain.png)
+
+- **Cockpit cameras in HD**: the squadmate, target and drone views in the cockpit are drawn in HD too, with smoother ground.
+
+![Cockpit camera, 1.1.0 and 1.2](docs/v12_cameras.png)
+
+- **Walls near the screen edges** no longer disappear with a wide field of view (first missions, close to walls).
+- **Infrared** no longer breaks far away after using the full view (`G`) in 1280x720.
+- **Clicking a unit in the 3D view** (squad orders) now works in 1280x720.
+- **View distance**: FAR is now the farthest. MAX showed the edge of the map.
+- **Launcher**: Display lists every resolution, Widescreen follows.
+
 ## 1.1.0
 
-**Latest: [1.1.0](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.1.0)**: everything from the five betas, plus the fixes below.
-
-![Terra Nova Plus launcher](docs/launcher_beta5.png)
+Everything from the five betas, plus the fixes below.
 
 This is a big one. I rewrote the launcher and added a bunch of things people asked for on TTLG, thanks to [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813). Tell me what breaks.
 
@@ -120,7 +140,7 @@ Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, ad
 1. Download the latest zip from the [Releases](../../releases) page and unzip it anywhere.
 2. Run **`TNPlus.exe`**. A window opens:
 
-   ![Terra Nova Plus launcher](docs/launcher_beta5.png)
+   ![Terra Nova Plus launcher](docs/launcher_v12.png)
 
    Pick a preset or set things one by one, then click **Launch**. Your choices are saved in `TNPlus.ini`.
 3. The window closes and a small console stays minimized in the taskbar. Play! When the game closes, the window comes back.
@@ -138,11 +158,14 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 
 | Key | Default | Meaning |
 |---|---|---|
-| `display` | `HD` | `ORIGINAL`, `320X400` or `HD` (640x400, 848x480 in true 16:9) |
+| `display` | `HD` | `ORIGINAL`, `320X400` or `HD` (640x400, 848x480 or 1280x720 with `widescreen`) |
 | `freelook`, `noclip` | `1`, `0` | the launcher options |
 | `terrain_detail` | `SHARPER` | `GAME`, `SHARP` or `SHARPER` |
 | `terrain_fps` | `60` | SHARPER in HD: frame rate it keeps by drawing the smooth terrain less far, `0` = always 48 cells |
-| `widescreen` | `0` | `0` off, `1` stretched, `2` true 16:9 (HD) |
+| `widescreen` | `3` | `0` off, `1` stretched, `2` true 16:9 in 848x480 (HD), `3` true 16:9 in 1280x720 (HD) |
+| `fps_counter` | `1` | 1280x720: small frame counter top right |
+| `speed_fixes` | `1` | 1280x720: the speed fixes in the game's 3D code, `0` = leave the game's code as it is |
+| `small_views` | `1` | 1280x720: the cockpit cameras drawn in HD |
 | `wide_hud` | `1` | true 16:9: `1` cockpit and HUD stretched to the full width, `0` centred at their own proportions |
 | `edge_objects` | `1` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta) |
 | `view_distance` | `FAR` | `NORMAL` or `FAR` at start |
@@ -158,7 +181,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps, idle gestures and descrambler text too fast) |
 | `field_of_view` | `GAME` | `GAME`, `90`, `100` or `110`: horizontal field of view in degrees (GAME = 84.5, or 100.9 in 16:9) |
 | `object_distance` | `MAX` | `GAME`, `FAR` or `MAX`: how far scenery, units and buildings are drawn |
-| `cpu_cycles` | `1000000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting |
+| `cpu_cycles` | `1800000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting |
 | `music` | `ROLAND` | `ROLAND`, `FM`, `GAME'S OWN` or `AWE32` (needs `awe32.raw`) |
 | `stereo_fix` | `0` | `1` = swap the Sound Blaster stereo back in DOSBox |
 | `scaling` | `SHARP` | `SHARP` (OpenGL, sharp shader: pixels of equal size) or `GAME'S OWN` |
@@ -205,7 +228,7 @@ build.bat
 or manually:
 
 ```bat
-%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /r:System.Windows.Forms.dll /r:System.Drawing.dll /out:TNPlus.exe TNPlus.cs TNPlusGui.cs TNPlusKeys.cs HdPayload.cs HdPayloadFr.cs HdPayloadEn.cs HdPayloadFrWide.cs HdPayloadEnWide.cs AweBank.cs
+%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /r:System.Windows.Forms.dll /r:System.Drawing.dll /out:TNPlus.exe TNPlus.cs TNPlusGui.cs TNPlusKeys.cs TNPlusMapper.cs TNPlusTurret.cs TNPlusDescrambler.cs TNPlusIr.cs TNPlusIrInPlace.cs TNPlusAffine.cs TNPlusSpanInPlace.cs TNPlusSpanFix.cs TNPlusView.cs TNPlusFiller.cs HdPayload.cs HdPayloadFr.cs HdPayloadEn.cs HdPayloadFrWide.cs HdPayloadEnWide.cs HdPayloadFr720.cs HdPayloadEn720.cs AweBank.cs
 ```
 
 ## How it works (short)
