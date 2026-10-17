@@ -338,7 +338,7 @@ static partial class TNPlus
         tabSet.Click += delegate { ShowPage(false); }; tabKeys.Click += delegate { ShowPage(true); };
         int y0 = 156, lx = 20, pw = (GUI_W - 60) / 2, rx = lx + pw + 20;
         Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(7));
-        cbDisplay = Combo(pPic, "Display", 0, DisplayLabels(), "BETA", "");
+        cbDisplay = Combo(pPic, "Display", 0, GUI_DISPLAY, "BETA", "");
         cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, "BETA", "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. TRUE 720: the same in 1280x720 (1280 columns, 1.5 x the lines), needs a fast PC. Needs the game launched from here.");
         cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER is dynamic in HD: it draws them less far (down to 24 cells) when the frame rate falls under 60 and goes back to 48 when it can.");
         cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), ""); KeyBadge(lastBadge, 2);
@@ -391,8 +391,8 @@ static partial class TNPlus
         f.FormClosed += delegate { SaveSettings(); };
 
         // events
-        cbDisplay.Changed += delegate { if (!guiBusy) { Display = cbDisplay.Index; GuiRefresh(); } };
-        cbWide.Changed += delegate { if (!guiBusy) { SetWideMode(cbWide.Index); GuiRefresh(); } };
+        cbDisplay.Changed += delegate { if (!guiBusy) { SetGuiDisplay(cbDisplay.Index); GuiRefresh(); } };
+        cbWide.Changed += delegate { if (!guiBusy) { SetWideMode(cbWide.Index); if (cbWide.Index >= 2) Display = 2; GuiRefresh(); } };
         cbDetail.Changed += delegate { if (!guiBusy) { OptDetail = cbDetail.Index; GuiRefresh(); } };
         cbDist.Changed += delegate { if (!guiBusy) { OptDistance = cbDist.Index; GuiRefresh(); } };
         cbObj.Changed += delegate { if (!guiBusy) { OptObjDist = cbObj.Index; GuiRefresh(); } };
@@ -422,13 +422,26 @@ static partial class TNPlus
         return result;
     }
 
+    // Display with every resolution in one list: the three HD ones are display HD + a widescreen mode (TRUE / TRUE 720
+    // for 848x480 / 1280x720), the same settings as the Widescreen selector, which still offers STRETCHED and OFF
+    static readonly string[] GUI_DISPLAY = { "Original", "Sharp 320x400", "HD 640x400", "HD 848x480", "HD 1280x720" };
+    static int GuiDisplay() { return Display < 2 ? Display : WideMode() == 3 ? 4 : WideMode() == 2 ? 3 : 2; }
+    static void SetGuiDisplay(int i)
+    {
+        Display = Math.Min(i, 2);
+        if (i == 3) SetWideMode(2);
+        else if (i == 4) SetWideMode(3);
+        else if (WideMode() >= 2) SetWideMode(0);                   // 640x400 / 320x400 have no true 16:9
+    }
+
     // the controls follow the settings (and the preset follows the controls)
     static void GuiRefresh()
     {
         guiBusy = true;
         if (guiRedrawGame != null) guiRedrawGame();
         string why; bool hdOk = HdAvailable(out why);
-        cbDisplay.Items = DisplayLabels(); cbDisplay.Tag = HdHelp() + ".";
+        cbDisplay.Tag = (Display == 2 ? HdHelp() : "ORIGINAL: the game as it was. SHARP 320x400: the engine's best resolution in every mission") +
+            ". HD 848x480 and 1280x720 are true 16:9 (Widescreen TRUE / TRUE 720).";
         cbDist.Tag = "View distance at mission start. " + KeyName(ScanDistance) + " cycles it in game (click the purple key to change it).";
         ckFree.Tag = "Look around with the mouse, " + KeyName(ScanFreelook) + " in game (click the purple key to change it). Sensitivity and inverted look in TNPlus.ini.";
         ckStereo.Tag = "Only if your sound is mirrored: under DOSBox the game's SB16 driver swaps left and right. " + KeyName(ScanStereo) + " swaps the sound effects in game, to compare.";
@@ -455,7 +468,7 @@ static partial class TNPlus
         }
         foreach (KeyValuePair<Label, GameKey> mb in mouseBadges) PaintMouseBadge(mb.Key, mb.Value.Mouse, mouseGame == mb.Value);
         foreach (KeyValuePair<Label, int> mb in mouseToolBadges) PaintMouseBadge(mb.Key, ToolMouse[mb.Value], mouseTool == mb.Value);
-        cbDisplay.Set(Display); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov); cbScale.Set(OptScaling);
+        cbDisplay.Set(GuiDisplay()); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov); cbScale.Set(OptScaling);
         ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix;
         bool aweRom = AweRom() != null;
         cbMusic.Set(OptMusic);

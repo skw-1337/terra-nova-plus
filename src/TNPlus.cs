@@ -851,7 +851,7 @@ static partial class TNPlus
     static readonly string[] PRESET_INFO = {
         "the game as it was",
         "sharper 320x400, freelook, a bit more view and detail",
-        "everything on: HD 1280x720 in true 16:9, max view, dynamic SHARPER detail" };
+        "everything on: HD 1280x720 in true 16:9, max view and detail" };
     static int Display = 2;                         // 0 original, 1 320x400, 2 HD 640x400
 
     // HD is 640x400, or DOSBox's VESA 848x480 in true 16:9: the labels follow the settings, the messages what runs
