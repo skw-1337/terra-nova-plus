@@ -22,7 +22,7 @@ Everything happens in memory while you play, except one thing: for HD, terrain d
 
 ## 1.2
 
-**Latest: [1.2.0](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.0)**
+**Latest: [1.2.1](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.1)**: the launcher now shows when a newer version is out (top right, click to open the download page; `update_check = 0` turns it off).
 
 ![Terra Nova Plus launcher](docs/launcher_v12.png)
 
