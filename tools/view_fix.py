@@ -15,7 +15,7 @@
 # flags alone). French exe: both routines +0x280, checked instruction by instruction.
 #   python view_fix.py EN_IMAGE FR_IMAGE          layout and checks (images: RAM 0x1AB000-0x470000 at the main menu)
 #   python view_fix.py EN_IMAGE FR_IMAGE cs       C# table (src/TNPlusView.cs)
-import hashlib, struct, sys
+import hashlib, re, struct, sys
 from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
 import ir_fix as F
@@ -46,8 +46,23 @@ RECIPES = {   # EN addresses: low, high, no digest (the slots differ from call t
     # usual pixel (colour not in the table) costs 5 instructions instead of 9 -- the source position and the row
     # table pointer it would step along are only worked out for the pixels it changes (esi + edi stays constant down
     # a column, the row pointer follows the counter); no longer writes its table address into its own loop
-    'colpass': (0x2B2785, 0x2B27DA, None, {
-        0x2b278b: (0x2b27da, '''
+}
+
+
+# Water / haze pass, version 4 (perf study 2026-10-17, lot 3): a guard first (the caller's table pointers [ebx+4] /
+# [ebx+8] must be the constants below, else the previous body runs: cp_old), then usual pixels 4 at a time (4 lookups
+# OR-ed, one jnz), a group with water done pixel by pixel in the game's order, a tail of 1-3 pixels one by one. Exit
+# registers and flags as the game's routine. Checked in Unicorn against 0x2B2785 (EN and FR, 1200+ calls).
+CP_LANG = {False: 'EN', True: 'FR'}
+CP_ENTRY = {False: 0x2B2785, True: 0x2B2775}          # the routine (entry hook site)
+CP_HIGH = {False: 0x2B27DA, True: 0x2B27CA}           # its end (ret + 1)
+CP_CALLER = {False: 0x2A87B6, True: 0x2A87A6}         # 'mov edx,ROWS' .. 'call colpass' (the only caller)
+CP_CONST = {False: (0x423D40, 0x424980), True: (0x423DF0, 0x424A30)}   # T1 (dword per colour), FT (byte per colour)
+CP_ROWS = {False: 0x424140, True: 0x4241F0}           # row-remap pointer table ([ebx] = CP_ROWS + 4*row)
+CP_SLOT = {False: 0x2B27BB, True: 0x2B27AB}           # the original's SMC slot (T1, written at entry): dead once hooked
+CP_VIEW_LIMIT = 0x1000                                 # affine_fix block at page base + 0x1000
+
+SHIPPED_BODY = '''
     mov eax, dword ptr [ebx+4]
     mov ebp, dword ptr [ebx+8]
     mov ebx, dword ptr [ebx]
@@ -92,9 +107,152 @@ cp_spec:
     mov byte ptr [edi], al
     xor eax, eax
     jmp cp_next
-'''),
-    }),
-}
+'''
+
+
+def _spec(T1, rowoff):
+    """water pixel: source = T1[c] + (esi0 + edi0) - edi, value = remap_row[source byte]; eax = c on entry"""
+    return '''
+    mov eax, dword ptr [eax*4+%#x]
+    add eax, esi
+    sub eax, edi
+    movzx eax, byte ptr [eax]
+    add eax, dword ptr [ebp+ecx*4+%d]
+    mov al, byte ptr [eax]
+    mov byte ptr [edi], al''' % (T1, rowoff)
+
+
+def colpass_text(T1, FT):
+    """edit text that replaces the routine after its 6 entry bytes (push ebp / mov ebp,imm, copied by layout)"""
+    s = '''
+    mov eax, dword ptr [ebx+4]
+    mov ebp, dword ptr [ebx+8]
+    sub eax, %(T1)#x
+    sub ebp, %(FT)#x
+    or eax, ebp
+    jnz cp_old
+    mov ebp, dword ptr [ebx]
+    lea ebp, [ebp+ecx*4]
+    add esi, edi
+    neg ecx
+    cmp ecx, -4
+    jg t_top
+g_top:
+    movzx eax, byte ptr [edi]
+    movzx ebx, byte ptr [edi+edx]
+    mov al, byte ptr [eax+%(FT)#x]
+    or al, byte ptr [ebx+%(FT)#x]
+    movzx ebx, byte ptr [edi+edx*2]
+    or al, byte ptr [ebx+%(FT)#x]
+    lea ebx, [edi+edx*2]
+    movzx ebx, byte ptr [ebx+edx]
+    or al, byte ptr [ebx+%(FT)#x]
+    jnz c_top
+    lea edi, [edi+edx*4]
+    add ecx, 4
+    cmp ecx, -4
+    jle g_top
+    test ecx, ecx
+    jnz t_top
+    mov eax, ebx
+    jmp done
+c_top:''' % dict(T1=T1, FT=FT)
+    for k in range(4):
+        if k: s += '\nc_%d:\n    add edi, edx' % k
+        s += '''
+    movzx eax, byte ptr [edi]
+    cmp byte ptr [eax+%#x], 0
+    je %s''' % (FT, 'c_%d' % (k + 1) if k < 3 else 'c_u') + _spec(T1, 4 * k)
+    s += '''
+    add edi, edx
+    add ecx, 4
+    cmp ecx, -4
+    jle c_top
+    test ecx, ecx
+    jnz t_top
+    xor eax, eax
+    jmp done
+c_u:
+    add edi, edx
+    add ecx, 4
+    cmp ecx, -4
+    jle g_top
+    test ecx, ecx
+    jz done
+t_top:
+    movzx eax, byte ptr [edi]
+    cmp byte ptr [eax+%(FT)#x], 0
+    jne t_spec
+    add edi, edx
+    inc ecx
+    jnz t_top
+    jmp done
+t_spec:''' % dict(FT=FT) + _spec(T1, 0) + '''
+    add edi, edx
+    inc ecx
+    jnz t_top
+    xor eax, eax
+done:
+    sub esi, edi
+    add esi, edx
+    lea ebx, [ebp-4]
+    add ebx, 4
+    inc ecx
+    dec ecx
+    pop ebp
+    ret
+cp_old:''' + SHIPPED_BODY
+    assert not re.search(r'L[0-9a-f]+', s) and '@' not in s     # one keystone part for ir_fix.layout / shifted
+    return s
+
+
+# the caller window, EN and FR alike (operands checked; T1 / FT / CP_ROWS / call target extracted)
+_CALLER_SHAPE = [
+    ('mov', r'edx, (0x[0-9a-f]+)'),                 # CP_ROWS
+    ('mov', r'edi, (0x[0-9a-f]+)'),                 # T1
+    ('mov', r'ecx, dword ptr \[esp \+ 0x18\]'),
+    ('lea', r'eax, \[ebp\*4\]'),
+    ('mov', r'dword ptr \[esp \+ 4\], edi'),        # [esp+4] = T1
+    ('add', r'edx, eax'),
+    ('sub', r'ecx, ebp'),
+    ('mov', r'eax, (0x[0-9a-f]+)'),                 # FT
+    ('mov', r'dword ptr \[esp\], edx'),             # [esp] = CP_ROWS + 4*row
+    ('mov', r'edi, ebx'),
+    ('mov', r'edx, dword ptr \[esp \+ 0x10\]'),
+    ('mov', r'ebx, esp'),                           # ebx = the 3-dword block
+    ('mov', r'dword ptr \[esp \+ 8\], eax'),        # [esp+8] = FT
+    ('call', r'(0x[0-9a-f]+)'),                     # the colpass
+]
+
+
+def caller_constants(read, fr):
+    """T1, FT, CP_ROWS from the only caller's immediates; asserts the data flow into [ebx+4] / [ebx+8] and the call"""
+    a = CP_CALLER[fr]
+    ins = list(Cs(CS_ARCH_X86, CS_MODE_32).disasm(read(a, 0x40), a))[:len(_CALLER_SHAPE)]
+    got = []
+    for i, (mn, op) in zip(ins, _CALLER_SHAPE):
+        m = re.fullmatch(op, i.op_str)
+        assert i.mnemonic == mn and m, ('caller shape', CP_LANG[fr], hex(i.address), i.mnemonic, i.op_str)
+        got += [int(g, 16) for g in m.groups()]
+    rows, t1, ft, target = got
+    assert target == CP_ENTRY[fr], ('call target', hex(target))
+    assert ins[-1].address == {False: 0x2A87E7, True: 0x2A87D7}[fr]
+    return t1, ft, rows
+
+
+def recipe(fr, read=None):
+    """RECIPES['colpass'] tuple for that exe (FR: FR addresses and FR constants). With read: constants from the caller
+    (and they must be the known ones: the guard and the tests are written for them)."""
+    T1, FT = CP_CONST[fr]
+    if read is not None:
+        t1, ft, rows = caller_constants(read, fr)
+        assert (t1, ft, rows) == (T1, FT, CP_ROWS[fr]), ('unexpected caller constants', CP_LANG[fr], hex(t1), hex(ft), hex(rows))
+    low, high = CP_ENTRY[fr], CP_HIGH[fr]
+    return (low, high, None, {low + 6: (high, colpass_text(T1, FT))})
+
+
+
+RECIPES['colpass'] = recipe(False)
 
 
 def entry_stub(read, s, at):
@@ -114,8 +272,9 @@ def build(en_read, fr_read=None):
         pieces_all, copied_all, total, entry, site, stub = [], b'', 0, {}, {}, {}
         for name in ORDER:
             d = FR_DELTA[name] if lang == 'FR' else 0
-            rec = RECIPES[name] if d == 0 else F.shifted(RECIPES[name], d)
-            if d: F.same_shape(en_read, fr_read, RECIPES[name][0], RECIPES[name][1], d, RECIPES[name][3])
+            rec = recipe(lang == 'FR', read) if name == 'colpass' else \
+                (RECIPES[name] if d == 0 else F.shifted(RECIPES[name], d))
+            if d and name != 'colpass': F.same_shape(en_read, fr_read, RECIPES[name][0], RECIPES[name][1], d, RECIPES[name][3])
             s = ENTRY[name] + d
             pieces, copied, lab, size = F.layout(read, rec, s)
             pad = (-total) % 16
@@ -130,7 +289,7 @@ def build(en_read, fr_read=None):
                 if i.mnemonic.startswith('j'): assert not (s < int(i.op_str, 16) < s + 6)
         spans = sorted((STUB[n], STUB[n] + len(stub[n])) for n in ORDER)
         assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:])), 'stubs overlap'
-        assert XOFF + total <= 0x2000       # 12 KB buffer, its first page boundary at most 0xFFF bytes in
+        assert XOFF + total <= 0x1000       # the affine block (affine_fix.py) starts at +0x1000
         out[lang] = dict(pieces=pieces_all, sha=hashlib.sha256(copied_all).hexdigest(), entry=entry, size=total,
                          site=site, stub=stub, copied=len(copied_all))
     return out

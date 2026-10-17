@@ -11,6 +11,7 @@
 #   python speed_fix.py EN_IMAGE FR_IMAGE      checks the groups against memory images (RAM 0x1AB000-0x470000)
 import struct, sys
 from keystone import Ks, KS_ARCH_X86, KS_MODE_32
+from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 
 ks = Ks(KS_ARCH_X86, KS_MODE_32)
 asm = lambda src, at: bytes(ks.asm(src, at)[0])
@@ -418,8 +419,8 @@ lb: movzx edx, byte ptr [eax]
 
 
 # ---------------------------------------------------------------- infrared ground plane rows (EN 0x2A779E)
-# 2 blocks, 26 instructions and 13 memory accesses per pixel (locals reloaded and stored at each one): now one block
-# of 11, u and v kept in registers as 16.16 (integer bytes in BL/BH with add/adc, the same modulo-256 values), the
+# 2 blocks, 26 instructions and 13 memory accesses per pixel (locals reloaded and stored at each one): now two pixels
+# per block, 11 instructions each, u and v kept in registers as 16.16 (integer bytes in BL/BH with add/adc, the same modulo-256 values), the
 # texture, shade and remap tables in [reg+disp32] fields that DOSBox reads from memory once rewritten. Leaves the
 # locals and registers as the original loop does, then its epilogue. Reached only with a shade and a remap table.
 IRROW = dict(en=dict(hook=0x2A779E, epi=0x2A799F, tex=0x427D88), fr=dict(hook=0x2A778E, epi=0x2A798F, tex=0x427E38))
@@ -430,21 +431,28 @@ IR_SRC = '''
     test eax, eax
     jz ir_z0
     mov edx, dword ptr [{tex}]
-    mov dword ptr [{lt} + 3], edx
-    mov dword ptr [{ls} + 2], ecx
-    mov dword ptr [{lr} + 2], esi
+    mov dword ptr [{lt1} + 3], edx
+    mov dword ptr [{ls1} + 2], ecx
+    mov dword ptr [{lr1} + 2], esi
+    mov dword ptr [{lt2} + 3], edx
+    mov dword ptr [{ls2} + 2], ecx
+    mov dword ptr [{lr2} + 2], esi
     mov edx, dword ptr [esp]
     mov ebx, edx
     shl edx, 16
-    mov dword ptr [{lu} + 2], edx
     shr ebx, 16
-    mov byte ptr [{lui} + 2], bl
+    mov dword ptr [{lu1} + 2], edx
+    mov byte ptr [{lui1} + 2], bl
+    mov dword ptr [{lu2} + 2], edx
+    mov byte ptr [{lui2} + 2], bl
     mov edx, dword ptr [esp + 4]
     mov ebx, edx
     shl edx, 16
-    mov dword ptr [{lv} + 2], edx
     shr ebx, 16
-    mov byte ptr [{lvi} + 2], bl
+    mov dword ptr [{lv1} + 2], edx
+    mov byte ptr [{lvi1} + 2], bl
+    mov dword ptr [{lv2} + 2], edx
+    mov byte ptr [{lvi2} + 2], bl
     mov ecx, eax
     mov edi, dword ptr [esp + 0xc]
     mov eax, dword ptr [esp + 0x10]
@@ -458,18 +466,31 @@ IR_SRC = '''
     shl edx, 16
     shl eax, 16
     mov ebp, eax
-    jmp ir_lp
+    test cl, 1
+    jz ir_lp
+    inc ecx
+    jmp ir_mid{pad}
 ir_lp:
-    movzx eax, byte ptr [ebx + 0x7fffff01]
-    mov al, byte ptr [eax + 0x7fffff02]
-    mov al, byte ptr [eax + 0x7fffff03]
+    movzx eax, byte ptr [ebx + 0x7fff1f01]
+    mov al, byte ptr [eax + 0x7fff1f02]
+    mov al, byte ptr [eax + 0x7fff1f03]
     mov byte ptr [edi], al
     inc edi
-    add edx, 0x7fffff04
-    adc bl, 0x75
-    add ebp, 0x7fffff05
-    adc bh, 0x76
-    dec ecx
+    add edx, 0x7fff1f04
+    adc bl, 0x71
+    add ebp, 0x7fff1f05
+    adc bh, 0x61
+ir_mid:
+    movzx eax, byte ptr [ebx + 0x7fff2f01]
+    mov al, byte ptr [eax + 0x7fff2f02]
+    mov al, byte ptr [eax + 0x7fff2f03]
+    mov byte ptr [edi], al
+    inc edi
+    add edx, 0x7fff2f04
+    adc bl, 0x72
+    add ebp, 0x7fff2f05
+    adc bh, 0x62
+    sub ecx, 2
     jnz ir_lp
     mov ebx, edi
     mov dword ptr [esp + 0xc], edi
@@ -486,22 +507,93 @@ ir_z0:
     jmp {epi}
 '''
 
+# slot label -> (instruction as capstone prints it with the marker operands, field offset, field size)
+FIELD = {}
+for _k in (1, 2):
+    FIELD.update({
+        'lt%d' % _k: ('movzx eax, byte ptr [ebx + 0x7fff%df01]' % _k, 3, 4),
+        'ls%d' % _k: ('mov al, byte ptr [eax + 0x7fff%df02]' % _k, 2, 4),
+        'lr%d' % _k: ('mov al, byte ptr [eax + 0x7fff%df03]' % _k, 2, 4),
+        'lu%d' % _k: ('add edx, 0x7fff%df04' % _k, 2, 4),
+        'lui%d' % _k: ('adc bl, 0x7%d' % _k, 2, 1),
+        'lv%d' % _k: ('add ebp, 0x7fff%df05' % _k, 2, 4),
+        'lvi%d' % _k: ('adc bh, 0x6%d' % _k, 2, 1)})
+
+
+def _labels(L, at, pad=0):
+    """pass 1 (slot labels = at): the marker operands give each slot instruction's address. pad: int3 bytes after the
+    prologue's last 'jmp ir_mid' (dead bytes, never decoded: the block ends at that jmp) to move the loop"""
+    fmt = lambda lab: IR_SRC.format(tex=hex(L['tex']), epi=hex(L['epi']), pad='\n    int3' * pad,
+                                    **{k: hex(v) for k, v in lab.items()})
+    code = asm(fmt({k: at for k in FIELD}), at)
+    lab, marks = {}, {v[0]: k for k, v in FIELD.items()}
+    ins = list(Cs(CS_ARCH_X86, CS_MODE_32).disasm(code, at))
+    assert sum(i.size for i in ins) == len(code)
+    for i in ins:
+        s = '%s %s' % (i.mnemonic, i.op_str)
+        if s in marks:
+            assert marks[s] not in lab, s
+            lab[marks[s]] = i.address
+    assert len(lab) == 14 and len(set(lab.values())) == 14, lab
+    back = [i for i in ins if i.mnemonic == 'jne' and i.op_str == hex(lab['lt1'])]     # the loop's 'jnz ir_lp'
+    assert len(back) == 1
+    loop = (lab['lt1'], back[0].address + back[0].size)
+    for k, (s, off, n) in FIELD.items():      # the field holds the marker: offsets are those of the encoding
+        mk = int(s.split('0x')[-1].rstrip(']'), 16)
+        assert code[lab[k] - at + off:lab[k] - at + off + n] == mk.to_bytes(n, 'little'), (k, code.hex())
+    return fmt, code, lab, loop
+
+
+def page_ok(fields):
+    """dyn_x86 reads a field from memory only if it starts below page index 4093 (decode_fetchd_imm); kept with the
+    stricter rule of irrow_final.page_ok: index + size <= 0xFFD"""
+    return all((a & 0xFFF) + n <= 0xFFD for a, n in fields)
+
+
+def _placed(L, at, pad):
+    fmt, code, lab, (lp, end) = _labels(L, at, pad)
+    fields = sorted((lab[k] + off, n) for k, (s, off, n) in FIELD.items())
+    return page_ok(fields) and lp >> 12 == (end - 1) >> 12
+
+
+def ir_pad(L, at):
+    """0 when the cave can sit at 'at' as reviewed (every field page_ok, the loop in one page: the case of the current
+    speed_fix layout); otherwise the int3 bytes after 'jmp ir_mid' that start the loop at the next page (at most 0x55)"""
+    if _placed(L, at, 0): return 0
+    lp = _labels(L, at, 0)[3][0]
+    pad = 0x1000 - (lp & 0xFFF)
+    assert _placed(L, at, pad), 'IR cave at %#x: no placement' % at
+    return pad
+
+
+def ir_fields(L, at):
+    """[(address, size)] of the 14 operand fields the prologue rewrites at each row"""
+    lab = _labels(L, at, ir_pad(L, at))[2]
+    return sorted((lab[k] + off, n) for k, (s, off, n) in FIELD.items())
+
 
 def ir_cave(L, at):
-    """assembled twice: the marker immediates give the slot addresses, then the prologue writes into them"""
-    from capstone import Cs, CS_ARCH_X86, CS_MODE_32
-    lab = dict(lt=at, ls=at, lr=at, lu=at, lui=at, lv=at, lvi=at)
-    fmt = lambda: IR_SRC.format(tex=hex(L['tex']), epi=hex(L['epi']), **{k: hex(v) for k, v in lab.items()})
-    code = asm(fmt(), at)
-    mark = {'0x7fffff01': 'lt', '0x7fffff02': 'ls', '0x7fffff03': 'lr', '0x7fffff04': 'lu', '0x7fffff05': 'lv'}
-    for i in Cs(CS_ARCH_X86, CS_MODE_32).disasm(code, at):
-        for m, k in mark.items():
-            if m in i.op_str: lab[k] = i.address
-        if i.mnemonic == 'adc' and i.op_str == 'bl, 0x75': lab['lui'] = i.address
-        if i.mnemonic == 'adc' and i.op_str == 'bh, 0x76': lab['lvi'] = i.address
-    assert len(set(lab.values())) == 7, lab
-    code2 = asm(fmt(), at)
+    """assembled twice: the marker immediates give the slot addresses, then the prologue writes into them. Never
+    returns a cave with a field DOSBox would keep static: if 'at' would put the loop across a page, the loop is moved
+    to the next page by dead int3 padding after the prologue (ir_pad), else the asserts below stop the build"""
+    pad = ir_pad(L, at)
+    fmt, code, lab, (lp, end) = _labels(L, at, pad)
+    code2 = asm(fmt(lab), at)
     assert len(code2) == len(code)
+    assert code2[lp - at:end - at] == code[lp - at:end - at]           # only the prologue's addresses changed
+    fields = sorted((lab[k] + off, n) for k, (s, off, n) in FIELD.items())
+    assert lp == lab['lt1'] and all(lp <= a and a + n <= end for a, n in fields)    # every field in the loop blocks
+    ins = list(Cs(CS_ARCH_X86, CS_MODE_32).disasm(code2, at))
+    st = [i for i in ins if i.mnemonic == 'mov' and i.op_str.startswith(('dword ptr [0x', 'byte ptr [0x'))]
+    assert sorted((int(i.op_str.split('[')[1].rstrip(']').split(']')[0], 16), 4 if i.op_str[0] == 'd' else 1)
+                  for i in st) == fields                                # the prologue stores = exactly the 14 fields
+    assert all(i.address < lp for i in st)                              # all written before the loop...
+    pre = [i for i in ins if i.address < lp and i.mnemonic != 'int3'][-1]   # ...whose blocks end before it:
+    assert pre.mnemonic == 'jmp' and int(pre.op_str, 16) == lab['lt2']  # 'jz ir_lp' (even) / 'jmp ir_mid' (odd)
+    assert code2[pre.address + pre.size - at:lp - at] == b'\xcc' * pad  # then only the dead padding, if any
+    assert any(i.mnemonic == 'je' and i.op_str == hex(lp) for i in ins)
+    assert page_ok(fields), 'IR cave at %#x: an operand field ends past page index 0xFFC, move the cave' % at
+    assert lp >> 12 == (end - 1) >> 12, 'IR cave at %#x: loop crosses a page' % at
     return code2
 
 
