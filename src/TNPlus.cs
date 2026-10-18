@@ -49,7 +49,7 @@ using System.Reflection;
 
 static partial class TNPlus
 {
-    const string VERSION = "1.2.2";
+    const string VERSION = "1.2.2-coop";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
@@ -746,6 +746,7 @@ static partial class TNPlus
         objWritten = nw;
     }
     static bool hdExeReady = false;
+    static bool coopExeReady = false;              // coop build: the overlay copy of __FF.EXE is in place
 
     // ------------------------------------------------------------------ Win32
     [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
@@ -1344,6 +1345,10 @@ static partial class TNPlus
                 int eol = text.IndexOf('\n', i);
                 text = eol < 0 ? text + "\r\n" + mixer : text.Insert(eol + 1, mixer);
             }
+            // coop build: its copy of __FF.EXE over the edition's (game writes such as saves land there too)
+            Match mc = Regex.Match(text, @"(?im)^[ \t]*mount[ \t]+C[ \t][^\r\n]*");
+            if (mc.Success && coopExeReady)
+                text = text.Insert(mc.Index + mc.Length, "\r\nmount -t overlay C \"" + CoopOverlay + "\"");
         }
         else
             text = "# Terra Nova Plus: " + TARGET_NAMES[target] + "\r\n[autoexec]\r\n" + mixer +
@@ -1387,6 +1392,9 @@ static partial class TNPlus
             string why;
             hdExeReady = PrepareExeForHd(out why);
             Console.WriteLine(hdExeReady ? "__FF.EXE: " + why : "HD, far smooth terrain and game keys unavailable: " + why);
+            coopExeReady = hdExeReady && PrepareCoopExe(out why);
+            Console.WriteLine("Coop: " + why);
+            if (!coopExeReady) hdExeReady = false;
             if (!OptHD) hdExeReady = false;
         }
         string db = Path.Combine(GameDir, "_DOSBOX");
@@ -1924,6 +1932,36 @@ static partial class TNPlus
         catch (Exception e) { msg = "cannot update __FF.EXE (" + e.Message + ")"; return false; }
         if (Sha256(File.ReadAllBytes(exe)) != (english ? EN_SHA_READY5 : HD_SHA_READY5)) { msg = "__FF.EXE update failed"; return false; }
         msg = "prepared (HD memory, far smooth terrain; original kept as __FF.EXE.tnplus-original)";
+        return true;
+    }
+
+    // Coop build: the game runs a copy of the prepared __FF.EXE with object 3 another 8 KB larger (the coop code page
+    // 0x46B000 and its data page 0x46C000; the game's heap then starts at 0x46D024, HdPayload*.PoolBase). The copy goes
+    // in an overlay folder next to this tool that the launch conf mounts over C: (mount -t overlay), so the edition's
+    // own __FF.EXE stays the one the public Terra Nova Plus prepares.
+    const uint COOP_EXTRA = 0x2000;
+    static string CoopOverlay { get { return Path.Combine(ExeDir, "coop_overlay"); } }
+
+    static bool PrepareCoopExe(out string msg)
+    {
+        string exe = Path.Combine(GameDir, "TNOVA", "__FF.EXE");
+        byte[] d = File.ReadAllBytes(exe);
+        string sha = Sha256(d);
+        if (sha != HD_SHA_READY5 && sha != EN_SHA_READY5) { msg = "__FF.EXE not prepared"; return false; }
+        bool english = sha == EN_SHA_READY5;
+        uint hd = english ? OBJ3_HD_EN : OBJ3_HD;
+        int le = IndexOf(d, new byte[] { (byte)'L', (byte)'E', 0, 0 }, 0);
+        int at = le + BitConverter.ToInt32(d, le + 0x40) + 24 * 2;
+        if (le < 0 || BitConverter.ToUInt32(d, at) != hd) { msg = "unexpected executable layout"; return false; }
+        BitConverter.GetBytes(hd + COOP_EXTRA).CopyTo(d, at);
+        string dir = Path.Combine(CoopOverlay, "TNOVA"), copy = Path.Combine(dir, "__FF.EXE");
+        try
+        {
+            Directory.CreateDirectory(dir);
+            if (!File.Exists(copy) || Sha256(File.ReadAllBytes(copy)) != Sha256(d)) File.WriteAllBytes(copy, d);
+        }
+        catch (Exception e) { msg = "cannot write the coop copy of __FF.EXE (" + e.Message + ")"; return false; }
+        msg = "coop copy ready (" + copy + ")";
         return true;
     }
 

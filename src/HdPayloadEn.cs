@@ -3,7 +3,7 @@
 // Adresses de la version anglaise GOG / Steam (__FF.EXE avec objet 3 agrandi de 24 Ko).
 static class HdPayloadEn
 {
-    public const uint Zone = 0x465024, End = 0x468d10, PoolBase = 0x46b024;
+    public const uint Zone = 0x465024, End = 0x468d10, PoolBase = 0x46d024;    // coop: +0x2000 (TNPlus.cs COOP_EXTRA)
     public const uint Code = 0x465100, Data = 0x466100;
     public const uint Smoothing = 0x466154, HudFilter = 0x4661bc, Frames = 0x466124, PoolMax = 0x35d01c, DriverMode = 0x35f8d0;
     public const uint Valid = 0x466134, HdWidth = 0x4661b8, HdHeight = 0x4661b4;   // last 3D frame: drawn in HD, its width (2x) and height

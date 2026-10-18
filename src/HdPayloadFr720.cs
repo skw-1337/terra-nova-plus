@@ -3,7 +3,7 @@
 // Adresses de la version francaise GOG (__FF.EXE prepare).
 static class HdPayloadFr720
 {
-    public const uint Zone = 0x465024, End = 0x469390, PoolBase = 0x46b024;
+    public const uint Zone = 0x465024, End = 0x469390, PoolBase = 0x46d024;    // coop: +0x2000 (TNPlus.cs COOP_EXTRA)
     public const uint Code = 0x465100, Data = 0x466900;
     public const uint Smoothing = 0x466948, HudFilter = 0x46694c, Frames = 0x466924, PoolMax = 0x35d03c, DriverMode = 0x35f978;
     public const uint Valid = 0x466934, HdWidth = 0x466998, HdHeight = 0x466994;
