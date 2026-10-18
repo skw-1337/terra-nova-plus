@@ -9,21 +9,20 @@
 //    - force 320x400            : the engine's best resolution in every mission
 //    - widescreen 16:9          : DOSBox stretches the picture, the tool widens the
 //                                 engine's field of view to match (no distortion)
-//    - HD 640x400 (F12)         : the 3D view is rendered with twice the columns (596x199)
+//    - HD 640x400               : the 3D view is rendered with twice the columns (596x199)
 //                                 on a VESA 640x400 screen (848x480 and 848 columns in
-//                                 true 16:9); F12 toggles the smoothing
+//                                 true 16:9, 1280x720 and 1280 columns in TRUE 720)
 //
 //  Every address is found through CODE SIGNATURES (no hard-coded addresses): English /
 //  French executables, Steam, GOG and CD versions, any DOSBox memory size. Exception: the
-//  HD mode (HdPayloadFr.cs / HdPayloadEn.cs, generated from the reverse-engineering scripts)
-//  carries the addresses of the French (GOG) and English (GOG, Steam) executables. HD and the
-//  terrain detail are the only options that touch a game file: TNOVA\__FF.EXE gets 16 KB more
-//  memory for the HD code and the far smooth terrain patches (TERRAIN_EXE), original kept as
-//  __FF.EXE.tnplus-original.
+//  HD mode (HdPayload*.cs, generated from the reverse-engineering scripts) carries the
+//  addresses of the French (GOG) and English (GOG, Steam) executables. Launched with HD,
+//  terrain detail, a field of view, 16:9 or changed game keys, TNOVA\__FF.EXE gets 24 KB
+//  more memory (the free area for the HD code, the game keys and the other code caves) and
+//  the far smooth terrain patches (TERRAIN_EXE), original kept as __FF.EXE.tnplus-original.
+//  The music choice edits TN.CFG (original kept as TN.CFG.tnplus-original).
 //
-//  Build (no install needed, uses the C# compiler shipped with Windows):
-//    C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize
-//        /win32manifest:app.manifest /win32icon:icon.ico /out:TNPlus.exe TNPlus.cs HdPayload.cs HdPayloadFr.cs HdPayloadEn.cs AweBank.cs   (or run build.bat)
+//  Build (no install needed, uses the C# compiler shipped with Windows): run build.bat
 //
 //  AweBank.cs (AWE32 music) is under the GPL v2 or later, the rest under the MIT license.
 // ============================================================================
@@ -39,7 +38,7 @@ using Microsoft.Win32;
 using System.Reflection;
 
 [assembly: AssemblyTitle("Terra Nova Plus")]
-[assembly: AssemblyDescription("Quality-of-life pack for Terra Nova: Strike Force Centauri (mouse freelook, noclip, view distance, widescreen)")]
+[assembly: AssemblyDescription("Quality-of-life pack for Terra Nova: Strike Force Centauri (HD up to 1280x720, widescreen, mouse freelook, game keys, speed and bug fixes, noclip)")]
 [assembly: AssemblyCompany("skw-1337")]
 [assembly: AssemblyProduct("Terra Nova Plus")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 skw-1337 - MIT License - github.com/skw-1337/terra-nova-plus")]
@@ -1381,11 +1380,13 @@ static partial class TNPlus
         ApplyMusic(TARGET_DIRS[LaunchTarget]);
         hdState = demo ? -1 : 0;                    // HD only knows the full game's executable
         hdExeReady = false;
-        if ((OptHD || OptDetail > 0 || OptFov > 0 || OptWide) && !demo)
+        // changed game keys too (the default ones as well: Previous target leaves freelook's Y): their code and
+        // tables go in the free area of the prepared exe
+        if ((OptHD || OptDetail > 0 || OptFov > 0 || OptWide || GameKeys.Exists(g => g.Changed)) && !demo)
         {
             string why;
             hdExeReady = PrepareExeForHd(out why);
-            Console.WriteLine(hdExeReady ? "__FF.EXE: " + why : "HD and far smooth terrain unavailable: " + why);
+            Console.WriteLine(hdExeReady ? "__FF.EXE: " + why : "HD, far smooth terrain and game keys unavailable: " + why);
             if (!OptHD) hdExeReady = false;
         }
         string db = Path.Combine(GameDir, "_DOSBOX");
@@ -1880,8 +1881,8 @@ static partial class TNPlus
     }
 
     // ------------------------------------------------------------------ HD 640x400
-    // __FF.EXE: object 3 (data + BSS + stack) gets 16 KB more virtual size. The loader zero-fills them
-    // above the stack top (the stack grows down from the old end), the heap starts 16 KB higher, and
+    // __FF.EXE: object 3 (data + BSS + stack) gets 24 KB more virtual size. The loader zero-fills them
+    // above the stack top (the stack grows down from the old end), the heap starts 24 KB higher, and
     // nothing in the game ever writes there: that is where the HD code and its tables live.
     static bool PrepareExeForHd(out string msg)
     {
@@ -2363,7 +2364,7 @@ static partial class TNPlus
         if (!allOld && ++hdEarly < 20) return;         // just loaded: DOS/4GW may still be relocating it, look again
         if (!allOld) why = "unsupported game version";
         else if (pool != HdPayload.PoolBase)
-            why = "__FF.EXE not prepared (start the game from this tool with option 6 on)";
+            why = "__FF.EXE not prepared (launch the game from this tool with an HD display)";
         else if (ReadUInt(HdPayload.PoolMax) != 0)
             why = "a mission already ran in this game: restart the game from this tool";
         else
@@ -2888,7 +2889,7 @@ static partial class TNPlus
         {
             File.WriteAllText(IniPath,
                 "; Terra Nova Plus settings (the menu at start-up edits the first part)\r\n" +
-                "; ORIGINAL, 320X400 or HD (640x400, 848x480 in true 16:9; falls back to 320x400 where it is not available)\r\ndisplay = " + DISPLAY_NAMES[Display] + "\r\n" +
+                "; ORIGINAL, 320X400 or HD (640x400, 848x480 with widescreen = 2, 1280x720 with widescreen = 3; falls back to 320x400 where it is not available)\r\ndisplay = " + DISPLAY_NAMES[Display] + "\r\n" +
                 "; GAME, DEMO 1 or DEMO 2\r\nlaunch = " + TARGET_NAMES[LaunchTarget] + "\r\n" +
                 "freelook = " + (OptFreelook ? 1 : 0) + "\r\n" +
                 "noclip = " + (OptNoclip ? 1 : 0) + "\r\n" +
@@ -2899,7 +2900,7 @@ static partial class TNPlus
                 "; 3 true 16:9 in 1280x720 (3D in 1280 columns and 1.5 x the lines, needs a fast PC)\r\nwidescreen = " + WideMode() + "\r\n" +
                 "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
                 "; HD 1280x720: 1 = small frame counter top right\r\nfps_counter = " + (OptFpsCounter ? 1 : 0) + "\r\n" +
-                "; HD 1280x720: 1 = speed fixes in the game's 3D code (same picture, fewer slow spots for DOSBox)\r\nspeed_fixes = " + (OptSpeedFix ? 1 : 0) + "\r\n" +
+                "; HD: 1 = speed fixes in the game's 3D code (same picture, fewer slow spots for DOSBox; the most in 1280x720)\r\nspeed_fixes = " + (OptSpeedFix ? 1 : 0) + "\r\n" +
                 "; HD 1280x720: 1 = the two cockpit cameras (MFD views) drawn in HD too\r\nsmall_views = " + (OptSmallViews ? 1 : 0) + "\r\n" +
                 "; 1 = the launcher checks GitHub for a newer release at start-up (it only asks for the latest version number)\r\nupdate_check = " + (OptUpdateCheck ? 1 : 0) + "\r\n" +
                 "; 1 = swap the Sound Blaster stereo in DOSBox (the game's SB16 driver reverses left and right)\r\nstereo_fix = " + (OptStereoFix ? 1 : 0) + "\r\n" +
@@ -2921,7 +2922,7 @@ static partial class TNPlus
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
                 "; raise it if the game feels slow, DOSBox lowers it for a moment when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 6\r\n" +
-                "; keys as PHYSICAL key scancodes (hex): 23 = H, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
+                "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (40 = F6, 41 = F7), 57 = F11, 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
                 "key_distance = " + ScanDistance.ToString("X2") + "\r\n" +

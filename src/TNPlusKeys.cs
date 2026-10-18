@@ -420,6 +420,21 @@ static partial class TNPlus
     {
         keysState = -1;
         int n = GameKeys.FindAll(g => g.Changed).Count;
+        int lang = -1;
+        for (int l = 0; l < 2; l++)
+        {
+            byte[] h = Read(KB_HOOK[l], 8);
+            if (Same(h, Hex(KB_HOOK_OLD)) || Same(h, Rel32Call(KB_HOOK[l], KB_INSTALL, 8))) lang = l;
+        }
+        // the code and its tables live in the free area of the prepared exe: in one that is not prepared that is the
+        // game's pool, never written (the game has not allocated its pool yet: look again)
+        if (!FreeAreaReady())
+        {
+            if (lang >= 0 && ReadUInt(lang == 1 ? HdPayloadEn.PoolVar : HdPayloadFr.PoolVar) == 0) keysState = 0;
+            else if (n > 0) Say("Game keys unavailable: " + (lang < 0 ? "unexpected game code or memory"
+                : "__FF.EXE not prepared (launch the game from this tool once)"), 300, 300);
+            return;
+        }
         if (n == 0)
         {   // nothing changed now, but an earlier run may have left its table in this game: emptied
             uint st = ReadUInt(KB_STATE);
@@ -435,12 +450,6 @@ static partial class TNPlus
             if (i >= 0) site = 0x300000 + (uint)i;
         }
         if (site == 0 || !Same(Read(site + 0x6A, 8), Hex(KB_RESUME_SIG))) { Say("Game keys unavailable: keyboard handler not found", 300, 300); return; }
-        int lang = -1;
-        for (int l = 0; l < 2; l++)
-        {
-            byte[] h = Read(KB_HOOK[l], 8);
-            if (Same(h, Hex(KB_HOOK_OLD)) || Same(h, Rel32Call(KB_HOOK[l], KB_INSTALL, 8))) lang = l;
-        }
         byte[] code = Hex(KB_CODE_HEX), cur = Read(KB_CODE, code.Length);
         byte[] sweep = Hex(KB_SWEEP_HEX), curSweep = Read(KB_SWEEP, sweep.Length);
         bool placed = s0 == site && ReadUInt(KB_STATE) >= 1;
