@@ -22,7 +22,7 @@ Everything happens in memory while you play, except one thing: for HD, terrain d
 
 ## 1.2
 
-**Latest: [1.2.1](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.1)**: the launcher now shows when a newer version is out (top right, click to open the download page; `update_check = 0` turns it off).
+**Latest: [1.2.2](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.2)**: fixes a crash at the first key press in a mission, with Attach or the ORIGINAL preset, on a game never launched from TN+ with HD, terrain detail, field of view or 16:9. Since 1.2.1 the launcher shows when a newer version is out (top right, click to open the download page; `update_check = 0` turns it off).
 
 ![Terra Nova Plus launcher](docs/launcher_v12.png)
 
