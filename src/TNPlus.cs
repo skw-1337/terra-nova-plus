@@ -1345,10 +1345,16 @@ static partial class TNPlus
                 int eol = text.IndexOf('\n', i);
                 text = eol < 0 ? text + "\r\n" + mixer : text.Insert(eol + 1, mixer);
             }
-            // coop build: its copy of __FF.EXE over the edition's (game writes such as saves land there too)
+            // coop build: its copy of __FF.EXE over the edition's (game writes such as saves land there too). C: is
+            // mounted again with the game's full path: DOSBox Staging ignores an overlay, without a word, over a drive
+            // mounted with a relative path (the editions' mount C "..")
             Match mc = Regex.Match(text, @"(?im)^[ \t]*mount[ \t]+C[ \t][^\r\n]*");
             if (mc.Success && coopExeReady)
-                text = text.Insert(mc.Index + mc.Length, "\r\nmount -t overlay C \"" + CoopOverlay + "\"");
+                text = text.Substring(0, mc.Index) + "mount C \"" + GameDir.TrimEnd('\\') + "\"\r\nmount -t overlay C \"" + CoopOverlay + "\"" +
+                    text.Substring(mc.Index + mc.Length);
+            // and straight into the game: the Steam edition's menu (TNOVA.BAT, choice) never started it over the overlay
+            if (coopExeReady)
+                text = Regex.Replace(text, @"(?im)^[ \t]*CALL[ \t]+TNOVA\.BAT[ \t]*(?=\r?$)","CD \\TNOVA\r\nCALL TN.BAT");
         }
         else
             text = "# Terra Nova Plus: " + TARGET_NAMES[target] + "\r\n[autoexec]\r\n" + mixer +
@@ -1533,9 +1539,10 @@ static partial class TNPlus
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
                     (OptPhysFix && descrFixState == 0) || fillerFixState == 0 || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1 ||
-                    (OptSpeedFix && affineState == 0) || smallState == 0))
+                    (OptSpeedFix && affineState == 0) || smallState == 0 || coopState == 0))
                 {
                     lastCave = now;
+                    if (coopState == 0) TryCoop();
                     if (zoomFixState == 0) TryZoomFix();
                     if (OptHitFix && turretFixState == 0) TryTurretFix();
                     if (OptPhysFix && descrFixState == 0) TryDescramblerFix();
@@ -2021,6 +2028,15 @@ static partial class TNPlus
     // DOSBox game by tools/turret_fix.py. Code in two free areas of the prepared exe first, then three hooks; English
     // or French told apart by the bytes at the hooks.
     static int turretFixState = 0;
+    // Coop build: the second player's code (TerraNovaCoop/coop_cave.py -> TNPlusCoop.cs), put in place at the main menu
+    // like the other caves, before the first mission runs the two hooked calls (DOSBox would not see a later write).
+    // English exe only. The guest's view (Uplink, coop branch) then picks a teammate and drives it (data page 0x46C000).
+    static int coopState = 0;
+    static void TryCoop()
+    {
+        coopState = TryPieces(CoopFix.At, CoopFix.Old, CoopFix.New, "Coop", "a teammate can be played by a second player");
+    }
+
     static void TryTurretFix()
     {
         turretFixState = TryPieces(TurretFix.At, TurretFix.Old, TurretFix.New, "Turret fix", "shots no longer go through turrets");
