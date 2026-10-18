@@ -18,11 +18,11 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **Fixes** | `F7` | Projectiles hit at any frame rate (and no longer go through turrets), physics at the same speed at any frame rate, a smooth infrared view, the zoom kept after the Options screen, no black screen at the end of a mission, reversed stereo under DOSBox (`F7` compares). |
 | **Music** | — | Roland / General MIDI, Sound Blaster FM, or the game's own AWE32 bank (you bring the AWE32 ROM). |
 
-Everything happens in memory while you play, except one thing: for HD, terrain detail, field of view and 16:9 TNPlus patches `TNOVA\__FF.EXE` once, and keeps the untouched file as `__FF.EXE.tnplus-original`.
+Everything happens in memory while you play, except one thing: for HD, terrain detail, field of view, 16:9 and changed game keys TNPlus patches `TNOVA\__FF.EXE` once, and keeps the untouched file as `__FF.EXE.tnplus-original`.
 
 ## 1.2
 
-**Latest: [1.2.1](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.1)**: the launcher now shows when a newer version is out (top right, click to open the download page; `update_check = 0` turns it off).
+**Latest: [1.2.2](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.2)**: fixes a crash at the first key press in a mission, with Attach or the ORIGINAL preset, on a game never launched from TN+ with HD, terrain detail, field of view or 16:9. Since 1.2.1 the launcher shows when a newer version is out (top right, click to open the download page; `update_check = 0` turns it off).
 
 ![Terra Nova Plus launcher](docs/launcher_v12.png)
 
@@ -203,7 +203,7 @@ Feedback welcome, especially from Steam players and DOSBox-X users.
 
 ## Safety
 
-- It only opens DOSBox processes. In the running game it writes values and code at places found from the game's own code or checked byte for byte first. On disk it only changes `TNOVA\__FF.EXE` (once, for HD, terrain detail, field of view and 16:9) and `TN.CFG` (music), and keeps the originals as `*.tnplus-original`.
+- It only opens DOSBox processes. In the running game it writes values and code at places found from the game's own code or checked byte for byte first. On disk it only changes `TNOVA\__FF.EXE` (once, for HD, terrain detail, field of view, 16:9 and changed game keys) and `TN.CFG` (music), and keeps the originals as `*.tnplus-original`.
 - Freelook and noclip only start inside the 3D view of a mission and switch off by themselves when you leave it, so nothing is written into stale memory.
 - Because it reads/writes another program's memory, some antivirus software may flag it, like any game trainer: see below.
 

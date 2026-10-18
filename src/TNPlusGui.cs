@@ -206,7 +206,8 @@ static partial class TNPlus
                 r.Click += delegate
                 {
                     ResetKeys(); rebindKey = -1; rebindGame = null; mouseGame = null; mouseTool = -1; SaveSettings(); GuiRefresh();
-                    guiHelp.Text = "> every key back to its default (the tool's: H U J F7 F6)";
+                    guiHelp.Text = "> every key back to its default (the tool's: " + KeyName(ScanFreelook) + " " + KeyName(ScanNoclip) + " " +
+                        KeyName(ScanDistance) + " " + KeyName(ScanStereo) + ")";
                 };
             }
         }
