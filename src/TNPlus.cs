@@ -1509,7 +1509,7 @@ static partial class TNPlus
                     gameSeen = false;
                     SpanGameLeft();
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; smallState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; ashfordState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; smallState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
@@ -1535,7 +1535,7 @@ static partial class TNPlus
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
                     (OptPhysFix && descrFixState == 0) || fillerFixState == 0 || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1 ||
-                    (OptSpeedFix && affineState == 0) || smallState == 0))
+                    (OptSpeedFix && affineState == 0) || smallState == 0 || ashfordState == 0))
                 {
                     lastCave = now;
                     if (zoomFixState == 0) TryZoomFix();
@@ -1546,6 +1546,7 @@ static partial class TNPlus
                     if (viewFixState == 0 || viewFixState == 1) TryViewFix();
                     if (OptSpeedFix && affineState == 0) TryAffineFix();
                     if (smallState == 0) TrySmallViews();
+                    if (ashfordState == 0) TryAshfordFix();
                 }
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
@@ -2005,6 +2006,19 @@ static partial class TNPlus
     static void TryDescramblerFix()
     {
         descrFixState = TryPieces(DescramblerFix.At, DescramblerFix.Old, DescramblerFix.New, "Descrambler fix", "its text scrolls at the original pace");
+    }
+
+    // Ashford "Deceased": the Outfit screen kept him "Away on Mission" after he left the SFC (original bug). Found and
+    // fixed by Callemann in TNova Native, ported by tools/ashford_fix.py. English exe only: on another exe the call it
+    // hooks is not there and the fix stays off without a word.
+    static int ashfordState = 0;
+    static void TryAshfordFix()
+    {
+        uint[] at = AshfordFix.At[0];
+        byte[] hook = Read(at[at.Length - 1], 5);
+        if (hook == null) return;
+        if (!Same(hook, Hex(AshfordFix.Old[0][at.Length - 1])) && !Same(hook, Hex(AshfordFix.New[0][at.Length - 1]))) { ashfordState = -1; return; }
+        ashfordState = TryPieces(AshfordFix.At, AshfordFix.Old, AshfordFix.New, "Ashford fix", "the Outfit screen lists him as deceased after he left");
     }
 
     // Polygon filler of the 3D library: DOSBox runs two of its habits through the interpreter, an opcode rewritten
