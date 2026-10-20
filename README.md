@@ -1,5 +1,7 @@
 # Terra Nova Plus
 
+> **`coop` branch**: the build used by the online co-op of [Terra Nova Uplink](https://github.com/skw-1337/terra-nova-uplink). Double-click `srcuild.bat` to build `src\TNPlus.exe` (no extra install needed). Full setup for host and guest: [COOP.md](https://github.com/skw-1337/terra-nova-uplink/blob/coop/COOP.md).
+
 **An all-in-one quality-of-life pack for *Terra Nova: Strike Force Centauri*** (Looking Glass Technologies, 1996), running in DOSBox — **Steam, GOG or standalone**.
 
 One small external tool. Pick your options in its window, click Launch, and the game starts with them:
