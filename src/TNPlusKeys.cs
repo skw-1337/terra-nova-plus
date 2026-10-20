@@ -124,11 +124,17 @@ static partial class TNPlus
                     if (ToolKeyOwner(f, -1) < 0 && GameKeyOwner(f, 0, null) == null) { g.Sc = f; break; }
     }
 
-    // ---- mouse binds: the middle button, the side buttons and the wheel can press a command's key (or do a tool
-    // action) as a second bind; left and right buttons stay the game's (fire, lock). None by default.
-    static readonly string[] MOUSE_NAMES = { "", "MID", "M4", "M5", "WH+", "WH-" };
-    static readonly string[] MOUSE_INI = { "", "MID", "M4", "M5", "WHEELUP", "WHEELDOWN" };
-    static readonly string[] MOUSE_LONG = { "", "middle click", "side button 4", "side button 5", "wheel up", "wheel down" };
+    // ---- second binds: the middle button, the side buttons, the wheel and the extended keys the game leaves free
+    // (PgUp / PgDn, Home / End, Ins / Del: the key translation can't take them, the game's keyboard handler reads them
+    // apart) can press a command's key (or do a tool action) as well; left and right buttons stay the game's (fire,
+    // lock). None by default. Not the arrows (the game's own: forward, back, turn) nor right Ctrl / Alt (Ctrl / Alt for
+    // the game). The game still gets the key itself (Ctrl + PgUp / PgDn / Home: drone).
+    static readonly string[] MOUSE_NAMES = { "", "MID", "M4", "M5", "WH+", "WH-", "PGU", "PGD", "HOM", "END", "INS", "DEL" };
+    static readonly string[] MOUSE_INI = { "", "MID", "M4", "M5", "WHEELUP", "WHEELDOWN", "PGUP", "PGDN", "HOME", "END", "INS", "DEL" };
+    static readonly string[] MOUSE_LONG = { "", "middle click", "side button 4", "side button 5", "wheel up", "wheel down",
+        "Page Up", "Page Down", "Home", "End", "Insert", "Delete" };
+    const int BIND_KEYS = 6;                         // first extended key in those lists
+    static readonly int[] BIND_VK = { 0, 0, 0, 0, 0, 0, 0x21, 0x22, 0x24, 0x23, 0x2D, 0x2E };
     static readonly string[] TOOL_IDS = { "freelook", "noclip", "distance", "stereo" };   // KEY_WHAT order
     static readonly int[] ToolMouse = new int[4];
 
@@ -149,7 +155,7 @@ static partial class TNPlus
         foreach (GameKey o in GameKeys) if (m != 0 && o.Mouse == m) o.Mouse = 0;
         for (int i = 0; i < ToolMouse.Length; i++) if (m != 0 && ToolMouse[i] == m) ToolMouse[i] = 0;
         if (g != null) g.Mouse = m; else ToolMouse[tool] = m;
-        if (m == 0) return name + ": mouse bind removed";
+        if (m == 0) return name + ": second bind removed";
         return name + ": " + MOUSE_LONG[m] + " (and still " + (g != null ? ChordName(g.Sc, g.Mod) : ScanName(GetKey(tool))) + ")" +
             (before != null && before != name ? ", taken from " + before : "");
     }
@@ -209,7 +215,7 @@ static partial class TNPlus
     static string AssignGameKey(GameKey g, int sc, int mod, bool ext)
     {
         if (ext || sc <= 1 || sc >= 0x80 || Array.IndexOf(MODIFIER_SC, sc) >= 0)
-            return "that key can't be used (Esc, extended keys like the arrows): pick another one";
+            return ext ? "PgUp / PgDn, Home / End, Ins / Del go on the green badge, as a second bind (the arrows are the game's own)" : "that key can't be used: pick another one";
         if (sc == g.Sc && mod == g.Mod) return g.Name.ToLowerInvariant() + ": unchanged";
         GameKey o = GameKeyOwner(sc, mod, g);
         int t = mod == 0 ? ToolKeyOwner(sc, -1) : -1;
@@ -227,7 +233,7 @@ static partial class TNPlus
     static string AssignToolKey(int k, int sc, bool ext)
     {
         if (ext || sc == 0 || Array.IndexOf(KEY_RESERVED, sc) >= 0)
-            return "that key is taken by the game or the tool (Esc, O, noclip up / down, Ctrl, Shift, Alt, arrows...): pick another one";
+            return ext ? "PgUp / PgDn, Home / End, Ins / Del go on the green badge, as a second bind (the arrows are the game's own)" : "that key is taken by the game or the tool (Esc, O, noclip up / down, Ctrl, Shift, Alt...): pick another one";
         if (sc == GetKey(k)) return KEY_WHAT[k] + ": unchanged";
         string msg = KEY_WHAT[k] + ": " + ScanName(sc);
         int other = ToolKeyOwner(sc, k);
@@ -472,6 +478,73 @@ static partial class TNPlus
         }
         keysState = 1;
         Say("Game keys: " + n + " changed, active in missions", 0);
+    }
+
+    // ---- keys left down: a key still held when the game window loses the focus (Alt+Tab while turning) never gets
+    // its release, DOSBox keeps repeating it and the player goes on turning on his own (issue #2). While the window
+    // is in the background during a mission, every key the game's keyboard library still has down gets a release
+    // posted to the DOSBox window (its original key too when the command was moved), as the native Windows port
+    // does when its window loses the focus. The library: pointer at EN 0x45D62C / FR 0x45D6DC, read from the
+    // handler's "mov ebx, [ptr]"; key state bytes at +0x410 (bit 0 down; E0 keys at 0x80 + code).
+    [DllImport("user32.dll")] static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wp, IntPtr lp);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lp);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+    delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lp);
+    const string KB_LIB_SIG = "66BB8801668EDB8B1D";   // mov bx, 0x188 / mov ds, bx / mov ebx, [ptr]
+    static uint kbLibPtr = 0;                       // 0 not looked for yet, 1 not found
+    static double lastRelease = 0;
+
+    static IntPtr GameWindow()
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((h, l) =>
+        {
+            int pid; GetWindowThreadProcessId(h, out pid);
+            if (pid == gamePid && IsWindowVisible(h)) { found = h; return false; }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    static void PostKeyUp(IntPtr hwnd, int sc, bool ext)
+    {
+        uint vk = MapVirtualKey((uint)sc, 1);
+        if (ext)
+            switch (sc)
+            {
+                case 0x48: vk = 0x26; break; case 0x50: vk = 0x28; break; case 0x4B: vk = 0x25; break; case 0x4D: vk = 0x27; break;
+                case 0x49: vk = 0x21; break; case 0x51: vk = 0x22; break; case 0x47: vk = 0x24; break; case 0x4F: vk = 0x23; break;
+                case 0x52: vk = 0x2D; break; case 0x53: vk = 0x2E; break;
+            }
+        long lp = 1 | ((long)sc << 16) | (ext ? 1L << 24 : 0) | 0xC0000000L;
+        PostMessage(hwnd, 0x101, (IntPtr)vk, (IntPtr)unchecked((int)lp));    // WM_KEYUP
+    }
+
+    static void ReleaseLeftKeys(double now, bool fg)
+    {
+        if (fg || kbLibPtr == 1 || now - lastRelease < 0.5) return;
+        lastRelease = now;
+        if (!InMission(PlayerEntry())) return;
+        if (kbLibPtr == 0)
+        {
+            byte[] mem = Read(0x300000, 0x40000);
+            int i = mem == null ? -1 : IndexOf(mem, Hex(KB_LIB_SIG), 0);
+            kbLibPtr = i < 0 || i + 13 > mem.Length ? 1u : BitConverter.ToUInt32(mem, i + 9);
+            if (kbLibPtr == 1) return;
+        }
+        uint kb = ReadUInt(kbLibPtr);
+        if (kb == 0 || kb > 0x400000) return;
+        byte[] st = Read(kb + 0x410, 256);
+        if (st == null) return;
+        IntPtr hwnd = IntPtr.Zero;
+        for (int c = 1; c < 256; c++)
+        {
+            if ((st[c] & 1) == 0) continue;
+            if (hwnd == IntPtr.Zero && (hwnd = GameWindow()) == IntPtr.Zero) return;
+            PostKeyUp(hwnd, c & 0x7F, c >= 0x80);
+            foreach (GameKey g in GameKeys)                // the key that was pressed for it, when moved
+                if (g.DefSc == c && g.Sc != c && g.Sc < 0x80) PostKeyUp(hwnd, g.Sc, false);
+        }
     }
 
     // during missions only: the menus and the names typed keep the keyboard as it is
