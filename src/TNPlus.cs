@@ -844,7 +844,8 @@ static partial class TNPlus
         if (ic >= 0 && ic + 1 < args.Length && File.Exists(args[ic + 1])) ExtraConf = args[ic + 1];
         KeysOnly = Array.IndexOf(args, "--keys") >= 0;             // launchers: the KEYBOARD page only, then quit
         if (KeysOnly) { GuiMenu(); return; }
-        if (Array.IndexOf(args, "--launch") >= 0)                   // Terra Nova Coop: straight into the game, no menu
+        FromLauncher = Array.IndexOf(args, "--launch") >= 0;
+        if (FromLauncher)                   // Terra Nova Coop: straight into the game, no menu
         {
             if (Launch()) Run();
             return;
@@ -2594,6 +2595,7 @@ static partial class TNPlus
 
     static bool OptKeepDos = false;                // ini keep_dos (tests): no EXIT after the game
     static int OnlyPid = 0;                         // --pid N: attach to that DOSBox only (tests next to a game)
+    static bool FromLauncher = false;               // --launch: the game behind Uplink's window, its keys sent by Uplink
     static bool KeysOnly = false;                   // --keys: the window shows its KEYBOARD page only (DONE saves)
     static string ExtraConf = null;                 // --conf FILE: one more DOSBox config, last (Terra Nova Coop: windowed)
 
