@@ -839,6 +839,8 @@ static partial class TNPlus
         bool consoleMenu = Array.IndexOf(args, "--console") >= 0;   // the old text menu
         int ip = Array.IndexOf(args, "--pid");                      // tests: attach to this DOSBox only
         if (ip >= 0 && ip + 1 < args.Length) int.TryParse(args[ip + 1], out OnlyPid);
+        int ic = Array.IndexOf(args, "--conf");
+        if (ic >= 0 && ic + 1 < args.Length && File.Exists(args[ic + 1])) ExtraConf = args[ic + 1];
         if (Array.IndexOf(args, "--launch") >= 0)                   // Terra Nova Coop: straight into the game, no menu
         {
             if (Launch()) Run();
@@ -1418,6 +1420,7 @@ static partial class TNPlus
             launchedTrue = trueWide;
             args += " -conf \"" + overlay + "\"";
         }
+        if (ExtraConf != null) args += " -conf \"" + ExtraConf + "\"";
         args += " -noconsole";
         ProcessStartInfo psi = new ProcessStartInfo(Path.Combine(db, "dosbox-staging.exe"), args);
         psi.WorkingDirectory = db;
@@ -2517,6 +2520,7 @@ static partial class TNPlus
 
     static bool OptKeepDos = false;                // ini keep_dos (tests): no EXIT after the game
     static int OnlyPid = 0;                         // --pid N: attach to that DOSBox only (tests next to a game)
+    static string ExtraConf = null;                 // --conf FILE: one more DOSBox config, last (Terra Nova Coop: windowed)
 
     static void TryAttach()
     {
