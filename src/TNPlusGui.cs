@@ -51,6 +51,8 @@ static partial class TNPlus
         };
     }
 
+    const string BIND_HELP = "a mouse button (middle, side), the wheel, PgUp / PgDn, Home / End or Ins / Del";
+
     class KeyCatcher : IMessageFilter
     {
         public bool PreFilterMessage(ref Message m)
@@ -80,7 +82,8 @@ static partial class TNPlus
         }
     }
 
-    // waiting for a mouse bind: middle click, side buttons, wheel; Del removes, Esc cancels (left / right clicks go on)
+    // waiting for a second bind: middle click, side buttons, wheel or a free extended key (PgUp...); Backspace
+    // removes, Esc cancels (left / right clicks go on)
     static bool MouseCatch(ref Message m)
     {
         int b = -1;
@@ -92,9 +95,14 @@ static partial class TNPlus
         else if (m.Msg == 0x100 || m.Msg == 0x104)
         {
             int vk = (int)wp;
-            if (vk == 0x2E) b = 0;                                          // Del
+            bool ext = ((m.LParam.ToInt64() >> 24) & 1) != 0;
+            int k = ext ? Array.IndexOf(BIND_VK, vk, BIND_KEYS) : -1;      // the keypad's keys (not extended) don't count
+            if (k >= BIND_KEYS) b = k;
+            else if (ext && vk >= 0x25 && vk <= 0x28) { guiHelp.Text = "> the arrows are the game's own (forward, back, turn): pick another one"; return true; }
+            else if (vk == 0x08) b = 0;                                     // Backspace
             else if (vk == 0x1B) { mouseGame = null; mouseTool = -1; GuiRefresh(); guiHelp.Text = "> unchanged"; return true; }
-            else { guiHelp.Text = "> a mouse button (middle, side) or the wheel; Del removes, Esc cancels"; return true; }
+            else if (vk == 0x10 || vk == 0x11 || vk == 0x12) return true;   // left modifiers: wait
+            else { guiHelp.Text = "> " + BIND_HELP + "; Backspace removes, Esc cancels"; return true; }
         }
         if (b < 0) return false;
         string msg = AssignMouse(mouseGame, mouseTool, b);
@@ -113,8 +121,8 @@ static partial class TNPlus
         {
             if (rebindKey >= 0 || rebindGame != null || mouseGame != null || mouseTool >= 0) return;
             int mb = g != null ? g.Mouse : ToolMouse[tool];
-            guiHelp.Text = "> " + (g != null ? g.Name.ToLowerInvariant() : KEY_WHAT[tool]) + (mb > 0 ? ": " + MOUSE_LONG[mb] + " too" : ": no mouse bind") +
-                ". Click, then middle click, a side button or the wheel (Del removes)";
+            guiHelp.Text = "> " + (g != null ? g.Name.ToLowerInvariant() : KEY_WHAT[tool]) + (mb > 0 ? ": " + MOUSE_LONG[mb] + " too" : ": no second bind") +
+                ". Click, then " + BIND_HELP + " (Backspace removes)";
         };
         b.Click += delegate
         {
@@ -122,8 +130,8 @@ static partial class TNPlus
             rebindKey = -1; rebindGame = null;
             mouseGame = same ? null : g; mouseTool = same || g != null ? -1 : tool;
             GuiRefresh();
-            guiHelp.Text = mouseGame == null && mouseTool < 0 ? "> unchanged" : "> middle click, a side button or the wheel for " +
-                (g != null ? g.Name.ToLowerInvariant() : KEY_WHAT[tool]) + " (Del removes, Esc cancels)";
+            guiHelp.Text = mouseGame == null && mouseTool < 0 ? "> unchanged" : "> " + BIND_HELP + " for " +
+                (g != null ? g.Name.ToLowerInvariant() : KEY_WHAT[tool]) + " (Backspace removes, Esc cancels)";
         };
         return b;
     }
@@ -227,7 +235,7 @@ static partial class TNPlus
         tabSet.BackColor = keys ? TPanel : TTab; tabSet.ForeColor = keys ? TDim : Color.White;
         tabKeys.BackColor = keys ? TTab : TPanel; tabKeys.ForeColor = keys ? Color.White : TDim;
         rebindKey = -1; rebindGame = null; mouseGame = null; mouseTool = -1; GuiRefresh();
-        guiHelp.Text = keys ? "> purple: click, then the new key (alone or with Alt, Ctrl, Shift). Green: a mouse button or the wheel as well. Missions only."
+        guiHelp.Text = keys ? "> purple: click, then the new key (alone or with Alt, Ctrl, Shift). Green: a mouse button, the wheel, PgUp, Home, Ins... as well. Missions only."
                             : "> point at a setting to read what it does";
     }
     static readonly string[] SPEED_NAMES = { "500000", "700000", "1000000", "1400000", "1800000", "2200000", "GAME'S OWN" };

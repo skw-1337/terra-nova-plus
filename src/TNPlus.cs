@@ -1459,10 +1459,11 @@ static partial class TNPlus
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
         double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0, lastCave = -10;
         // mouse binds (by MOUSE_NAMES index): state seen last pass, command pressed, wheel taps
-        bool[] mbPrev = new bool[6], mbPulse = new bool[6];
-        GameKey[] mbSent = new GameKey[6];
-        double[] mbUpAt = new double[6], mbNext = new double[6];
-        int[] mbQ = new int[6];
+        int nb = MOUSE_NAMES.Length;                // mouse buttons, wheel notches, then the extended keys
+        bool[] mbPrev = new bool[nb], mbPulse = new bool[nb];
+        GameKey[] mbSent = new GameKey[nb];
+        double[] mbUpAt = new double[nb], mbNext = new double[nb];
+        int[] mbQ = new int[nb];
         const int VK_MENU = 0x12, VK_CONTROL = 0x11;
         // noclip moves on the game's Forward / Turn left / Turn right keys and the one on S (W A S D unless changed)
         int kBack = PlainKey("back", 0x2D) == 0x1F ? 0x1F : PlainKey("stop", 0x1F);   // the key on S: Stop (game), Back (presets)
@@ -1519,6 +1520,7 @@ static partial class TNPlus
                 }
                 if (!gameSeen) { gameSeen = true; int g; pidGames.TryGetValue(gamePid, out g); pidGames[gamePid] = g + 1; }
                 bool fg = ForegroundIsGame();
+                ReleaseLeftKeys(now, fg);
                 SpanTick(now);
 
                 // --- HD: injected as soon as the game is loaded, before its first mission
@@ -1550,7 +1552,7 @@ static partial class TNPlus
                 }
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
-                // --- mouse binds: middle / side buttons held, wheel notches as short presses (one at a time)
+                // --- second binds: middle / side buttons and extended keys held, wheel notches as short presses (one at a time)
                 mbQ[4] += mouse.WheelUp; mbQ[5] += mouse.WheelDown; mouse.WheelUp = mouse.WheelDown = 0;
                 if (!fg) mbQ[4] = mbQ[5] = 0;
                 for (int b = 4; b <= 5; b++)
@@ -1558,23 +1560,25 @@ static partial class TNPlus
                     mbPulse[b] = mbSent[b] == null && mbQ[b] > 0 && now >= mbNext[b];
                     if (mbPulse[b]) mbQ[b]--;
                 }
-                for (int b = 1; b <= 5; b++)
+                for (int b = 1; b < nb; b++)
                 {
-                    bool on = b <= 3 ? mouse.Held[b] : mbPulse[b];
+                    bool wheel = b == 4 || b == 5;
+                    bool on = b <= 3 ? mouse.Held[b] : wheel ? mbPulse[b] : fg && Down(BIND_VK[b]);
                     GameKey gk = GameKeys.Find(gq => gq.Mouse == b);
                     if (gk != null && on && !mbPrev[b] && mbSent[b] == null && fg && InMission(PlayerEntry()))
                     {
                         SendChord(gk, true); mbSent[b] = gk;
-                        if (b >= 4) mbUpAt[b] = now + 0.05;
+                        if (wheel) mbUpAt[b] = now + 0.05;
                     }
-                    if (mbSent[b] != null && (b <= 3 ? !on : now >= mbUpAt[b]))
+                    if (mbSent[b] != null && (!wheel ? !on : now >= mbUpAt[b]))
                     {
                         SendChord(mbSent[b], false); mbSent[b] = null;
-                        if (b >= 4) mbNext[b] = now + 0.03;
+                        if (wheel) mbNext[b] = now + 0.03;
                     }
                     mbPrev[b] = on;
                 }
-                Func<int, bool> toolMouse = t => ToolMouse[t] >= 1 && ToolMouse[t] <= 3 ? mouse.Held[ToolMouse[t]] : ToolMouse[t] >= 4 && mbPulse[ToolMouse[t]];
+                Func<int, bool> toolMouse = t => ToolMouse[t] >= 1 && ToolMouse[t] <= 3 ? mouse.Held[ToolMouse[t]] :
+                    ToolMouse[t] >= BIND_KEYS ? fg && Down(BIND_VK[ToolMouse[t]]) : ToolMouse[t] >= 4 && mbPulse[ToolMouse[t]];
                 bool stk = haveStereo && fg && ((plain && Down(vkStereo)) || toolMouse(3));
                 if (stk && !prevSt)
                 {
