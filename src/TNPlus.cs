@@ -840,6 +840,11 @@ static partial class TNPlus
         bool consoleMenu = Array.IndexOf(args, "--console") >= 0;   // the old text menu
         int ip = Array.IndexOf(args, "--pid");                      // tests: attach to this DOSBox only
         if (ip >= 0 && ip + 1 < args.Length) int.TryParse(args[ip + 1], out OnlyPid);
+        if (Array.IndexOf(args, "--launch") >= 0)                   // Terra Nova Coop: straight into the game, no menu
+        {
+            if (Launch()) Run();
+            return;
+        }
         while (consoleMenu ? Menu() : GuiMenu()) Run();   // back to the menu when a game started from it closes
     }
 
