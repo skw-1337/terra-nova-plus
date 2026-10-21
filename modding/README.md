@@ -189,6 +189,26 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
     segments always missed. They are now intersected in floating point (x87: DOSBox has no SSE2).
   Code at 0x465024 and 0x46AE54, flag at 0x469390. Part of the projectile hit fix.
 
+- **Ashford still "Away on Mission"** on the Outfit screen after he left (missions 21 to 28 of [0x359708]). The
+  status text call (0x2BA8CF, string 0x05AB0148) goes through a check of his row (7 x 494): "Deceased", or
+  "Décédé" on the French exe (call 0x2BA8EB, mission 0x359724). After TNova Native (Callemann),
+  `tools/ashford_fix.py`. Code at 0x469FB0, text at 0x469FE0.
+
+- **Clouds jump up and down while walking.** Each screen row of the sky ray (0x2A73DE-0x2A7423) was the row
+  above plus a rounded step, so the rounding piled up and a small tilt moved the cloud layer by a visible
+  step. Each row is now worked out from the view coefficients (0x41EB9E-0x41EBB2), same length, no cave.
+  After TNova Native (Callemann), `tools/native_fixes.py`. Only in a game TN+ started (code rewritten in place).
+
+- **Drone damage reads a null record.** The weapon readiness test (0x28F05F) reads the energy record of a
+  drone's weapon, which the generic lookup leaves null, then low memory. A null record now means "not charged",
+  counted as an intact weapon. After TNova Native (Callemann), `tools/native_fixes.py`, same conditions.
+
+- **Thicker smoke** (option, not a bug). A smoke grenade's cloud is the engine's particle system type 11 of the
+  table at 0x35C390 (0x44 bytes a type, French exe 0x35C3B0): +0x00 particle count (192), +0x28 / +0x2C life of a
+  particle (50 to 120 for one brought back, up to 120 at the start, ~40 a second), +0x40 chance in % that a dead
+  particle comes back while 10 or more are left (60). The 6/29 entity ends when its cloud is empty. The option
+  writes 256, 100, 200 and 70: a thicker cloud that lasts about twice as long. The particle pool holds 1024.
+
 ### Traps we fell into while patching
 
 - **A constant shifted like an address.** Our French-to-English address map also moved the cursor size 32x64

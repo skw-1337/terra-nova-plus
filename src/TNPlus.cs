@@ -49,7 +49,7 @@ using System.Reflection;
 
 static partial class TNPlus
 {
-    const string VERSION = "1.2.2-coop3";
+    const string VERSION = "1.2.3-coop3";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
@@ -64,6 +64,7 @@ static partial class TNPlus
     static readonly string[] SCALING_NAMES = { "GAME'S OWN", "SHARP" };
     static bool OptHitFix = true;                   // projectile hit test fixed for high frame rates (see TryHitFix)
     static bool OptPhysFix = true;                  // physics clock fixed for high frame rates (see PHYSFIX_AT)
+    static bool OptThickSmoke = false;              // smoke grenades: a thicker cloud that lasts longer (see SMOKE_AT)
     static int OptObjDist = 2;                      // object draw distance: 0 GAME, 1 FAR, 2 MAX (see OBJ_*)
     static readonly string[] OBJDIST_NAMES = { "GAME", "FAR", "MAX" };
     static int OptFov = 0;                          // field of view of the main 3D view: index in FOV_NAMES (see FOV_*)
@@ -1000,6 +1001,7 @@ static partial class TNPlus
             left.Add(Sec("GAMEPLAY"));
             left.Add(Opt("9", "Projectile hit fix", Sw(OptHitFix), "BETA", 0));
             left.Add(Opt("0", "Physics speed fix", Sw(OptPhysFix), "BETA", 0));
+            left.Add(Opt("S", "Thicker smoke", Sw(OptThickSmoke), "BETA", 0));
             right.Add(Sec("LAUNCH"));
             right.Add(Line(S("  "), S(" L ", ConsoleColor.Black, ConsoleColor.Cyan), S(" "), S(" " + TARGET_NAMES[LaunchTarget] + " ", ConsoleColor.Black, ConsoleColor.Yellow),
                 S(LaunchTarget > 0 ? "  320x400, no HD" : "  the full game", ConsoleColor.DarkGray)));
@@ -1068,6 +1070,7 @@ static partial class TNPlus
                 case '8': OptMusic = (EffectiveMusic() + 1) % (AweRom() != null ? 4 : 3); break;
                 case '9': OptHitFix = !OptHitFix; break;
                 case '0': OptPhysFix = !OptPhysFix; break;
+                case 'S': OptThickSmoke = !OptThickSmoke; break;
                 case 'G':
                     if (installs.Count > 0) GameDir = installs[(installs.IndexOf(GameDir) + 1) % installs.Count];
                     break;
@@ -1525,7 +1528,7 @@ static partial class TNPlus
                     gameSeen = false;
                     SpanGameLeft();
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
-                    hitFixState = 0; physFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; ashfordState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; smallState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
+                    hitFixState = 0; physFixState = 0; smokeState = 0; skyFixState = 0; droneFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; ashfordState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; smallState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
                     hdEarly = 0;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
@@ -1542,6 +1545,8 @@ static partial class TNPlus
                 if (OptHD && hdState == 0 && now - lastHd > 0.5) { lastHd = now; TryHdInject(); }
                 if (OptHitFix && hitFixState == 0 && now - lastHit > 0.5) { lastHit = now; TryHitFix(); }
                 if (OptPhysFix && physFixState == 0 && now - lastPhys > 0.5) { lastPhys = now; TryPhysFix(); }
+                if (OptThickSmoke && smokeState == 0 && now - lastPhys > 0.5)
+                    smokeState = TryPieces(SMOKE_AT, SMOKE_OLD, SMOKE_NEW, "Thicker smoke", "smoke grenades make a thicker cloud that lasts longer");
                 if (OptObjDist > 0 && objState == 0 && now - lastPhys > 0.5) TryObjDist();
                 if (OptDetail > 0 && smoothState == 0 && now - lastPhys > 0.5) TrySmooth();
                 if ((OptFov > 0 || WideActive() || TrueWideActive()) && fovState == 0 && now - lastPhys > 0.5) TryFov();
@@ -1552,7 +1557,7 @@ static partial class TNPlus
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
                     (OptPhysFix && descrFixState == 0) || fillerFixState == 0 || irFixState == 0 || irFixState == 1 || viewFixState == 0 || viewFixState == 1 ||
-                    (OptSpeedFix && affineState == 0) || smallState == 0 || coopState == 0 || ashfordState == 0))
+                    (OptSpeedFix && affineState == 0) || smallState == 0 || coopState == 0 || ashfordState == 0 || skyFixState == 0 || droneFixState == 0))
                 {
                     lastCave = now;
                     if (coopState == 0) TryCoop();
@@ -1565,6 +1570,7 @@ static partial class TNPlus
                     if (OptSpeedFix && affineState == 0) TryAffineFix();
                     if (smallState == 0) TrySmallViews();
                     if (ashfordState == 0) TryAshfordFix();
+                    if (skyFixState == 0 || droneFixState == 0) TryNativeFixes();
                 }
                 bool plain = !Down(VK_MENU) && !Down(VK_CONTROL);   // Alt / Ctrl + key: the game's (Alt+H = hold fire)
 
@@ -2068,15 +2074,46 @@ static partial class TNPlus
     }
 
     // Ashford "Deceased": the Outfit screen kept him "Away on Mission" after he left the SFC (original bug). Found and
-    // fixed by Callemann in TNova Native, ported by tools/ashford_fix.py. English exe only: on another exe the call it
-    // hooks is not there and the fix stays off without a word.
+    // fixed by Callemann in TNova Native, ported by tools/ashford_fix.py. English and French exe ("Décédé"): on another
+    // exe the call it hooks is not there and the fix stays off without a word.
     static int ashfordState = 0;
+
+    // Thicker smoke (option): a smoke grenade's cloud is a particle system of the engine, made from record 11 of its
+    // particle type table (EN 0x35C390, FR 0x35C3B0, 0x44 bytes a type; only read, by the code that makes a system
+    // 0x2A6134 and by the one that brings a dead particle back 0x2A62DC). Smoke: 192 particles, life up to 120 (about
+    // 40 a second), a dead one back with 60 % chance (life 50 to 120) while 10 or more are left: half of the cloud is
+    // gone in ~4 s. Here 256 particles, life up to 200, back with 70 % chance (life 100 to 200): about twice as long,
+    // still thinning out on its own. The smoke entity (6/29) ends when its cloud is empty, so it lasts as long.
+    static int smokeState = 0;
+    static readonly uint[][] SMOKE_AT = { new uint[] { 0x35C67C }, new uint[] { 0x35C69C } };
+    const string SMOKE_REC_OLD = "C0000000200000000800000000000000080000000800000040000000100000002800000004000000320000007800000000000000FD000000FD000000000000003C000000";
+    const string SMOKE_REC_NEW = "0001000020000000080000000000000008000000080000004000000010000000280000000400000064000000C800000000000000FD000000FD0000000000000046000000";
+    static readonly string[][] SMOKE_OLD = { new[] { SMOKE_REC_OLD }, new[] { SMOKE_REC_OLD } };
+    static readonly string[][] SMOKE_NEW = { new[] { SMOKE_REC_NEW }, new[] { SMOKE_REC_NEW } };
+
+    // Clouds jumping while walking, drone damage reading a null energy record: two original bugs found and fixed by
+    // Callemann in TNova Native, rewritten in place (tools/native_fixes.py). Mission code: only in a game TN+ started
+    // in a fresh DOSBox (InPlaceSafe), where it has not run yet; attached to a running game they stay off.
+    static int skyFixState = 0, droneFixState = 0;
+    static void TryNativeFixes()
+    {
+        if (!FreeAreaReady()) return;
+        if (!InPlaceSafe()) { skyFixState = droneFixState = -1; return; }
+        if (skyFixState == 0) skyFixState = TryPieces(NativeFixes.SkyAt, NativeFixes.SkyOld, NativeFixes.SkyNew, "Sky fix", "the clouds no longer jump while walking");
+        if (droneFixState == 0) droneFixState = TryPieces(NativeFixes.DroneAt, NativeFixes.DroneOld, NativeFixes.DroneNew, "Drone damage fix", "no more null record read when a drone is hit");
+    }
+
     static void TryAshfordFix()
     {
-        uint[] at = AshfordFix.At[0];
-        byte[] hook = Read(at[at.Length - 1], 5);
-        if (hook == null) return;
-        if (!Same(hook, Hex(AshfordFix.Old[0][at.Length - 1])) && !Same(hook, Hex(AshfordFix.New[0][at.Length - 1]))) { ashfordState = -1; return; }
+        bool known = false;
+        for (int l = 0; l < AshfordFix.At.Length; l++)
+        {
+            uint[] at = AshfordFix.At[l];
+            byte[] hook = Read(at[at.Length - 1], 5);
+            if (hook == null) return;
+            if (Same(hook, Hex(AshfordFix.Old[l][at.Length - 1])) || Same(hook, Hex(AshfordFix.New[l][at.Length - 1]))) known = true;
+        }
+        if (!known) { ashfordState = -1; return; }
         ashfordState = TryPieces(AshfordFix.At, AshfordFix.Old, AshfordFix.New, "Ashford fix", "the Outfit screen lists him as deceased after he left");
     }
 
@@ -2925,6 +2962,7 @@ static partial class TNPlus
                     case "hd": oldHd = v != "0"; break;
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
+                    case "thick_smoke": OptThickSmoke = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
                     case "terrain_fps": int.TryParse(v, out OptTerrainFps); break;
                     case "hd_720": if (v == "1" && OptWideTrue) OptHd720 = true; break;   // first test builds
@@ -2996,6 +3034,7 @@ static partial class TNPlus
                 "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls), the soldiers' idle gestures and the descrambler text at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
+                "; 1 = smoke grenades make a thicker cloud that lasts about twice as long\r\nthick_smoke = " + (OptThickSmoke ? 1 : 0) + "\r\n" +
                 "; GAME, 90, 100 or 110: horizontal field of view of the 3D view in degrees (the game: 84.5)\r\nfield_of_view = " + FOV_NAMES[OptFov] + "\r\n" +
                 "; GAME, FAR or MAX: how far bushes, trees, units and buildings are drawn\r\nobject_distance = " + OBJDIST_NAMES[OptObjDist] + "\r\n" +
                 "; 1 = terrain and objects up to the screen edges with a wider field of view or true 16:9 (beta)\r\nedge_objects = " + (OptEdge ? 1 : 0) + "\r\n" +
