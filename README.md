@@ -185,6 +185,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `key_game_<command>` | — | written by the KEYBOARD tab for the game's commands you changed: `[SHIFT+\|CTRL+\|ALT+]scancode`, e.g. `key_game_fwd = 25` |
 | `hit_fix` | `1` | `0` = leave the game's projectile hit test as it is (misses above ~30 fps) |
 | `phys_fix` | `1` | `0` = leave the game's physics clock as it is (walks faster above ~30 fps, idle gestures and descrambler text too fast) |
+| `thick_smoke` | `0` | `1` = smoke grenades make a thicker cloud that lasts about twice as long |
 | `field_of_view` | `GAME` | `GAME`, `90`, `100` or `110`: horizontal field of view in degrees (GAME = 84.5, or 100.9 in 16:9) |
 | `object_distance` | `MAX` | `GAME`, `FAR` or `MAX`: how far scenery, units and buildings are drawn |
 | `cpu_cycles` | `1800000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting |

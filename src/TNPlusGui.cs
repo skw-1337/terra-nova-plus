@@ -10,6 +10,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 
 static partial class TNPlus
@@ -285,7 +286,7 @@ static partial class TNPlus
             }
         }
     }
-    static CheckBox ckFree, ckClip, ckStereo, ckHit, ckPhys;
+    static CheckBox ckFree, ckClip, ckStereo, ckHit, ckPhys, ckSmoke;
     static bool guiBusy;                            // refreshing the controls: ignore their events
     static Action guiRedrawGame;
 
@@ -388,10 +389,11 @@ static partial class TNPlus
         cbMusic = Combo(pSnd, "Music", 0, MUSIC_NAMES, "BETA", "");   // AWE32 always offered: found or not is shown below
         Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(1));
         ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), ""); KeyBadge(lastBadge, 0);
-        Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(3));
+        Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(4));
         ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), ""); KeyBadge(lastBadge, 3);
         ckHit = Switch(pFix, "Projectile hits", 1, "BETA", "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
         ckPhys = Switch(pFix, "Physics speed", 2, "BETA", "The game walks faster the higher the frame rate (+65 % at 76 fps), jumps and falls too. Fixed: same speed at any frame rate.");
+        ckSmoke = Switch(pFix, "Thicker smoke", 3, "BETA", "Smoke grenades: a thicker cloud (256 particles, not 192) that lasts about twice as long before it thins out. The game's own cloud is half gone in ~4 s.");
         Panel pCheat = Pane(f, "CHEATS", rx, pFix.Bottom + 10, pw, PaneH(1));
         ckClip = Switch(pCheat, "Noclip", 0, KeyName(ScanNoclip), ""); KeyBadge(lastBadge, 1);
         Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);
@@ -415,6 +417,9 @@ static partial class TNPlus
         // buttons, orange like the loadout screen's
         Button bLaunch = Btn(f, "LAUNCH", 20, yb + 88, 170, 32, true);
         Button bAttach = Btn(f, "ATTACH TO A RUNNING GAME", 202, yb + 88, 250, 32, false);
+        Button bSaves = Btn(f, "SAVES", 464, yb + 88, 110, 32, false);
+        bSaves.MouseEnter += delegate { guiHelp.Text = "> The game's 9 save slots: delete one to free it (a copy is kept in the save backups folder next to TNPlus.exe)."; };
+        bSaves.Click += delegate { SavesDialog(f); };
         Button bQuit = Btn(f, "QUIT", GUI_W - 110, yb + 88, 90, 32, false);
         f.ClientSize = new Size(GUI_W, yb + 88 + 32 + 20);
         bLaunch.Click += delegate
@@ -428,7 +433,7 @@ static partial class TNPlus
         bQuit.Click += delegate { if (KeysOnly) SaveSettings(); f.Close(); };
         if (KeysOnly)
         {   // the launchers' "Game keys...": the game's keys only, saved when done (the launcher starts the game itself)
-            bLaunch.Visible = bAttach.Visible = tabSet.Visible = false;
+            bLaunch.Visible = bAttach.Visible = bSaves.Visible = tabSet.Visible = false;
             bQuit.Text = "DONE";
             f.Shown += delegate { ShowPage(true); };
         }
@@ -449,6 +454,7 @@ static partial class TNPlus
         cbMusic.Changed += delegate { if (!guiBusy) { OptMusic = cbMusic.Index; GuiRefresh(); } };
         ckHit.CheckedChanged += delegate { if (!guiBusy) { OptHitFix = ckHit.Checked; GuiRefresh(); } };
         ckPhys.CheckedChanged += delegate { if (!guiBusy) { OptPhysFix = ckPhys.Checked; GuiRefresh(); } };
+        ckSmoke.CheckedChanged += delegate { if (!guiBusy) { OptThickSmoke = ckSmoke.Checked; GuiRefresh(); } };
         cbSpeed.Changed += delegate { if (!guiBusy) { CpuCycles = CYCLE_CHOICES[cbSpeed.Index]; GuiRefresh(); } };
         cbTarget.Changed += delegate { if (!guiBusy) { LaunchTarget = cbTarget.Index; GuiRefresh(); } };
         cbPreset.CycleMax = 2;
@@ -521,11 +527,11 @@ static partial class TNPlus
             ? (aweRom ? ". awe32.raw found. Experimental: barely tested, some instruments may sound off."
                       : ". awe32.raw (AWE32 ROM, 1 MB, not included) not found next to TNPlus.exe: ROLAND is played instead, see README.")
             : aweRom ? "." : ". Optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README.");
-        ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; cbTarget.Set(LaunchTarget);
+        ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; ckSmoke.Checked = OptThickSmoke; cbTarget.Set(LaunchTarget);
         int sp = Array.IndexOf(CYCLE_CHOICES, CpuCycles);
         if (sp < 0) { var it = new List<string>(SPEED_NAMES); it.Add(CpuCycles.ToString()); cbSpeed.Items = it.ToArray(); sp = SPEED_NAMES.Length; }
         cbSpeed.CycleMax = SPEED_NAMES.Length - 1; cbSpeed.Set(sp);
-        foreach (CheckBox c in new[] { ckFree, ckClip, ckStereo, ckHit, ckPhys }) Led(c);
+        foreach (CheckBox c in new[] { ckFree, ckClip, ckStereo, ckHit, ckPhys, ckSmoke }) Led(c);
         int p = CurrentPreset(); cbPreset.Set(p < 0 ? 3 : p);
         guiPreset.Text = p < 0 ? "Your own settings. A preset starts again from a known mix." : PRESET_INFO[p];
         string warn = "";
@@ -692,5 +698,89 @@ static partial class TNPlus
     {
         TBtn b = new TBtn(); b.Text = text; b.Location = new Point(x, y); b.Size = new Size(w, h); b.Font = TBold; b.Accent = accent;
         parent.Controls.Add(b); return b;
+    }
+
+    // ---- saves: the game's 9 slots (TNOVA\SAVE01-09.RES), one can be deleted to free it, as the Uplink and Coop
+    // launchers do (their mission selector needs a free slot). The file goes to "save backups" next to TNPlus.exe.
+    static void SavesDialog(Form owner)
+    {
+        string dir = Path.Combine(GameDir, "TNOVA");
+        if (GameDir == "" || !Directory.Exists(dir)) { guiWarn.Text = "GAME FOLDER NOT FOUND: no saves to show"; return; }
+        Form d = new Form(); d.Text = "Saves"; d.ClientSize = new Size(480, 320); d.FormBorderStyle = FormBorderStyle.FixedDialog;
+        d.MaximizeBox = d.MinimizeBox = false; d.StartPosition = FormStartPosition.CenterParent; d.BackColor = TBack; d.ForeColor = TText;
+        d.ShowInTaskbar = false; d.Icon = owner.Icon;
+        ListBox list = new ListBox(); list.Location = new Point(14, 14); list.Size = new Size(452, 230); list.BackColor = TField; list.ForeColor = TText;
+        list.BorderStyle = BorderStyle.None; list.Font = TMono;
+        d.Controls.Add(list);
+        Action fill = delegate
+        {
+            list.Items.Clear();
+            for (int slot = 1; slot <= 9; slot++)
+            {
+                string f = Path.Combine(dir, "SAVE" + slot.ToString("00") + ".RES");
+                string what = "(empty)";
+                if (File.Exists(f))
+                {
+                    byte[] name = ResBlock(f, 1775), head = ResBlock(f, 1776);
+                    what = name == null ? "(unreadable)" : Encoding.ASCII.GetString(name).TrimEnd('\0');
+                    if (head != null && head.Length >= 12 && BitConverter.ToInt32(head, 0) == 0x06EF0018)
+                        what += "  (mission " + (BitConverter.ToInt32(head, 8) - 2).ToString("00") + ")";
+                }
+                list.Items.Add(slot + "  " + what);
+            }
+        };
+        fill();
+        Button del = Btn(d, "DELETE", 14, 266, 130, 34, true);
+        del.Click += delegate
+        {
+            int slot = list.SelectedIndex + 1;
+            string f = Path.Combine(dir, "SAVE" + slot.ToString("00") + ".RES");
+            if (slot < 1 || !File.Exists(f)) return;
+            if (MessageBox.Show(d, "Delete save " + list.SelectedItem + "?\nA copy is kept in the save backups folder next to TNPlus.exe.", "Saves",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            try
+            {
+                string bk = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "save backups");
+                Directory.CreateDirectory(bk);
+                File.Move(f, Path.Combine(bk, "SAVE" + slot.ToString("00") + " " + DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss") + ".RES"));
+                guiWarn.Text = "SAVE " + slot + " DELETED: THE SLOT IS FREE";
+            }
+            catch (Exception e) { MessageBox.Show(d, e.Message, "Saves"); }
+            fill();
+        };
+        Button close = Btn(d, "CLOSE", 336, 266, 130, 34, false);
+        close.Click += delegate { d.Close(); };
+        d.ShowDialog(owner);
+        d.Dispose();
+    }
+
+    // one block of a Looking Glass "LG Res File v2" (a save): directory offset at 0x7C, there u16 count, u32 first data
+    // offset, then per block u16 id, u32 size | flags << 24, u32 packed size | type << 24 (blocks 4-aligned). Null if
+    // not there or packed.
+    static byte[] ResBlock(string path, int id)
+    {
+        try
+        {
+            byte[] d = File.ReadAllBytes(path);
+            if (d.Length < 0x80 || Encoding.ASCII.GetString(d, 0, 14) != "LG Res File v2") return null;
+            int diro = BitConverter.ToInt32(d, 0x7C);
+            int n = BitConverter.ToUInt16(d, diro), off = BitConverter.ToInt32(d, diro + 2), p = diro + 6;
+            for (int i = 0; i < n; i++, p += 10)
+            {
+                uint a = BitConverter.ToUInt32(d, p + 2), b = BitConverter.ToUInt32(d, p + 6);
+                bool packed = ((a >> 24) & 1) != 0;
+                int len = (int)(packed ? b & 0xFFFFFF : a & 0xFFFFFF);
+                if (BitConverter.ToUInt16(d, p) == id)
+                {
+                    if (packed) return null;
+                    byte[] r = new byte[len];
+                    Array.Copy(d, off, r, 0, len);
+                    return r;
+                }
+                off += (len + 3) & ~3;
+            }
+        }
+        catch { }
+        return null;
     }
 }
