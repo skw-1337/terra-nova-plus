@@ -379,27 +379,27 @@ static partial class TNPlus
         int y0 = 156, lx = 20, pw = (GUI_W - 60) / 2, rx = lx + pw + 20;
         Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(7));
         cbDisplay = Combo(pPic, "Display", 0, GUI_DISPLAY, "BETA", "");
-        cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, "BETA", "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. TRUE 720: the same in 1280x720 (1280 columns, 1.5 x the lines), needs a fast PC. Needs the game launched from here.");
-        cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, "BETA", "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER is dynamic in HD: it draws them less far (down to 24 cells) when the frame rate falls under 60 and goes back to 48 when it can.");
+        cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, null, "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. TRUE 720: the same in 1280x720 (1280 columns, 1.5 x the lines), needs a fast PC. Needs the game launched from here.");
+        cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, null, "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER is dynamic in HD: it draws them less far (down to 24 cells) when the frame rate falls under 60 and goes back to 48 when it can.");
         cbDist = Combo(pPic, "View distance", 3, DIST_NAMES, KeyName(ScanDistance), ""); KeyBadge(lastBadge, 2);
-        cbFov = Combo(pPic, "Field of view", 5, FOV_NAMES, "BETA", "Horizontal field of view of the 3D view in degrees, at every zoom level. GAME: 84.5, or 100.9 in 16:9. The small cockpit cameras keep theirs.");
-        cbObj = Combo(pPic, "Object distance", 4, OBJDIST_NAMES, "BETA", "How far bushes, trees, units and buildings are drawn. GAME: scenery 20 cells. FAR: 30, unit ranges x2. MAX: 40, x3. About 4 % fps at MAX.");
-        cbScale = Combo(pPic, "Scaling", 6, SCALING_NAMES, "BETA", "How DOSBox scales the picture to your screen. SHARP: every pixel the same size, edges still sharp (OpenGL, sharp shader): much less shimmer when the view moves. GAME'S OWN: the edition's setting (Direct3D, nearest pixels of uneven sizes). Needs the game launched from here.");
+        cbFov = Combo(pPic, "Field of view", 5, FOV_NAMES, null, "Horizontal field of view of the 3D view in degrees, at every zoom level. GAME: 84.5, or 100.9 in 16:9. The small cockpit cameras keep theirs.");
+        cbObj = Combo(pPic, "Object distance", 4, OBJDIST_NAMES, null, "How far bushes, trees, units and buildings are drawn. GAME: scenery 20 cells. FAR: 30, unit ranges x2. MAX: 40, x3. About 4 % fps at MAX.");
+        cbScale = Combo(pPic, "Scaling", 6, SCALING_NAMES, null, "How DOSBox scales the picture to your screen. SHARP: every pixel the same size, edges still sharp (OpenGL, sharp shader): much less shimmer when the view moves. GAME'S OWN: the edition's setting (Direct3D, nearest pixels of uneven sizes). Needs the game launched from here.");
         Panel pSnd = Pane(f, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));
         cbMusic = Combo(pSnd, "Music", 0, MUSIC_NAMES, "BETA", "");   // AWE32 always offered: found or not is shown below
         Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(1));
         ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), ""); KeyBadge(lastBadge, 0);
         Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(4));
         ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), ""); KeyBadge(lastBadge, 3);
-        ckHit = Switch(pFix, "Projectile hits", 1, "BETA", "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
-        ckPhys = Switch(pFix, "Physics speed", 2, "BETA", "The game walks faster the higher the frame rate (+65 % at 76 fps), jumps and falls too. Fixed: same speed at any frame rate.");
-        ckSmoke = Switch(pFix, "Thicker smoke", 3, "BETA", "Smoke grenades: a thicker cloud (256 particles, not 192) that lasts about twice as long before it thins out. The game's own cloud is half gone in ~4 s.");
+        ckHit = Switch(pFix, "Projectile hits", 1, null, "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
+        ckPhys = Switch(pFix, "Physics speed", 2, null, "The game walks faster the higher the frame rate (+65 % at 76 fps), jumps and falls too. Fixed: same speed at any frame rate.");
+        ckSmoke = Switch(pFix, "Thicker smoke", 3, null, "Smoke grenades: a thicker cloud (256 particles, not 192) that lasts about twice as long before it thins out. The game's own cloud is half gone in ~4 s.");
         Panel pCheat = Pane(f, "CHEATS", rx, pFix.Bottom + 10, pw, PaneH(1));
         ckClip = Switch(pCheat, "Noclip", 0, KeyName(ScanNoclip), ""); KeyBadge(lastBadge, 1);
         Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);
         cbTarget = Combo(pLaunch, "Run", 0, new[] { "FULL GAME", "DEMO 1", "DEMO 2" }, null, "The two 1996 demos shipped with GOG and Steam have missions the full game hasn't. No HD there yet.");
         cbPreset = Combo(pLaunch, "Preset", 1, new[] { "ORIGINAL", "CLASSIC+", "BEST", "CUSTOM" }, null, "Presets set picture and controls at once. Fixes, cheats and music are yours to choose.");
-        cbSpeed = Combo(pLaunch, "CPU speed", 2, SPEED_NAMES, "BETA",
+        cbSpeed = Combo(pLaunch, "CPU speed", 2, SPEED_NAMES, null,
             "DOSBox CPU cycles: the game runs as fast as they allow. True 16:9 HD: 700000 ~40 fps, 1000000 ~57. 1280x720: 1800000 ~60-90 (one full CPU core). DOSBox lowers them by itself when your PC cannot keep up.");
         guiPreset = Lbl(pLaunch, "", 14, PaneH(3) - 4, TSmall, TDim); guiPreset.AutoSize = false; guiPreset.Size = new Size(pw - 28, 20);
 
