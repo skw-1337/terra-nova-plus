@@ -417,7 +417,13 @@ static partial class TNPlus
             else { ShowWindow(console, 0); guiWarn.Text = "COULD NOT LAUNCH: " + (IsInstall(GameDir) ? "see README (demos)" : "game folder not found"); }
         };
         bAttach.Click += delegate { ApplyDisplay(); SaveSettings(); ShowWindow(console, 5); result = true; f.Close(); };
-        bQuit.Click += delegate { f.Close(); };
+        bQuit.Click += delegate { if (KeysOnly) SaveSettings(); f.Close(); };
+        if (KeysOnly)
+        {   // the launchers' "Game keys...": the game's keys only, saved when done (the launcher starts the game itself)
+            bLaunch.Visible = bAttach.Visible = tabSet.Visible = false;
+            bQuit.Text = "DONE";
+            f.Shown += delegate { ShowPage(true); };
+        }
         f.AcceptButton = bLaunch; f.ActiveControl = bLaunch;
         f.FormClosed += delegate { SaveSettings(); };
 
