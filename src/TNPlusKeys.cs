@@ -522,7 +522,7 @@ static partial class TNPlus
 
     static void ReleaseLeftKeys(double now, bool fg)
     {
-        if (fg || kbLibPtr == 1 || now - lastRelease < 0.5) return;
+        if (fg || FromLauncher || kbLibPtr == 1 || now - lastRelease < 0.5) return;   // (launchers: Uplink holds them)
         lastRelease = now;
         if (!InMission(PlayerEntry())) return;
         if (kbLibPtr == 0)
