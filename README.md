@@ -4,6 +4,8 @@
 
 **An all-in-one quality-of-life pack for *Terra Nova: Strike Force Centauri*** (Looking Glass Technologies, 1996), running in DOSBox — **Steam, GOG or standalone**.
 
+*Made with the help of Claude Code (an AI coding tool), mostly for reverse engineering the game and writing the code. Every change is tested in the real game before release.*
+
 One small external tool. Pick your options in its window, click Launch, and the game starts with them:
 
 | Option | Key in game | What it does |
