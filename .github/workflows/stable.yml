@@ -1,0 +1,43 @@
+# The stable channel: Terra Nova Uplink's launchers build TN+ from the branches "stable" (main, checked) and
+# "coop-stable" (coop, checked), not from main and coop. Each push is built here the way the launchers build it, and
+# only a green one moves them. Pushes to ci/* run the checks without moving anything.
+name: stable
+
+on:
+  push:
+    branches: [main, coop, "ci/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stable-${{ github.ref }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Builds as the launchers build it (build.bat's compiler line)
+        shell: pwsh
+        working-directory: src
+        run: |
+          $m = [regex]::Match((Get-Content build.bat -Raw), '(?m)^"%CSC%"([^\r\n]+)')
+          if (-not $m.Success) { throw "build.bat's compiler line not found" }
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          cmd /c "`"$csc`" $($m.Groups[1].Value.Trim())"
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path TNPlus.exe)) { throw "TNPlus.exe didn't build" }
+      - name: Python tools compile
+        run: python -m compileall -q tools
+
+  stable:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/coop'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Move stable (main) or coop-stable (coop) here
+        run: git push origin HEAD:refs/heads/${{ github.ref_name == 'main' && 'stable' || 'coop-stable' }}
