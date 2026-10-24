@@ -42,9 +42,9 @@ using System.Reflection;
 [assembly: AssemblyCompany("skw-1337")]
 [assembly: AssemblyProduct("Terra Nova Plus")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 skw-1337 - MIT License - github.com/skw-1337/terra-nova-plus")]
-[assembly: AssemblyVersion("1.2.2.0")]
-[assembly: AssemblyFileVersion("1.2.2.0")]
-[assembly: AssemblyInformationalVersion("1.2.2")]
+[assembly: AssemblyVersion("1.2.3.0")]
+[assembly: AssemblyFileVersion("1.2.3.0")]
+[assembly: AssemblyInformationalVersion("1.2.3")]
 [assembly: ComVisible(false)]
 
 static partial class TNPlus
@@ -1367,7 +1367,8 @@ static partial class TNPlus
         // a mouse bind on the middle button: DOSBox would release the captured mouse on that click
         bool mid = GameKeys.Exists(g => g.Mouse == 1) || Array.IndexOf(ToolMouse, 1) >= 0;
         string scale = OptScaling == 1 ? "[sdl]\r\noutput = opengl\r\n[render]\r\nglshader = sharp\r\n" : "";
-        File.WriteAllText(path, CpuSection(db) + scale + LaunchMapper(db) + (mid ? "[mouse]\r\nmouse_middle_release = false\r\n" : "") + text);
+        // the key map copy is for the KEYBOARD tab, which needs the full game's prepared exe (not the demos)
+        File.WriteAllText(path, CpuSection(db) + scale + (target == 0 ? LaunchMapper(db) : "") + (mid ? "[mouse]\r\nmouse_middle_release = false\r\n" : "") + text);
         return path;
     }
 
@@ -2880,7 +2881,7 @@ static partial class TNPlus
     static void LoadSettings()
     {
         if (!File.Exists(IniPath)) { ResolveToolClashes(); SaveSettings(); return; }
-        bool haveDisplay = false, oldForce = false, oldHd = false;
+        bool haveDisplay = false, oldForce = false, oldHd = false, oldDisplay = false;
         int speedVer = 0, keysVer = 0;
         foreach (string line in File.ReadAllLines(IniPath))
         {
@@ -2898,19 +2899,19 @@ static partial class TNPlus
                     case "noclip": OptNoclip = v != "0"; break;
                     case "view_distance": OptDistance = v.ToUpperInvariant() == "MAX" ? 1 : Math.Max(0, Array.IndexOf(DIST_NAMES, v.ToUpperInvariant())); break;
                     case "terrain_detail": OptDetail = Math.Max(0, Array.IndexOf(DETAIL_NAMES, v.ToUpperInvariant())); break;
-                    case "force_320x400": oldForce = v != "0"; break;
+                    case "force_320x400": oldForce = v != "0"; oldDisplay = true; break;
                     case "display": Display = Math.Max(0, Array.IndexOf(DISPLAY_NAMES, v.ToUpperInvariant())); haveDisplay = true; break;
                     case "launch": LaunchTarget = Math.Max(0, Array.IndexOf(TARGET_NAMES, v.ToUpperInvariant())); break;
                     case "widescreen": SetWideMode(v == "3" ? 3 : v == "2" || v.ToUpperInvariant() == "TRUE" ? 2 : v == "0" ? 0 : 1); break;
                     case "stereo_fix": OptStereoFix = v != "0"; break;
                     case "scaling": OptScaling = Math.Max(0, Array.IndexOf(SCALING_NAMES, v.ToUpperInvariant())); break;
                     case "music": OptMusic = Math.Max(0, Array.IndexOf(MUSIC_NAMES, v.ToUpperInvariant())); break;
-                    case "hd": oldHd = v != "0"; break;
+                    case "hd": oldHd = v != "0"; oldDisplay = true; break;
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
                     case "thick_smoke": OptThickSmoke = v != "0"; break;
                     case "smooth_cells": int.TryParse(v, out OptSmoothCells); break;
-                    case "terrain_fps": int.TryParse(v, out OptTerrainFps); break;
+                    case "terrain_fps": OptTerrainFps = int.Parse(v); break;
                     case "hd_720": if (v == "1" && OptWideTrue) OptHd720 = true; break;   // first test builds
                     case "fps_counter": OptFpsCounter = v != "0"; break;
                     case "speed_fixes": OptSpeedFix = v != "0"; break;
@@ -2934,14 +2935,14 @@ static partial class TNPlus
                     case "keys_layout": ChosenLayout = Array.IndexOf(LAYOUT_NAMES, v.ToUpperInvariant()); if (ChosenLayout >= LAYOUT_COUNT) ChosenLayout = -1; break;
                     case "key_freelook": ScanFreelook = Convert.ToInt32(v, 16); break;
                     case "key_noclip": ScanNoclip = Convert.ToInt32(v, 16); break;
-                    case "key_distance": ScanDistance = Convert.ToInt32(v, 16); if (ScanDistance == 0x17) ScanDistance = 0x24; break;   // old default I = infrared
+                    case "key_distance": ScanDistance = Convert.ToInt32(v, 16); break;
                     case "sound": Sound = v != "0"; break;
-                    case "game_dir": GameDir = v; break;
+                    case "game_dir": GameDir = v.Trim('"').Trim(); break;   // quotes (Explorer's "Copy as path"): a Windows path has none
                 }
             }
             catch { Console.WriteLine("Ignored bad setting: " + l); }
         }
-        if (!haveDisplay) Display = oldHd ? 2 : oldForce ? 1 : 0;   // ini of v1.0.x
+        if (!haveDisplay && oldDisplay) Display = oldHd ? 2 : oldForce ? 1 : 0;   // ini of v1.0.x
         // old defaults (300000 before beta 3, 500000 before the 48-cell terrain): the game is limited by the
         // cycles, not by the PC (DOSBox used 0.6 core at 700000 in HD on the test PC)
         if (speedVer < 3 && (CpuCycles == 300000 || CpuCycles == 500000)) CpuCycles = 700000;
@@ -2949,6 +2950,7 @@ static partial class TNPlus
         if (speedVer < 6 && (CpuCycles == 1000000 || CpuCycles == 1400000)) CpuCycles = 1800000;   // defaults before the speed fixes
         // freelook was on H in beta 5 (Y before): back on Y, the game's previous target moves to K.
         if (keysVer < 3 && ScanFreelook == 0x23) ScanFreelook = 0x15;
+        if (keysVer < 3 && ScanDistance == 0x17) ScanDistance = 0x24;   // view distance was on I (the game's infrared) in v1.0
         ResolveToolClashes();
         ApplyDisplay();
     }
