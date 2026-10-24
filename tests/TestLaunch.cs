@@ -993,5 +993,29 @@ static partial class TNPlus
             Eq(LaunchKit.TNCFG, File.ReadAllText(LaunchKit.Cfg("TNDEMO2")), "demo 2's TN.CFG untouched");
             No(File.Exists(LaunchKit.ConfPath), "no launch conf written");
         }
+
+        // ---------------------------------------------------------------- fixed bugs
+        [Test] static void Launch_Conf_DemoKeepsThePlayersMap()
+        {
+            // the KEYBOARD tab works in the full game only (prepared exe): a demo keeps the player's own DOSBox key map
+            string db = LaunchKit.Game();
+            for (int n = 1; n <= 2; n++)
+            {
+                PutFile(Path.Combine(GameDir, TARGET_DIRS[n], "TNDEMO.BAT"), "@echo off\r\n");
+                PutFile(Path.Combine(GameDir, TARGET_DIRS[n], "TN.CFG"), LaunchKit.TNCFG);
+            }
+            LaunchKit.UseMap(db, LaunchKit.Azerty(db));
+            FindGameKey("fwd").Sc = 0x48;
+            for (int t = 1; t <= 2; t++)
+            {
+                int target = t;
+                string said = LaunchKit.Said(() => WriteLaunchConf(db, target));
+                HasNot(File.ReadAllText(LaunchKit.ConfPath), "mapperfile", TARGET_NAMES[t] + ": no key map in the launch conf");
+                No(File.Exists(LaunchKit.Copy), TARGET_NAMES[t] + ": no TNPlus_keys.map");
+                HasNot(said, "DOSBox key map", TARGET_NAMES[t] + ": nothing said about the key map");
+            }
+            LaunchKit.Said(() => WriteLaunchConf(db, 0));
+            Has(File.ReadAllText(LaunchKit.ConfPath), "[sdl]\r\nmapperfile = " + LaunchKit.Copy + "\r\n", "the full game: the neutral copy");
+        }
     }
 }

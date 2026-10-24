@@ -256,7 +256,7 @@ static partial class TNPlus
     static readonly string[][] LAYOUT_ROWS = {      // letter rows from scancodes 0x10, 0x1E, 0x2C
         new[] { "QWERTYUIOP", "ASDFGHJKL;", "ZXCVBNM" },
         new[] { "AZERTYUIOP", "QSDFGHJKLM", "WXCVBN" },
-        new[] { "QWERTZUIOP", "ASDFGHJKL", "YXCVBNM" },
+        new[] { "QWERTZUIOP", "ASDFGHJKL\u00d6", "YXCVBNM" },
         new[] { "',.PYFGCRL", "AOEUIDHTNS", ";QJKXBMWVZ" },
         new[] { "QWFPGJLUY;", "ARSTDHNEIO", "ZXCVBKM" } };
     static readonly string[,] LETTER_KEYS = {
@@ -304,7 +304,7 @@ static partial class TNPlus
         for (int i = 0; i < n; i++) { ch[i, 0] = GameKeys[i].DefSc; ch[i, 1] = GameKeys[i].DefMod; }
         if (layout > 0) LayoutMoves(layout, ch);
         for (int i = 0; i < n; i++)                 // off the tool's keys, like ResolveToolClashes
-            if (ch[i, 1] == 0 && ToolKeyOwner(ch[i, 0], -1) >= 0)
+            if (!GameKeys[i].Fixed && ch[i, 1] == 0 && ToolKeyOwner(ch[i, 0], -1) >= 0)
                 foreach (int f in SPARE_KEYS)
                 {
                     bool used = ToolKeyOwner(f, -1) >= 0;
@@ -364,13 +364,13 @@ static partial class TNPlus
     }
 
     // the Windows keyboard layout, from where its letters are
-    static int DetectLayout()
+    static int DetectLayout() { return DetectLayout(c => MapVirtualKey((uint)c, 0)); }
+    static int DetectLayout(Func<char, uint> sc)    // sc: the scancode of a letter's key
     {
-        Func<char, uint> sc = c => MapVirtualKey((uint)c, 0);
         if (sc('A') == 0x10) return 2;
         if (sc('Z') == 0x15) return 3;
+        if (sc('F') == 0x12) return 5;              // before Dvorak: Colemak has its P where Dvorak has it
         if (sc('P') == 0x13) return 4;
-        if (sc('F') == 0x12) return 5;
         return 1;
     }
 

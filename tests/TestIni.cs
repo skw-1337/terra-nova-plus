@@ -893,5 +893,91 @@ static partial class TNPlus
                 EqList(new[] { 1, 10, 0, 0 }, ToolMouse, "MOUSE_FREELOOK = mid, MOUSE_NOCLIP = ins"); Eq(9, SensX, "SENSITIVITY_X");
             });
         }
+
+        // ---------------------------------------------------------------- fixed bugs
+        [Test] static void Ini_KeyDistance_IChosenInTheKeyboardTabIsKept()
+        {
+            // v1.0's default I is moved to J once (no keys_version, or older than 3), a choice saved since stays on I
+            IniPut("key_distance = 17", "key_game_ir = 24", "keys_version = 3");
+            IniLoad();
+            Eq(0x17, ScanDistance, "view distance on I (keys_version 3)");
+            IniKeyIs("ir", 0x24, 0, "infrared on J, where the swap put it");
+            IniDefaultKeys(); ScanDistance = 0x24;
+            IniPut("keys_version = 3", "key_distance = 17");
+            IniLoad();
+            Eq(0x17, ScanDistance, "keys_version before key_distance: the same");
+            foreach (string kv in new[] { null, "1", "2" })
+            {
+                IniDefaultKeys(); ScanDistance = 0x24;
+                if (kv == null) IniPut("key_distance = 17"); else IniPut("key_distance = 17", "keys_version = " + kv);
+                IniLoad();
+                Eq(0x24, ScanDistance, "an old ini (keys_version " + (kv ?? "none") + "): I moved to J");
+            }
+        }
+
+        [Test] static void Ini_KeyDistance_ChoiceSurvivesARestart()
+        {
+            IniLoad();                                // a first start (previous target on K)
+            Eq("view distance: I, infrared moved to J", AssignToolKey(2, 0x17, false), "view distance put on I");
+            SaveSettings();
+            IniDefaultKeys(); ScanDistance = 0x24;    // the tool started again
+            IniLoad();
+            Eq(0x17, ScanDistance, "view distance still on I");
+            IniKeyIs("ir", 0x24, 0, "infrared still on J");
+            IniKeyIs("tprev", 0x25, 0, "previous target still on K");
+        }
+
+        [Test] static void Ini_Display_WithoutItsLinesKeepsTheDefault()
+        {
+            // only an ini of v1.0.x (force_320x400 / hd lines) decides the display without a display line
+            string[] what = { "an empty TNPlus.ini", "an ini with other settings only", "an ini of NUL bytes (cut short)" };
+            for (int i = 0; i < what.Length; i++)
+            {
+                Display = 2;
+                if (i == 0) PutFile(IniPath, "");
+                else if (i == 1) IniPut("freelook = 1", "game_dir = ");
+                else PutFile(IniPath, new byte[64]);
+                IniLoad();
+                Eq(2, Display, what[i] + ": display HD (the default)");
+            }
+            IniPut("hd = 0", "force_320x400 = 0");
+            IniLoad();
+            Eq(0, Display, "v1.0.x with both off: ORIGINAL, as before");
+        }
+
+        [Test] static void Ini_Parse_BadTerrainFpsKeepsTheDefault()
+        {
+            foreach (string bad in new[] { "60fps", "6O", "60.0", "" })
+            {
+                OptTerrainFps = 60;
+                IniPut("terrain_fps = " + bad);
+                string said = IniLoad();
+                Has(said, "Ignored bad setting: terrain_fps =" + (bad == "" ? "" : " " + bad), "message for terrain_fps = " + bad);
+                Eq(60, OptTerrainFps, "terrain_fps = " + bad + ": 60 kept");
+            }
+            IniPut("terrain_fps = 45");
+            IniLoad();
+            Eq(45, OptTerrainFps, "45 read");
+            IniPut("terrain_fps = 0");
+            IniLoad();
+            Eq(0, OptTerrainFps, "0 read (adaptation off)");
+        }
+
+        [Test] static void Ini_GameDir_QuotesRemoved()
+        {
+            // a path pasted with Explorer's "Copy as path" comes in quotes: .NET Framework refuses '"' in a path
+            string dir = TestDir("GOG Games", "Terra Nova");
+            PutFile(Path.Combine(dir, "_DOSBOX", "dosbox-staging.exe"), new byte[0]);
+            PutFile(Path.Combine(dir, "_DOSBOX", "dosbox_terranova_windows.conf"), "");
+            IniPut("game_dir = \"" + dir + "\"");
+            IniLoad();
+            Eq(dir, GameDir, "game_dir without its quotes");
+            Ok(IsInstall(GameDir), "the install is found");
+            SaveSettings();
+            Eq(dir, IniSavedValue("game_dir"), "written back without quotes");
+            IniPut("game_dir = \" " + dir + " \"");
+            IniLoad();
+            Eq(dir, GameDir, "spaces inside the quotes trimmed too");
+        }
     }
 }

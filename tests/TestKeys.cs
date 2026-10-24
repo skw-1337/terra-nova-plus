@@ -948,7 +948,7 @@ static partial class TNPlus
                     Ok(!seen.ContainsKey(n), LAYOUT_NAMES[l] + ": " + n + " on 0x" + sc.ToString("X2") + " and 0x" + (seen.ContainsKey(n) ? seen[n] : 0).ToString("X2"));
                     seen[n] = sc;
                 }
-                Ok(seen.Count >= 46, LAYOUT_NAMES[l] + ": " + seen.Count + " named keys");
+                Eq(47, seen.Count, LAYOUT_NAMES[l] + ": named keys");
             }
         }
 
@@ -1009,7 +1009,7 @@ static partial class TNPlus
             // DetectLayout asks Windows where A, Z, P, F are: each probe must be where that keyboard has the letter and
             // not where QWERTY has it (the keyboard of the machine is not tested: MapVirtualKey)
             Eq(0x10, LetterSc(2, 'A'), "AZERTY probe A"); Eq(0x15, LetterSc(3, 'Z'), "QWERTZ probe Z");
-            // (COLEMAK has its P at 0x13 too, and DetectLayout tests P before F: reported, not asserted here)
+            // (COLEMAK has its P at 0x13 too: DetectLayout tests F first, see Keys_DetectLayout_EachKeyboard)
             Eq(0x13, LetterSc(4, 'P'), "DVORAK probe P"); Eq(0x12, LetterSc(5, 'F'), "COLEMAK probe F");
             No(LetterSc(1, 'A') == 0x10 || LetterSc(1, 'Z') == 0x15 || LetterSc(1, 'P') == 0x13 || LetterSc(1, 'F') == 0x12, "QWERTY matches none");
             for (int l = 1; l < LAYOUT_COUNT; l++) if (l != 2) Ok(LetterSc(l, 'A') != 0x10, LAYOUT_NAMES[l] + " not taken for AZERTY");
@@ -1315,6 +1315,42 @@ static partial class TNPlus
             }
             Ok(restarts >= 15, "restarts checked: " + restarts);
             Ok(accepted >= 100, "edits accepted: " + accepted);
+        }
+
+        // ================================================================== fixed bugs
+        [Test] static void Keys_DetectLayout_EachKeyboard()
+        {
+            // the letters where each keyboard has them (TN+'s own tables standing for Windows' MapVirtualKey)
+            for (int l = 1; l < LAYOUT_COUNT; l++)
+            {
+                int layout = l;
+                Eq(l, DetectLayout(c => (uint)LetterSc(layout, c)), LAYOUT_NAMES[l] + " recognized (Colemak has its P where Dvorak has it)");
+            }
+        }
+
+        [Test] static void Keys_LayoutKeyName_QwertzRightOfL()
+        {
+            Eq("Ö", LayoutKeyName(3, 0x27), "QWERTZ: the key right of L");
+            for (int l = 1; l < LAYOUT_COUNT; l++)
+            {
+                int n = 0;
+                for (int sc = 0; sc < 0x100; sc++) if (LayoutKeyName(l, sc) != null) n++;
+                Eq(47, n, LAYOUT_NAMES[l] + ": named keys");
+            }
+        }
+
+        [Test] static void Keys_Layout_ToolKeyOnOLeavesTheFixedOptions()
+        {
+            // a tool key written as O by hand in TNPlus.ini: no preset moves the game's fixed Options command off O
+            KeysLoad("key_freelook = 18", "keys_version = 3");
+            Eq(0x18, ScanFreelook, "freelook on O (hand-written)");
+            for (int l = 0; l < LAYOUT_COUNT; l++)
+            {
+                ApplyLayout(l);
+                Eq(0x18, KeysG("options").Sc, LAYOUT_NAMES[l] + ": Options stays on O");
+                Eq(0, KeysMap()[0x18 * 4], LAYOUT_NAMES[l] + ": O not taken away from the game in missions");
+                Eq(l, CurrentLayout(), LAYOUT_NAMES[l] + ": the preset still recognized");
+            }
         }
     }
 }
