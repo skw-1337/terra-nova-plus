@@ -1243,7 +1243,8 @@ static partial class TNPlus
 
         [Test] static void Data_HdPayload_Layout()
         {
-            Eq(0x6000u, DataKit.FreeEnd - DataKit.FreeStart, "the free area: 24 KB");
+            // the 24 KB of the prepared exe (the co-op build gives its copy of __FF.EXE 8 KB more, its pool starts higher)
+            Ok(DataKit.FreeEnd - DataKit.FreeStart >= OBJ3_HD - OBJ3_SIZE, "the free area: at least 24 KB, " + DataKit.X(DataKit.FreeEnd - DataKit.FreeStart));
             Eq(0x6000u, OBJ3_HD - OBJ3_SIZE, "the prepared exe's object 3: 24 KB more (French)");
             Eq(0x6000u, OBJ3_HD_EN - OBJ3_SIZE_EN, "(English)");
             for (int l = 0; l < 2; l++)
