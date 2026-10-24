@@ -246,8 +246,18 @@ build.bat
 or manually:
 
 ```bat
-%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /r:System.Windows.Forms.dll /r:System.Drawing.dll /out:TNPlus.exe TNPlus.cs TNPlusGui.cs TNPlusKeys.cs TNPlusMapper.cs TNPlusTurret.cs TNPlusDescrambler.cs TNPlusIr.cs TNPlusIrInPlace.cs TNPlusAffine.cs TNPlusSpanInPlace.cs TNPlusSpanFix.cs TNPlusView.cs TNPlusFiller.cs HdPayload.cs HdPayloadFr.cs HdPayloadEn.cs HdPayloadFrWide.cs HdPayloadEnWide.cs HdPayloadFr720.cs HdPayloadEn720.cs AweBank.cs
+%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /optimize /win32manifest:app.manifest /win32icon:icon.ico /r:System.Windows.Forms.dll /r:System.Drawing.dll /out:TNPlus.exe TNPlus.cs TNPlusGui.cs TNPlusKeys.cs TNPlusMapper.cs TNPlusTurret.cs TNPlusDescrambler.cs TNPlusAshford.cs TNPlusNative.cs TNPlusIr.cs TNPlusIrInPlace.cs TNPlusAffine.cs TNPlusSpanInPlace.cs TNPlusSpanFix.cs TNPlusView.cs TNPlusFiller.cs HdPayload.cs HdPayloadFr.cs HdPayloadEn.cs HdPayloadFrWide.cs HdPayloadEnWide.cs HdPayloadFr720.cs HdPayloadEn720.cs AweBank.cs
 ```
+
+### Tests
+
+What can be checked without the game is tested automatically: settings (`TNPlus.ini`), keys and keyboard layouts, save files and the SAVES button, the update check, code signatures, the DOSBox launch configuration, the AWE32 bank conversion, the consistency of the patch data and the patch logic on made-up game memory. Nothing to install and no game files needed (they are made up by the tests):
+
+```bat
+tests\run_tests.bat
+```
+
+It builds `tests\TNPlusTests.exe` from the same sources as `TNPlus.exe` (the ones of `build.bat`'s compiler line) and runs every test; `tests\run_tests.bat Keys` runs only the tests whose name contains `Keys`. GitHub runs them after each build (`.github/workflows/stable.yml`): the `stable` branch the launchers download only moves when they pass.
 
 ## How it works (short)
 

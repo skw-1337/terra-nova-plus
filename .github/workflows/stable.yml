@@ -1,6 +1,6 @@
 # The stable channel: Terra Nova Uplink's launchers build TN+ from the branches "stable" (main, checked) and
-# "coop-stable" (coop, checked), not from main and coop. Each push is built here the way the launchers build it, and
-# only a green one moves them. Pushes to ci/* run the checks without moving anything.
+# "coop-stable" (coop, checked), not from main and coop. Each push is built here the way the launchers build it and its
+# tests run (tests\run_tests.bat), and only a green one moves them. Pushes to ci/* run the checks without moving anything.
 name: stable
 
 on:
@@ -28,6 +28,12 @@ jobs:
           $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
           cmd /c "`"$csc`" $($m.Groups[1].Value.Trim())"
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path TNPlus.exe)) { throw "TNPlus.exe didn't build" }
+      - name: Tests (tests\run_tests.bat, built from the same compiler line)
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          cmd /c tests\run_tests.bat
+          if ($LASTEXITCODE -ne 0) { throw "tests failed" }
       - name: Python tools compile
         run: python -m compileall -q tools
 

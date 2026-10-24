@@ -556,13 +556,16 @@ static partial class TNPlus
             req.Timeout = 10000; req.ReadWriteTimeout = 10000;
             using (System.Net.WebResponse r = req.GetResponse())
             using (StreamReader sr = new StreamReader(r.GetResponseStream()))
-            {
-                System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(sr.ReadToEnd(),
-                    "\"tag_name\"\\s*:\\s*\"v?([0-9][0-9.]*)");
-                return m.Success ? m.Groups[1].Value.TrimEnd('.') : null;
-            }
+                return ReleaseTag(sr.ReadToEnd());
         }
         catch { return null; }
+    }
+
+    // the version number in GitHub's answer: tag "v1.2.3" -> "1.2.3", null when there is none
+    static string ReleaseTag(string json)
+    {
+        System.Text.RegularExpressions.Match m = System.Text.RegularExpressions.Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([0-9][0-9.]*)");
+        return m.Success ? m.Groups[1].Value.TrimEnd('.') : null;
     }
 
     static bool NewerVersion(string latest, string current)
@@ -715,34 +718,20 @@ static partial class TNPlus
         Action fill = delegate
         {
             list.Items.Clear();
-            for (int slot = 1; slot <= 9; slot++)
-            {
-                string f = Path.Combine(dir, "SAVE" + slot.ToString("00") + ".RES");
-                string what = "(empty)";
-                if (File.Exists(f))
-                {
-                    byte[] name = ResBlock(f, 1775), head = ResBlock(f, 1776);
-                    what = name == null ? "(unreadable)" : Encoding.ASCII.GetString(name).TrimEnd('\0');
-                    if (head != null && head.Length >= 12 && BitConverter.ToInt32(head, 0) == 0x06EF0018)
-                        what += "  (mission " + (BitConverter.ToInt32(head, 8) - 2).ToString("00") + ")";
-                }
-                list.Items.Add(slot + "  " + what);
-            }
+            foreach (string s in SaveSlots(dir)) list.Items.Add(s);
         };
         fill();
         Button del = Btn(d, "DELETE", 14, 266, 130, 34, true);
         del.Click += delegate
         {
             int slot = list.SelectedIndex + 1;
-            string f = Path.Combine(dir, "SAVE" + slot.ToString("00") + ".RES");
+            string f = SaveFile(dir, slot);
             if (slot < 1 || !File.Exists(f)) return;
             if (MessageBox.Show(d, "Delete save " + list.SelectedItem + "?\nA copy is kept in the save backups folder next to TNPlus.exe.", "Saves",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             try
             {
-                string bk = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "save backups");
-                Directory.CreateDirectory(bk);
-                File.Move(f, Path.Combine(bk, "SAVE" + slot.ToString("00") + " " + DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss") + ".RES"));
+                BackupSave(f, slot);
                 guiWarn.Text = "SAVE " + slot + " DELETED: THE SLOT IS FREE";
             }
             catch (Exception e) { MessageBox.Show(d, e.Message, "Saves"); }
@@ -752,6 +741,38 @@ static partial class TNPlus
         close.Click += delegate { d.Close(); };
         d.ShowDialog(owner);
         d.Dispose();
+    }
+
+    static string SaveFile(string dir, int slot) { return Path.Combine(dir, "SAVE" + slot.ToString("00") + ".RES"); }
+
+    // the list's 9 lines: slot, then the save's name and mission, "(empty)" or "(unreadable)"
+    static List<string> SaveSlots(string dir)
+    {
+        List<string> lines = new List<string>();
+        for (int slot = 1; slot <= 9; slot++)
+        {
+            string f = SaveFile(dir, slot);
+            string what = "(empty)";
+            if (File.Exists(f))
+            {
+                byte[] name = ResBlock(f, 1775), head = ResBlock(f, 1776);
+                what = name == null ? "(unreadable)" : Encoding.ASCII.GetString(name).TrimEnd('\0');
+                if (head != null && head.Length >= 12 && BitConverter.ToInt32(head, 0) == 0x06EF0018)
+                    what += "  (mission " + (BitConverter.ToInt32(head, 8) - 2).ToString("00") + ")";
+            }
+            lines.Add(slot + "  " + what);
+        }
+        return lines;
+    }
+
+    // a deleted save goes to "save backups" next to TNPlus.exe, named after its slot and the time; returns that file
+    static string BackupSave(string f, int slot)
+    {
+        string bk = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "save backups");
+        Directory.CreateDirectory(bk);
+        string to = Path.Combine(bk, "SAVE" + slot.ToString("00") + " " + DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss") + ".RES");
+        File.Move(f, to);
+        return to;
     }
 
     // one block of a Looking Glass "LG Res File v2" (a save): directory offset at 0x7C, there u16 count, u32 first data
