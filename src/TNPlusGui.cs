@@ -359,7 +359,12 @@ static partial class TNPlus
         Action drawGame = delegate
         {
             gameRow.Controls.Clear();
-            if (GameDir == "") { Lbl(gameRow, "GAME NOT FOUND: start the game yourself and ATTACH, or set game_dir in TNPlus.ini", 0, 6, TSmall, TAmber); return; }
+            if (GameDir == "")
+            {
+                Lbl(gameRow, oldGogDir != "" ? OLD_GOG : "GAME NOT FOUND: start the game yourself and ATTACH, or set game_dir in TNPlus.ini",
+                    0, 6, TSmall, TAmber);
+                return;
+            }
             string kind = InstallKind(GameDir), lang = ExeLanguage(GameDir);
             Label badge = Tab(gameRow, kind, 0, 2);
             int x = badge.Right + 10;

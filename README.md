@@ -162,6 +162,8 @@ Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, ad
 
 The game folder is detected automatically (**GOG** registry and **Steam** libraries). If you have both, **Switch** goes from one to the other. For any other install, start the game yourself and click **Attach**: freelook, noclip, view distance, 320x400, object distance and the hit and physics fixes work. HD, 16:9, field of view, terrain detail, the KEYBOARD tab, CPU speed, scaling, stereo fix and music need the tool to start DOSBox. If your GOG or Steam folder isn't found, set `game_dir` in `TNPlus.ini`.
 
+**GOG:** Galaxy installs its old **1.08** build by default (DOSBox 0.74, the game in a `TN` folder). The tool needs the newer build, the same one Steam has, which GOG offers as a beta: in GOG Galaxy, open the game's settings (the gear next to **Play**) > **Manage installation** > **Configure...** > **Beta channels**, pick **Beta** and let it update. Saves from the old build are in `cloud_saves\TN`: copy the `SAVE*.RES` files into `TNOVA` afterwards.
+
 ## Tips
 
 - **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
@@ -211,6 +213,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 Freelook, noclip, view distance and 320x400 find the game inside the emulator through **code signatures** (instruction patterns with wildcarded addresses), so they work with any DOSBox-family emulator and any memory setting. HD, true 16:9, field of view, terrain and object distance, the keyboard and the fixes patch known places of the v1.09 executables and check the original bytes before writing. Launching uses the DOSBox Staging bundled with the Steam and GOG releases (needed for HD, 16:9, field of view, terrain detail, the keyboard, CPU speed, scaling, stereo fix and music, see **Attach** above).
 
 - **Tested live:** Steam (English v1.09, the same exe as GOG) and French v1.09, every option.
+- **GOG's default build (1.08)** ships the same English exe but runs it in DOSBox 0.74, where the patches at known places say "unsupported game version" with **Attach**. Use GOG's Beta branch (see **GOG** above).
 - **All signatures verified** (exactly one match each, consistent with each other) in: English v1.09 (Steam and GOG executables), French v1.09, English v1.08 (CD image).
 - Modding notes for the English v1.09 exe (addresses, every patch, bugs found on the way): [modding/](modding/).
 - The freelook core is the same as [Terra Nova Mouse Freelook](https://github.com/skw-1337/terra-nova-freelook) v1.1, tested live on the Steam version.
