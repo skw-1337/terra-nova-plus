@@ -25,11 +25,11 @@ Everything happens in memory while you play, except two files: for HD, terrain d
 
 ## 1.2
 
-**Latest: [1.2.3](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.3)**:
-- **Thicker smoke** (FIXES, off by default): smoke grenades make a thicker cloud that lasts about twice as long.
-- **Ashford** is shown as Deceased on the Outfit screen after he leaves (English and French game), the **clouds** no longer jump up and down while you walk, and a **drone damage** test no longer reads a missing record. These three are original bugs found and fixed by Callemann in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved).
-- **Keys**: Page Up / Down, Home / End, Insert / Delete can be second binds, and keys still held when the game goes to the background are released (no more turning on your own).
-- **SAVES** button: delete a save to free its slot (a copy is kept next to TNPlus.exe).
+**Latest: [1.2.4](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.4)**:
+- **GOG**: Galaxy's default build (1.08) is recognized, and the launcher tells you to switch to GOG's Beta branch instead of "GAME NOT FOUND" (see **GOG** under [Download & use](#download--use)).
+- Small fixes found by the new automatic tests: view distance on `I` no longer goes back to `J` at every start, an empty `TNPlus.ini` keeps HD, `game_dir` in quotes no longer crashes the tool, a typo in `terrain_fps` is ignored, Colemak is no longer taken for Dvorak, QWERTZ names its Ö key, layout presets leave Options on `O`, and the demos keep your own DOSBox key map.
+
+1.2.3 added **thicker smoke** (FIXES), Ashford shown as Deceased on the Outfit screen, clouds that no longer jump and a drone damage fix (original bugs fixed by Callemann in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved)), more second key binds, keys released when the game goes to the background, and the **SAVES** button.
 
 1.2.2 fixed a crash at the first key press in a mission, with Attach or the ORIGINAL preset, on a game never launched from TN+ with HD, terrain detail, field of view or 16:9. Since 1.2.1 the launcher shows when a newer version is out (top right, click to open the download page; `update_check = 0` turns it off):
 
