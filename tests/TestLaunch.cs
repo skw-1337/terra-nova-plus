@@ -133,6 +133,27 @@ static partial class TNPlus
             No(IsInstall(Path.Combine(dir, "_DOSBOX")), "the _DOSBOX folder itself");
         }
 
+        [Test] static void Launch_OldGog_TellsWhatToDo()
+        {
+            // GOG's default build (1.08): the game in TN\, DOSBox 0.74's configs next to it, no _DOSBOX
+            string dir = TestDir("game");
+            No(IsOldGog(dir), "an empty folder");
+            PutFile(Path.Combine(dir, "TN", "__FF.EXE"), new byte[0]);
+            PutFile(Path.Combine(dir, "dosboxTerraNova.conf"), "[dos]\r\nems=true\r\n");
+            Ok(IsOldGog(dir), "TN\\__FF.EXE and dosboxTerraNova.conf");
+            No(IsInstall(dir), "not an install the tool can launch");
+            GameDir = dir;
+            List<string> found = FindInstalls();
+            Ok(!found.Contains(dir), "not offered as an install");
+            Eq(dir, oldGogDir, "remembered, for the message");
+            // switched to the Beta branch: Galaxy leaves the old configs, the folder is an install again
+            PutFile(Path.Combine(dir, "_DOSBOX", "dosbox-staging.exe"), new byte[0]);
+            PutFile(Path.Combine(dir, "_DOSBOX", "dosbox_terranova_windows.conf"), LaunchKit.EDITION);
+            No(IsOldGog(dir), "Beta branch with the old configs left behind");
+            Ok(FindInstalls().Contains(dir), "offered as an install");
+            Eq("", oldGogDir, "no message any more");
+        }
+
         [Test] static void Launch_HasDemo_NeedsBatAndCfg()
         {
             string dir = TestDir("game");

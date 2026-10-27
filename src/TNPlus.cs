@@ -966,7 +966,7 @@ static partial class TNPlus
             Rule('═');
             // game line
             C("  GAME  ", ConsoleColor.DarkGray);
-            if (GameDir == "") C("not found: start the game yourself and press A\n", ConsoleColor.Yellow);
+            if (GameDir == "") C(oldGogDir != "" ? OLD_GOG + "\n" : "not found: start the game yourself and press A\n", ConsoleColor.Yellow);
             else
             {
                 string kind = InstallKind(GameDir), lang = ExeLanguage(GameDir);
@@ -1279,10 +1279,27 @@ static partial class TNPlus
             && File.Exists(Path.Combine(dir, "_DOSBOX", "dosbox_terranova_windows.conf"));
     }
 
+    // GOG's default build (its "1.08", 2019) runs the same exe in DOSBox 0.74, the game in TN\ and the configs next to
+    // it. The tool needs the build Steam ships (DOSBox Staging in _DOSBOX\, the game in TNOVA\), which GOG offers as
+    // its Beta branch. Such a folder is not an install, but the tool says what to do with it.
+    const string OLD_GOG = "GOG's default build (1.08): in GOG Galaxy switch the game to its Beta branch (see README)";
+    static string oldGogDir = "";
+    static bool IsOldGog(string dir)
+    {
+        return dir != "" && !IsInstall(dir) && (File.Exists(Path.Combine(dir, "TN", "__FF.EXE"))
+            || File.Exists(Path.Combine(dir, "dosboxTerraNova.conf")));
+    }
+
     static List<string> FindInstalls()
     {
         List<string> res = new List<string>();
-        Action<string> add = d => { if (d != null && IsInstall(d) && !res.Exists(x => string.Equals(x, d, StringComparison.OrdinalIgnoreCase))) res.Add(d); };
+        oldGogDir = "";
+        Action<string> add = d =>
+        {
+            if (d == null) return;
+            if (IsOldGog(d)) oldGogDir = d;
+            if (IsInstall(d) && !res.Exists(x => string.Equals(x, d, StringComparison.OrdinalIgnoreCase))) res.Add(d);
+        };
         try   // GOG
         {
             foreach (string root in new[] { @"SOFTWARE\WOW6432Node\GOG.com\Games\1434984562", @"SOFTWARE\GOG.com\Games\1434984562" })
@@ -1376,7 +1393,7 @@ static partial class TNPlus
     {
         if (!IsInstall(GameDir))
         {
-            Console.WriteLine("Game folder not found. Set game_dir in TNPlus.ini, or start the game yourself and choose A.");
+            Console.WriteLine(oldGogDir != "" ? OLD_GOG + "." : "Game folder not found. Set game_dir in TNPlus.ini, or start the game yourself and choose A.");
             return false;
         }
         if (Process.GetProcessesByName("dosbox-staging").Length > 0)
