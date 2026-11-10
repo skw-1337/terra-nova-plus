@@ -25,9 +25,12 @@ Everything happens in memory while you play, except two files: for HD, terrain d
 
 ## 1.2
 
-**Latest: [1.2.4](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.4)**:
-- **GOG**: Galaxy's default build (1.08) is recognized, and the launcher tells you to switch to GOG's Beta branch instead of "GAME NOT FOUND" (see **GOG** under [Download & use](#download--use)).
-- Small fixes found by the new automatic tests: view distance on `I` no longer goes back to `J` at every start, an empty `TNPlus.ini` keeps HD, `game_dir` in quotes no longer crashes the tool, a typo in `terrain_fps` is ignored, Colemak is no longer taken for Dvorak, QWERTZ names its Ö key, layout presets leave Options on `O`, and the demos keep your own DOSBox key map.
+**Latest: [1.2.5](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.5)**:
+- **True 16:9**: menus, briefings and their videos keep their 4:3 proportions, with black on the sides, instead of being stretched (`wide_menus = 1` puts them back).
+- **AWE32 music**: what the game's bank doesn't have (a bird tweet, a few drums) now comes from the AWE32's own General MIDI sounds instead of the Windows set, and about a dozen instruments that were slightly out of tune are tuned.
+- **Field of view** and stretched 16:9 no longer come up "unavailable" when the tool finds the game in its first seconds.
+
+1.2.4 recognizes GOG Galaxy's default build (1.08): the launcher tells you to switch to GOG's Beta branch instead of "GAME NOT FOUND" (see **GOG** under [Download & use](#download--use)). It also fixed small bugs found by the new automatic tests.
 
 1.2.3 added **thicker smoke** (FIXES), Ashford shown as Deceased on the Outfit screen, clouds that no longer jump and a drone damage fix (original bugs fixed by Callemann in [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved)), more second key binds, keys released when the game goes to the background, and the **SAVES** button.
 
