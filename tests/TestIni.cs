@@ -16,8 +16,8 @@ static partial class TNPlus
         // The game's previous target (Y) is on K: freelook has Y (ResolveToolClashes, first spare key K).
         static readonly string[] IniDefaults = {
             "display = HD", "launch = GAME", "freelook = 1", "noclip = 0", "view_distance = FAR", "terrain_detail = SHARPER",
-            "terrain_fps = 60", "widescreen = 3", "wide_hud = 1", "fps_counter = 1", "speed_fixes = 1", "small_views = 1",
-            "update_check = 1", "stereo_fix = 0", "scaling = SHARP", "music = ROLAND", "hit_fix = 1", "phys_fix = 1",
+            "terrain_fps = 60", "widescreen = 3", "wide_hud = 1", "wide_menus = 0", "fps_counter = 1", "speed_fixes = 1", "small_views = 1",
+            "update_check = 1", "stereo_fix = 0", "scaling = SHARP", "music = ROLAND", "awe32_exact = 0", "hit_fix = 1", "phys_fix = 1",
             "thick_smoke = 0", "field_of_view = GAME", "object_distance = MAX", "edge_objects = 1",
             "sensitivity_x = 12", "sensitivity_y = 8", "invert_y = 0", "noclip_speed = 15", "cpu_cycles = 1800000",
             "speed_version = 6", "key_freelook = 15", "key_noclip = 16", "key_distance = 24", "key_stereo = 41",
@@ -29,9 +29,9 @@ static partial class TNPlus
         {
             return new[] {
                 "display = 320X400", "launch = DEMO 2", "freelook = 0", "noclip = 1", "view_distance = NORMAL",
-                "terrain_detail = SHARP", "terrain_fps = 45", "widescreen = 1", "wide_hud = 0", "fps_counter = 0",
+                "terrain_detail = SHARP", "terrain_fps = 45", "widescreen = 1", "wide_hud = 0", "wide_menus = 1", "fps_counter = 0",
                 "speed_fixes = 0", "small_views = 0", "update_check = 0", "stereo_fix = 1", "scaling = GAME'S OWN",
-                "music = AWE32", "hit_fix = 0", "phys_fix = 0", "thick_smoke = 1", "field_of_view = 110",
+                "music = AWE32", "awe32_exact = 1", "hit_fix = 0", "phys_fix = 0", "thick_smoke = 1", "field_of_view = 110",
                 "object_distance = GAME", "edge_objects = 0", "wide_attach = 1", "inplace_attach = 1", "keep_dos = 1",
                 "smooth_cells = 40", "sensitivity_x = 20", "sensitivity_y = 3", "invert_y = 1", "noclip_speed = 2.5",
                 "cpu_cycles = 2200000", "speed_version = 6", "key_freelook = 3F", "key_noclip = 40", "key_distance = 26",
@@ -260,9 +260,9 @@ static partial class TNPlus
             No(OptFreelook, "freelook"); Ok(OptNoclip, "noclip");
             Eq(0, OptDistance, "view_distance"); Eq(1, OptDetail, "terrain_detail"); Eq(45, OptTerrainFps, "terrain_fps");
             Eq(1, WideMode(), "widescreen"); Ok(OptWide, "OptWide"); No(OptWideTrue, "OptWideTrue"); No(OptHd720, "OptHd720");
-            No(OptWideHud, "wide_hud"); No(OptFpsCounter, "fps_counter"); No(OptSpeedFix, "speed_fixes");
+            No(OptWideHud, "wide_hud"); Ok(OptWideMenus, "wide_menus"); No(OptFpsCounter, "fps_counter"); No(OptSpeedFix, "speed_fixes");
             No(OptSmallViews, "small_views"); No(OptUpdateCheck, "update_check"); Ok(OptStereoFix, "stereo_fix");
-            Eq(0, OptScaling, "scaling"); Eq(3, OptMusic, "music");
+            Eq(0, OptScaling, "scaling"); Eq(3, OptMusic, "music"); Ok(OptAweExact, "awe32_exact");
             No(OptHitFix, "hit_fix"); No(OptPhysFix, "phys_fix"); Ok(OptThickSmoke, "thick_smoke");
             Eq(3, OptFov, "field_of_view"); Eq(0, OptObjDist, "object_distance"); No(OptEdge, "edge_objects");
             Ok(OptWideAttach, "wide_attach"); Ok(OptInPlaceAttach, "inplace_attach"); Ok(OptKeepDos, "keep_dos");

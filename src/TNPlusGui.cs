@@ -529,7 +529,7 @@ static partial class TNPlus
         bool aweRom = AweRom() != null;
         cbMusic.Set(OptMusic);
         cbMusic.Tag = MUSIC_INFO[OptMusic] + (OptMusic == 3
-            ? (aweRom ? ". awe32.raw found. Experimental: barely tested, some instruments may sound off."
+            ? (aweRom ? ". awe32.raw found. Experimental: checked against the game's own driver, not on a real card."
                       : ". awe32.raw (AWE32 ROM, 1 MB, not included) not found next to TNPlus.exe: ROLAND is played instead, see README.")
             : aweRom ? "." : ". Optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README.");
         ckHit.Checked = OptHitFix; ckPhys.Checked = OptPhysFix; ckSmoke.Checked = OptThickSmoke; cbTarget.Set(LaunchTarget);

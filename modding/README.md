@@ -97,8 +97,14 @@ Terra Nova Plus makes object 3 0x6000 bytes bigger in the exe file. The original
 | 0x46A200 – 0x46A2AB | true 16:9 camera |
 | 0x46A300 – 0x46AA16 | edge objects code (bit masks at 0x46A790) |
 | 0x46AA20 – 0x46AE54 | game keys code |
-| 0x46AE54 – 0x46B000 | free |
+| 0x46AE54 – 0x46AFF8 | shots through turrets |
 | 0x46B000 – 0x46B024 | heap headers (the game's, not ours) |
+
+One routine is outside that area, because it has to be there before the game's first screen: the one that centres the
+menus in true 16:9, at **0x354C00 – 0x354D2A**. That's the unused end of the last page of the code object (the code
+ends at 0x354BC0 in the French exe, 0x354940 in the English one, zeros up to 0x355000). It changes no game code: its
+address goes in the empty first slot of the video driver's table (0x36D1B8 French, 0x36D10C English), which the 2D
+library calls after every mode change (see `tools/menu_wide.py`).
 
 Patch sites in the game code are listed in the JSON, with the bytes before and after.
 
@@ -123,7 +129,10 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
 - **Sound effects stereo is reversed under DOSBox** (the SB16 driver swaps left and right). Optional fix through
   DOSBox's mixer, F7 swaps it in game.
 - **The ground stops short of the screen edges** with a view wider than about 90°: the terrain is only built in 3
-  sectors of 45° around the heading. A hook on the builder (0x2AA3C2) and extra strips fix most of it.
+  sectors of 45° around the heading. A hook on the builder (0x2AA3C2) and extra strips fix it (`edge_objects`).
+  Checked from the builder's cell list over a full turn, at 110° in true and stretched 16:9: no cell is missing up
+  to the camera's culling angle (4° past the screen edge), with room left in the buffers (2450 cells of 2900, 3370
+  vertices of 4608).
 
 - **Zoom lost after the Options screen.** Back in the mission, the view reset (0x26BB70) calls the camera init
   0x2AC7A0 with zoom level 0 while the zoom level (word at 0x38FBE2) keeps its value: the view looks unzoomed and
@@ -232,12 +241,10 @@ Patch sites in the game code are listed in the JSON, with the bytes before and a
 - **Noclip crash at high altitude**, seen once. Maybe the clipping point overflow above, not seen since.
 - **Black screen after finishing a mission and starting Panama** on Steam, seen once. Probably the cursor constant
   bug above, not seen since.
-- **A thin strip at one screen edge** can still show the far terrain renderer near the diagonals with a wide view
-  (8° at most at 100°).
-- **True 16:9**: the menus are stretched, only missions are drawn in 848x480. The full view (`G`) and the locked
-  target box with the stretched cockpit still need checking in game.
-- **AWE32 music**: a few instruments are slightly out of tune, and the percussion the game's bank doesn't define
-  falls back to the Windows sound set.
+- **True 16:9**: the 320x200 videos (intro, cutscenes) are still stretched, and the cockpit is the game's own,
+  stretched or centred. The full view (`G`) and the locked target box with the stretched cockpit still need checking
+  in game.
+- **AWE32 music**: checked against the game's own AWE32 driver run in an emulator, not on a real card.
 - **Remapped keys**: extended keys (arrows, Page Up...) can't be picked as new keys yet (the E0 path of the keyboard
   handler isn't translated).
 

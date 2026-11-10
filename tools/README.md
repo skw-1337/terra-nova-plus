@@ -12,6 +12,7 @@ The Python scripts that generate the machine code in `src/` (each C# payload say
 - `ir_fix.py`: infrared terrain routines without self-modifying code (Callemann's edits). Needs two memory images taken at the main menu (English and French game); writes `src/TNPlusIr.cs`, which holds no game code: TN+ rebuilds the routines from the player's own memory.
 - `view_fix.py`: the same for the two per-column routines of the normal view. Same images, writes `src/TNPlusView.cs`.
 - `filler_fix.py`: polygon filler without rewritten opcodes (pixel loop cave, edge roundings). Same images, writes `src/TNPlusFiller.cs`.
+- `menu_wide.py`: true 16:9, the 640x480 screens (menus, briefings, their videos) centred in DOSBox's 848x480 mode. Writes `src/TNPlusMenu.cs`, `test` runs the routine in unicorn against a made-up driver.
 - `tnre.py`: reads and writes DOSBox Staging's emulated RAM, sends keys, captures the window. Used for live tests.
 
 Python 3 with `pip install keystone-engine numpy pillow psutil`, plus `unicorn` for the kb_cave tests and `capstone` for `port_en.py` / `le.py`.
