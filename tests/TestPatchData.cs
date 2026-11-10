@@ -1585,6 +1585,44 @@ static partial class TNPlus
                 }
         }
 
+        // The game found right at start-up has not allocated its pool yet (about 5 s in at the default CPU speed): the
+        // field of view waits for it instead of "unavailable" for the whole session; an exe never prepared is said later
+        [Test] static void Data_Run_FovWaitsForThePool()
+        {
+            using (FakeGame m = new FakeGame())
+            {
+                int lang = 0;
+                OptHD = false; OptWide = true; OptWideTrue = false; OptWideAttach = true; haveWide = true; OptFov = 0;
+                DataKit.Place(m, FOV_HOOK[lang], FOV_HOOK_OLD, "FOV hook");
+                DataKit.Place(m, WIDE_HOOK_B[lang], WIDE_B_OLD, "scale hook");
+                DataKit.Place(m, WIDE_HOOK_C[lang], WIDE_C_OLD[lang], "ratio hook");
+                DataKit.Place(m, WEDGE_HOOK[lang], WEDGE_OLD, "wedge hook");
+                foreach (string[] h in EDGE_HOOKS[lang]) DataKit.Place(m, Convert.ToUInt32(h[0], 16), Hex(h[1]), "edge hook " + h[0]);
+                StringWriter said = new StringWriter(); Console.SetOut(said);
+                TryFov(); TryFov();
+                Eq(0, fovState, "pool not there yet: still to do");
+                Eq("", said.ToString(), "nothing said");
+                Ok(m.AllZero(FOV_CAVE, 0x100), "nothing written");
+                EqBytes(FOV_HOOK_OLD, m.Get(FOV_HOOK[lang], 7), "hook untouched");
+                DataKit.PoolReady(m, lang);
+                TryFov();
+                Eq(1, fovState, "the pool is there: field of view on");
+                Has(said.ToString(), "Field of view 100.9 degrees (16:9)", "said");
+            }
+            using (FakeGame m = new FakeGame())
+            {
+                OptHD = false; OptWide = true; OptWideTrue = false; OptWideAttach = true; haveWide = true; OptFov = 0;
+                StringWriter said = new StringWriter(); Console.SetOut(said);
+                fovState = 0; fovSince = DateTime.MinValue;
+                TryFov();
+                Eq(0, fovState, "an exe that is not prepared: waiting first");
+                FOV_WAIT = 0;
+                TryFov();
+                Eq(-1, fovState, "then unavailable");
+                Has(said.ToString(), "Field of view unavailable: start the game from this tool", "said");
+            }
+        }
+
         // Stretched 16:9 without HD: the camera hooks go to the field of view code's entries, its data holds the zoom factor
         // (x0.75: 100.9 degrees), the vertical scale x4/3 and the pixel ratio x3/4 in 16.16; nothing of true 16:9 written
         [Test] static void Data_Run_FovStretched16x9()

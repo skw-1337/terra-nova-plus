@@ -74,6 +74,7 @@ static partial class TNPlus
     static readonly string[] MUSIC_INFO = { "Roland GS sounds of the Windows MIDI synthesizer (General MIDI)",
         "Sound Blaster FM synthesis, the default of the digital editions", "the game's TN.CFG is left as it is",
         "the game's own AWE32 bank by Eric Brosius (FF.SBK) with the AWE32 ROM samples, played by DOSBox" };
+    static bool OptAweExact = false;                // AWE32: the bank as the card played it, nothing completed or tuned (see AweBank.cs)
     static int LaunchTarget = 0;                    // 0 game, 1 demo 1, 2 demo 2
     static readonly string[] TARGET_NAMES = { "GAME", "DEMO 1", "DEMO 2" };
     static readonly string[] TARGET_DIRS = { "TNOVA", "TNDEMO1", "TNDEMO2" };
@@ -317,11 +318,21 @@ static partial class TNPlus
     }
 
     static int FovDegrees() { int d; return OptFov > 0 && int.TryParse(FOV_NAMES[OptFov], out d) ? d : 0; }
+    static DateTime fovSince = DateTime.MinValue;   // first look at a game whose pool is not there yet
+    static double FOV_WAIT = 20;                    // seconds
 
     static void TryFov()
     {
         bool wide = WideActive(), trueWide = TrueWideActive();
         if (trueWide && hdState == 0) return;      // true 16:9 needs the HD view: wait for it
+        // Found right at start-up, the game has not allocated its pool yet (it does about 5 seconds in, at the default
+        // CPU speed): wait for it like the other code patches, instead of "unavailable" for the whole session. An
+        // executable that was never prepared stays that way: said after a while.
+        if (!FreeAreaReady())
+        {
+            if (fovSince == DateTime.MinValue) fovSince = DateTime.UtcNow;
+            if ((DateTime.UtcNow - fovSince).TotalSeconds < FOV_WAIT) return;
+        }
         if (hdState != 1) trueWide = false;
         fovState = -1; wideHooks = false;
         int deg = FovDegrees();
@@ -810,6 +821,7 @@ static partial class TNPlus
     // width in its own columns (HdPayload*Wide); the cockpit and HUD stretched to the full width (wide_hud = 1) or
     // centred at their own proportions, black above and below the 3D on the sides (wide_hud = 0)
     static bool OptWideHud = true;                  // ini wide_hud
+    static bool OptWideMenus = false;               // ini wide_menus: 1 = the 640x480 screens stretched, as before (see PlaceMenuWide)
     static bool TrueWideActive()
     {
         return OptWide && OptWideTrue && OptHD && ((launchedTrue && launched != null && gamePid == launched.Id) || OptWideAttach);
@@ -1037,7 +1049,7 @@ static partial class TNPlus
                 case '8':
                     Note(MUSIC_INFO[music]);
                     if (!awe) Note("optional AWE32 music: put awe32.raw (AWE32 ROM, 1 MB, not included) next to TNPlus.exe, see README");
-                    else if (music == 3) Note("AWE32: barely tested, some instruments may sound off");
+                    else if (music == 3) Note("AWE32: experimental, checked against the game's own driver, not on a real card");
                     break;
                 case '9': Note("above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed"); break;
                 case 'L': Note("the two 1996 demos shipped with GOG and Steam have missions the full game hasn't; no HD there yet"); break;
@@ -1253,8 +1265,9 @@ static partial class TNPlus
             string sbk = Path.Combine(GameDir, dirName, "SOUND", "FF.SBK");
             if (!File.Exists(sbk)) sbk = Path.Combine(GameDir, "TNOVA", "SOUND", "FF.SBK");
             if (!File.Exists(sbk)) { Console.WriteLine("AWE32 music: FF.SBK not found, the Windows MIDI synthesizer is used."); return null; }
-            if (!File.Exists(AweBank.DlsPath())) { Console.WriteLine("AWE32 music: " + AweBank.DlsPath() + " not found, the Windows MIDI synthesizer is used."); return null; }
-            byte[] sf2 = AweBank.Build(sbk, AweBank.DlsPath(), File.ReadAllBytes(AweRom()));
+            string mdi = Path.Combine(Path.GetDirectoryName(sbk), "SBAWE32.MDI"), aweNote;
+            byte[] sf2 = AweBank.Build(sbk, mdi, AweBank.DlsPath(), File.ReadAllBytes(AweRom()), !OptAweExact, !OptAweExact, out aweNote);
+            Console.WriteLine("AWE32 bank: " + aweNote + ".");
             string path = Path.Combine(ExeDir, "TNPlus_awe32.sf2");
             File.WriteAllBytes(path, sf2);
             string conf = Path.Combine(ExeDir, "TNPlus_music.conf");
@@ -1479,7 +1492,7 @@ static partial class TNPlus
         int vkDist = (int)MapVirtualKey((uint)ScanDistance, 1), vkOptions = (int)MapVirtualKey(0x18, 1);
         bool prevSt = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
-        double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0, lastCave = -10;
+        double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0, lastCave = -10, lastMenu = -10;
         // mouse binds (by MOUSE_NAMES index): state seen last pass, command pressed, wheel taps
         int nb = MOUSE_NAMES.Length;                // mouse buttons, wheel notches, then the extended keys
         bool[] mbPrev = new bool[nb], mbPulse = new bool[nb];
@@ -1516,7 +1529,7 @@ static partial class TNPlus
             {
                 if (launched != null && launched.HasExited)
                 {   // the game started from the menu is closed: back to the menu
-                    Release(); Detach(); launched = null; launchedWide = false; launchedTrue = false;
+                    Release(); Detach(); EarlyClose(); launched = null; launchedWide = false; launchedTrue = false;
                     ShowWindow(GetConsoleWindow(), 9);
                     return;
                 }
@@ -1534,11 +1547,12 @@ static partial class TNPlus
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
                     hitFixState = 0; physFixState = 0; smokeState = 0; skyFixState = 0; droneFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; ashfordState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; smallState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
-                    hdEarly = 0;
+                    hdEarly = 0; menuState = 0; menuTries = 0; fovSince = DateTime.MinValue;
                     if (hdState == 1 || launched == null) hdState = 0;   // game left (back to the GOG launcher too):
                                                                           // new attempt when it starts again
-                    if (now - lastAttach > 2) { lastAttach = now; TryAttach(); }
-                    mouse.Take(); Thread.Sleep(50); continue;
+                    bool early = EarlyMenus(now);                        // true 16:9 menus: before the game's first screen
+                    if (!early && now - lastAttach > 2) { lastAttach = now; TryAttach(); }
+                    mouse.Take(); Thread.Sleep(early ? 10 : 50); continue;
                 }
                 if (!gameSeen) { gameSeen = true; int g; pidGames.TryGetValue(gamePid, out g); pidGames[gamePid] = g + 1; }
                 bool fg = ForegroundIsGame();
@@ -1546,6 +1560,8 @@ static partial class TNPlus
                 SpanTick(now);
 
                 // --- HD: injected as soon as the game is loaded, before its first mission
+                if (menuState == 0 && MenusFor(gamePid) && now - lastMenu > 0.05) { lastMenu = now; TryMenuWide(); }
+                else if (menuState == 1 && now - lastMenu > 1) { lastMenu = now; MenuWideCheck(); }
                 if (OptHD && hdState == 0 && now - lastHd > 0.5) { lastHd = now; TryHdInject(); }
                 if (OptHitFix && hitFixState == 0 && now - lastHit > 0.5) { lastHit = now; TryHitFix(); }
                 if (OptPhysFix && physFixState == 0 && now - lastPhys > 0.5) { lastPhys = now; TryPhysFix(); }
@@ -2469,6 +2485,141 @@ static partial class TNPlus
         Say(HdNow() + " ready: missions in 320x400 will be in HD", 1000);
     }
 
+    // ------------------------------------------------------------------ true 16:9: menus at their proportions
+    // The game draws its menus, briefings and 640x480 videos in VESA 0x101, which the true 16:9 set-up of DOSBox
+    // (aspect = stretch, needed by the missions) shows a third too wide. A routine put in a free slot of the game's
+    // video driver table, called after every mode change, turns that mode into DOSBox's 848x480 with the game's
+    // screen centred in it, and gives the video player's own mode table the same (tools/menu_wide.py). Only the
+    // game's data is changed, none of its code; the routine sits in the unused end of its last code page.
+    // It has to be there before the game's first 640x480 screen, about 2 seconds after it starts, sooner than
+    // TryAttach's signature scan can find the game. So in the DOSBox started from here the guest RAM is found by
+    // its BIOS (date at F000:FFF5, interrupt table) and the routine is written as soon as the game's code and its
+    // driver table are loaded. Written later (attached to a running game), it takes effect at the game's next mode
+    // change: the next briefing or mission.
+    static int menuState = 0;                       // 0 to do, 1 in place, -1 unavailable (said)
+    static int menuTries = 0, menuLang = 0;
+    static IntPtr earlyProc = IntPtr.Zero;          // the DOSBox started from here, before the game is found in it
+    static int earlyPid = 0;
+    static long earlyBase = 0;
+    static bool earlyOff = false;
+    static double earlySince = 0;
+    static readonly byte[] BIOS_DATE = Encoding.ASCII.GetBytes("01/01/92");
+
+    static bool MenusFor(int pid)
+    {
+        return !OptWideMenus && OptWide && OptWideTrue && OptHD && ((launchedTrue && launched != null && pid == launched.Id) || OptWideAttach);
+    }
+
+    // 1 = in place, 0 = not there yet (the game still loading), -1 = unavailable: memory that is not what we know,
+    // or the routine took itself out (DOSBox refused the 848x480 mode)
+    static int PlaceMenuWide()
+    {
+        byte[] sig = Hex(MenuWide.SiteSig);
+        for (int l = 0; l < MenuWide.Site.Length; l++)
+        {
+            byte[] site = RawRead(guestBase + MenuWide.Site[l], sig.Length);
+            if (site == null) return 0;
+            if (!Same(site, sig)) continue;
+            byte[] tab = RawRead(guestBase + MenuWide.Slot[l], 12);
+            if (tab == null || BitConverter.ToUInt32(tab, 8) != MenuWide.SetMode[l]) return 0;   // driver table not loaded or not relocated yet
+            menuLang = l;
+            uint slot = BitConverter.ToUInt32(tab, 0);
+            byte[] code = Hex(MenuWide.CodeHex[l]), there = Read(MenuWide.Code, code.Length);
+            bool empty = true;
+            foreach (byte b in there) if (b != 0) empty = false;
+            if (slot == MenuWide.Code && Same(there, code)) return 1;
+            if (!empty || (slot != 0 && slot != MenuWide.Code)) return -1;
+            Write(MenuWide.Code, code);
+            if (!Same(Read(MenuWide.Code, code.Length), code)) return 0;
+            Write(MenuWide.Slot[l], BitConverter.GetBytes(MenuWide.Code));
+            return 1;
+        }
+        return 0;
+    }
+
+    // the game is found (TryAttach): the routine is already there (EarlyMenus), or goes in now
+    static void TryMenuWide()
+    {
+        int r = PlaceMenuWide();
+        if (r == 0 && ++menuTries < 40) return;        // just loaded: DOS/4GW may still be relocating it, look again
+        menuState = r == 1 ? 1 : -1;
+        if (r == 1)
+        {
+            // the game is already on a 640x480 screen in its own mode: nothing changes before its next mode change
+            bool late = BitConverter.ToUInt16(Read(MenuWide.Vbe[menuLang], 2), 0) != MenuWide.VbeWide && ReadInt(MenuWide.Mode[menuLang]) == MenuWide.Menus;
+            Say("16:9 menus ON: menus and briefings keep their proportions" + (late ? " (from the next briefing or mission on)" : ""), 0);
+        }
+        else if (r == 0) Say("16:9 menus unavailable: unsupported game version", 300, 300);
+        else if (ReadUInt(MenuWide.Slot[menuLang]) == 0 && Same(Read(MenuWide.Code, 4), Hex(MenuWide.CodeHex[menuLang].Substring(0, 8))))
+            Say("16:9 menus unavailable: DOSBox refused its 848x480 mode (vesa_modes = all)", 300, 300);
+        else Say("16:9 menus unavailable: unexpected game memory", 300, 300);
+    }
+
+    // now and then afterwards: the routine takes itself out of its slot when DOSBox refuses the 848x480 mode (a
+    // DOSBox without "vesa_modes = all"); the menus are then stretched as before
+    static void MenuWideCheck()
+    {
+        if (ReadUInt(MenuWide.Slot[menuLang]) != 0) return;
+        menuState = -1;
+        Say("16:9 menus OFF: DOSBox refused its 848x480 mode (vesa_modes = all)", 300, 300);
+    }
+
+    // Before the game is found: true while the routine still waits for the game's code in the DOSBox started from
+    // here (the caller then holds TryAttach back: its scan of the whole process would come in the way).
+    static bool EarlyMenus(double now)
+    {
+        int pid = launched != null ? launched.Id : OnlyPid;
+        if (pid == 0 || !MenusFor(pid)) return false;
+        if (pid != earlyPid)
+        {
+            EarlyClose();
+            earlyPid = pid; earlySince = now;
+            earlyProc = OpenProcess(0x0010 | 0x0020 | 0x0008 | 0x0400, false, pid);
+        }
+        if (earlyProc == IntPtr.Zero) { earlyPid = 0; return false; }
+        if (earlyOff) return false;
+        int r = 0;
+        IntPtr h0 = hProc; long b0 = guestBase;
+        hProc = earlyProc;
+        try
+        {
+            if (earlyBase == 0) earlyBase = FindGuestRam();
+            if (earlyBase != 0) { guestBase = earlyBase; r = PlaceMenuWide(); }
+        }
+        catch { }
+        finally { hProc = h0; guestBase = b0; }
+        if (r < 0) earlyOff = true;
+        return r == 0 && now - earlySince < 20;        // (a DOSBox that never loads the game: TryAttach gets its turn)
+    }
+
+    static void EarlyClose()
+    {
+        if (earlyProc != IntPtr.Zero) CloseHandle(earlyProc);
+        earlyProc = IntPtr.Zero; earlyPid = 0; earlyBase = 0; earlyOff = false;
+    }
+
+    // DOSBox's guest RAM in the process hProc: its BIOS date at F000:FFF5 and a real-mode interrupt table at 0
+    static long FindGuestRam()
+    {
+        long addr = 0;
+        MBI mbi;
+        while (VirtualQueryEx(hProc, new IntPtr(addr), out mbi, new IntPtr(Marshal.SizeOf(typeof(MBI)))) != IntPtr.Zero)
+        {
+            long size = (long)mbi.RegionSize.ToUInt64();
+            long start = mbi.BaseAddress.ToInt64();
+            bool rw = (mbi.Protect & 0x04) != 0 || (mbi.Protect & 0x40) != 0;
+            if (mbi.State == 0x1000 && rw && size >= 4L << 20 && size <= 1L << 30)
+            {
+                byte[] b = RawRead(start + 0xFFFF5, 0x10000);
+                for (int i = b == null ? -1 : IndexOf(b, BIOS_DATE, 0); i >= 0; i = IndexOf(b, BIOS_DATE, i + 1))
+                    if (PlausibleIvt(start + i)) return start + i;
+            }
+            addr = start + size;
+            if (addr <= start) break;
+        }
+        return 0;
+    }
+
     static bool Same(byte[] a, byte[] b)
     {
         if (a.Length != b.Length) return false;
@@ -2923,6 +3074,7 @@ static partial class TNPlus
                     case "stereo_fix": OptStereoFix = v != "0"; break;
                     case "scaling": OptScaling = Math.Max(0, Array.IndexOf(SCALING_NAMES, v.ToUpperInvariant())); break;
                     case "music": OptMusic = Math.Max(0, Array.IndexOf(MUSIC_NAMES, v.ToUpperInvariant())); break;
+                    case "awe32_exact": OptAweExact = v != "0"; break;
                     case "hd": oldHd = v != "0"; oldDisplay = true; break;
                     case "hit_fix": OptHitFix = v != "0"; break;
                     case "phys_fix": OptPhysFix = v != "0"; break;
@@ -2937,6 +3089,7 @@ static partial class TNPlus
                     case "wide_attach": OptWideAttach = v != "0"; break;
                     case "inplace_attach": OptInPlaceAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
+                    case "wide_menus": OptWideMenus = v != "0"; break;
                     case "keep_dos": OptKeepDos = v != "0"; break;
                     case "edge_objects": OptEdge = v != "0"; break;
                     case "field_of_view": OptFov = Math.Max(0, Array.IndexOf(FOV_NAMES, v.ToUpperInvariant())); break;
@@ -2988,6 +3141,7 @@ static partial class TNPlus
                 "; 0 off, 1 stretched (DOSBox stretches the picture), 2 true 16:9 (HD only: the 3D drawn in 848 columns),\r\n" +
                 "; 3 true 16:9 in 1280x720 (3D in 1280 columns and 1.5 x the lines, needs a fast PC)\r\nwidescreen = " + WideMode() + "\r\n" +
                 "; true 16:9: 1 = cockpit and HUD stretched to the full width, 0 = centred at their proportions (black on the sides)\r\nwide_hud = " + (OptWideHud ? 1 : 0) + "\r\n" +
+                "; true 16:9: 0 = menus, briefings and their videos at their own proportions (black on the sides), 1 = stretched to the full width\r\nwide_menus = " + (OptWideMenus ? 1 : 0) + "\r\n" +
                 "; HD 1280x720: 1 = small frame counter top right\r\nfps_counter = " + (OptFpsCounter ? 1 : 0) + "\r\n" +
                 "; HD: 1 = speed fixes in the game's 3D code (same picture, fewer slow spots for DOSBox; the most in 1280x720)\r\nspeed_fixes = " + (OptSpeedFix ? 1 : 0) + "\r\n" +
                 "; HD 1280x720: 1 = the two cockpit cameras (MFD views) drawn in HD too\r\nsmall_views = " + (OptSmallViews ? 1 : 0) + "\r\n" +
@@ -2997,6 +3151,7 @@ static partial class TNPlus
                 "scaling = " + SCALING_NAMES[OptScaling] + "\r\n" +
                 "; ROLAND, FM, GAME'S OWN or AWE32 (music of the game and demos; AWE32 needs awe32.raw, an AWE32 ROM dump,\r\n" +
                 "; next to TNPlus.exe, otherwise ROLAND is used)\r\nmusic = " + MUSIC_NAMES[OptMusic] + "\r\n" +
+                "; AWE32: 0 = the bank completed and tuned (missing instruments and drums from the card's own set), 1 = as the real card played it\r\nawe32_exact = " + (OptAweExact ? 1 : 0) + "\r\n" +
                 "; 1 = projectiles hit at any frame rate (the game misses moving targets above ~30 fps: multipulsar, drones)\r\nhit_fix = " + (OptHitFix ? 1 : 0) + "\r\n" +
                 "; 1 = physics (walking, jumps, falls), the soldiers' idle gestures and the descrambler text at the same speed whatever the frame rate\r\nphys_fix = " + (OptPhysFix ? 1 : 0) + "\r\n" +
                 "; 1 = smoke grenades make a thicker cloud that lasts about twice as long\r\nthick_smoke = " + (OptThickSmoke ? 1 : 0) + "\r\n" +

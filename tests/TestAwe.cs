@@ -1,5 +1,6 @@
-// AWE32 music bank (src/AweBank.cs): AweBank.Build turning a SoundFont 1 bank (FF.SBK), a DLS level 1 set (gm.dls) and the
-// 1 MB AWE32 ROM into a SoundFont 2. The three inputs are made up here (small RIFF files, a patterned ROM); the SF2 is parsed back.
+// AWE32 music bank (src/AweBank.cs): AweBank.Build turning a SoundFont 1 bank (FF.SBK), the General MIDI set of the game's
+// AWE32 driver (SBAWE32.MDI) or a DLS level 1 set (gm.dls), and the 1 MB AWE32 ROM into a SoundFont 2. The inputs are made up
+// here (small RIFF files, a driver file holding only what is read from it, a patterned ROM); the SF2 is parsed back.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -179,6 +180,67 @@ static partial class TNPlus
             }
         }
 
+        // ------------------------------------------------------------------ a driver file, as LoadEmbedded reads it
+        // Some bytes, the driver's attack and decay time tables (128 words each, found by their first words), then the General
+        // MIDI set between the words 0x1234 and 0x5678: presets (program | 0x8000 for the drum kit, first zone) ended by
+        // 0xff80, zone -> first generator, generators of 3 bytes (id, amount), instrument -> first zone, zones, generators,
+        // samples (start, end, loop start, loop end in ROM words). Amounts as the driver keeps them (EMU8000 units).
+        sealed class AweMdi
+        {
+            readonly List<int[]> samples = new List<int[]>();
+            readonly List<int[][]> insts = new List<int[][]>();
+            readonly List<object[]> presets = new List<object[]>();     // prog, drums, zones
+            public bool NoTables, NoEnd;
+
+            public int Sample(int start, int end, int loopStart, int loopEnd) { samples.Add(new[] { start, end, loopStart, loopEnd }); return samples.Count - 1; }
+            public int Inst(params int[][] zones) { insts.Add(zones); return insts.Count - 1; }
+            public void Preset(int prog, bool drums, params int[][] zones) { presets.Add(new object[] { prog, drums, zones }); }
+            public void Simple(int prog, bool drums, params int[][] zones) { Preset(prog, drums, new[] { 41, Inst(zones) }); }
+
+            public static int Attack(int step) { return (int)Math.Round(11878.0 / (step + 1)); }      // ms of the made-up tables
+            public static int Decay(int step) { return (int)Math.Round(47513.0 / (step + 1)); }
+
+            public byte[] Image()
+            {
+                MemoryStream m = new MemoryStream();
+                Put(m, Encoding.ASCII.GetBytes("Made-up AWE32 driver".PadRight(64, '.')));
+                if (!NoTables)
+                {
+                    Put(m, AweWords(AweSeq(0, 128, Attack)), new byte[6], AweWords(AweSeq(0, 128, Decay)), new byte[10]);
+                }
+                Put(m, AweU16(0x1234));
+                MemoryStream bags = new MemoryStream(), gens = new MemoryStream();
+                int bag = 0, gen = 0;
+                foreach (object[] p in presets)
+                {
+                    Put(m, AweU16((int)p[0] | ((bool)p[1] ? 0x8000 : 0)), AweU16(bag));
+                    Zones(bags, gens, (int[][])p[2], ref bag, ref gen);
+                }
+                Put(m, AweU16(0xff80), AweU16(bag));
+                Put(m, bags.ToArray(), AweU16(gen), gens.ToArray(), new byte[m.Length + bags.Length + gens.Length & 1]);
+                bags = new MemoryStream(); gens = new MemoryStream(); bag = 0; gen = 0;
+                foreach (int[][] i in insts)
+                {
+                    Put(m, AweU16(bag));
+                    Zones(bags, gens, i, ref bag, ref gen);
+                }
+                Put(m, AweU16(bag));
+                Put(m, bags.ToArray(), AweU16(gen), gens.ToArray(), new byte[m.Length + bags.Length + gens.Length & 1]);
+                foreach (int[] s in samples) foreach (int v in s) Put(m, AweI32(v));
+                Put(m, AweU16(NoEnd ? 0x4321 : 0x5678), new byte[32]);
+                return m.ToArray();
+            }
+            static void Zones(MemoryStream bags, MemoryStream gens, int[][] zones, ref int bag, ref int gen)
+            {
+                foreach (int[] z in zones)
+                {
+                    Put(bags, AweU16(gen)); bag++;
+                    for (int k = 0; k + 1 < z.Length; k += 2) { Put(gens, new[] { (byte)z[k] }, AweU16(z[k + 1])); gen++; }
+                }
+            }
+            static void Put(MemoryStream m, params byte[][] parts) { foreach (byte[] p in parts) m.Write(p, 0, p.Length); }
+        }
+
         // ------------------------------------------------------------------ the SoundFont 2 read back
         // The constructor checks the RIFF structure: RIFF size = file size - 8, top-level LISTs and their chunks fitting exactly.
         sealed class AweSf2
@@ -297,12 +359,24 @@ static partial class TNPlus
         sealed class AweSmp { public string Name; public int Start, End, LoopStart, LoopEnd, Rate, Pitch, Corr, Link, Type; }
 
         // ------------------------------------------------------------------ helpers
+        // without the driver file: the bank completed from the DLS, nothing tuned
         static AweSf2 AweBuild(AweSbk sbk, AweDls dls)
         {
             string s = PutFile(Path.Combine(ExeDir, "FF.SBK"), sbk.Image());
             string d = PutFile(Path.Combine(ExeDir, "gm.dls"), (dls ?? new AweDls()).Image());
             return new AweSf2(AweBank.Build(s, d, AweRomImage()));
         }
+        // with the driver file next to the bank (mdi null: none) and a DLS (null: none); what Build says is left in AweNote
+        static string AweNote;
+        static AweSf2 AweBuildCard(AweSbk sbk, AweMdi mdi, AweDls dls, bool fill, bool retune)
+        {
+            string s = PutFile(Path.Combine(ExeDir, "FF.SBK"), sbk.Image());
+            string m = Path.Combine(ExeDir, "SBAWE32.MDI"), d = Path.Combine(ExeDir, "gm.dls");
+            if (mdi != null) PutFile(m, mdi.Image()); else File.Delete(m);
+            if (dls != null) PutFile(d, dls.Image()); else File.Delete(d);
+            return new AweSf2(AweBank.Build(s, m, d, AweRomImage(), fill, retune, out AweNote));
+        }
+        static List<string> AweInstNames(AweSf2 f) { return Enumerable.Range(0, f.InstCount).Select(i => f.InstName(i)).ToList(); }
 
         // a bit of everything: ROM and RAM samples, a loop, a melodic preset, a drum kit filled from the DLS, a DLS-only preset
         static void AweStdInputs(out AweSbk s, out AweDls d)
@@ -509,10 +583,11 @@ static partial class TNPlus
             List<List<int[]>> z = f.ZonesOf(0, 0);
             Eq(5, z.Count, "zones");
             int[] smp = z.Select(x => AweGen(x, 53)).ToArray();
+            // the card loops a ROM sample on [loop start, loop end + 1)
             AweSmp looped = f.Sample(smp[0]);
             EqList(AweSeq(1000, 100, AweRomWord), f.Pcm(smp[0]), "looped: words 1000-1099 (the loop ends inside)");
-            Eq(21, looped.LoopStart - looped.Start, "loop start: SBK loop start + 1 (1020 + 1 - 1000)");
-            Eq(82, looped.LoopEnd - looped.Start, "loop end: SBK loop end + 2 (1080 + 2 - 1000)");
+            Eq(20, looped.LoopStart - looped.Start, "loop start: the SBK loop start (1020 - 1000)");
+            Eq(81, looped.LoopEnd - looped.Start, "loop end: SBK loop end + 1 (1080 + 1 - 1000)");
             Eq(1, AweGen(z[0], 54), "sampleModes kept");
             Ok(smp[1] != smp[0], "the same SBK sample without loop: a sample of its own");
             AweSmp plain = f.Sample(smp[1]);
@@ -523,14 +598,32 @@ static partial class TNPlus
             Eq(smp[0], smp[2], "sampleModes 3 (bit 0 set) loops too: the looped sample again");
             Eq(3, AweGen(z[2], 54), "sampleModes 3 kept");
             AweSmp t = f.Sample(smp[3]);
-            EqList(AweSeq(2000, 52, AweRomWord), f.Pcm(smp[3]), "loop end + 2 past the sample end: the sample runs to it (2052)");
-            Eq(11, t.LoopStart - t.Start, "lengthened sample: loop start 2010 + 1");
-            Eq(52, t.LoopEnd - t.Start, "lengthened sample: loop end 2050 + 2");
+            EqList(AweSeq(2000, 51, AweRomWord), f.Pcm(smp[3]), "loop end + 1 past the sample end: the sample runs to it (2051)");
+            Eq(10, t.LoopStart - t.Start, "lengthened sample: loop start 2010");
+            Eq(51, t.LoopEnd - t.Start, "lengthened sample: loop end 2050 + 1");
             AweSmp fl = f.Sample(smp[4]);
             EqList(AweSeq(3000, 40, AweRomWord), f.Pcm(smp[4]), "empty loop: the sample as it is");
             Eq(fl.Start, fl.LoopStart, "empty loop (loop end <= loop start): no loop points");
             Eq(fl.Start, fl.LoopEnd, "empty loop: no loop points (end)");
             Eq(4, f.SampleCount, "samples: looped, unlooped, lengthened, empty loop");
+        }
+
+        [Test] static void Awe_LoopPointsOfTheBanksOwnSamples()
+        {
+            // the bank's own samples sit 2 words further in the card's memory than its loop points say: the card loops them
+            // on [loop start - 2, loop end - 1)
+            AweSbk s = new AweSbk();
+            s.Smpl = AweWords(AweSeq(0, 64, AweRamWord));
+            int mid = s.Sample("Mid", 4, 60, 20, 40), first = s.Sample("First", 4, 60, 5, 30);
+            s.Simple("Own", 0, 0, new[] { 43, AweKr(0, 59), 54, 1, 53, mid }, new[] { 43, AweKr(60, 127), 54, 1, 53, first });
+            AweSf2 f = AweBuild(s, null);
+            List<List<int[]>> z = f.ZonesOf(0, 0);
+            AweSmp a = f.Sample(AweGen(z[0], 53)), b = f.Sample(AweGen(z[1], 53));
+            EqList(AweSeq(4, 56, AweRamWord), f.Pcm(AweGen(z[0], 53)), "words 4-59 of smpl");
+            Eq(14, a.LoopStart - a.Start, "loop start: SBK loop start - 2 (20 - 2 - 4)");
+            Eq(35, a.LoopEnd - a.Start, "loop end: SBK loop end - 1 (40 - 1 - 4)");
+            Eq(1, b.LoopStart - b.Start, "a loop starting in the sample's first 2 words: as it is written (5 - 4)");
+            Eq(27, b.LoopEnd - b.Start, "... to its loop end + 1 (30 + 1 - 4)");
         }
 
         [Test] static void Awe_BadSamplesLeaveKeysToDls()
@@ -581,9 +674,11 @@ static partial class TNPlus
             Eq(3, zones, "zones checked (2 from the bank, 1 from the DLS)");
             List<List<int[]>> m = f.ZonesOf(0, 0);
             Eq(AweKr(0, 127), AweGen(m[0], 43), "keyRange amount kept");
-            Eq(AweKr(0, 63), AweGen(m[0], 44), "velRange amount kept");
-            Eq(AweKr(64, 127), AweGen(m[1], 44), "velRange of a zone without keyRange");
-            No(AweHas(m[1], 43), "no keyRange where the SBK zone has none (SF2 default: all keys)");
+            Eq(AweKr(0, 127), AweGen(m[1], 43), "a zone without keyRange: all keys, written out");
+            // the card doesn't look at velocity ranges: both zones sound at any velocity
+            No(AweHas(m[0], 44), "no velRange in the bank's zones (first)");
+            No(AweHas(m[1], 44), "no velRange in the bank's zones (second)");
+            Eq(AweKr(0, 127), AweGen(f.ZonesOf(0, 88)[0], 44), "a DLS zone keeps its velocity range");
         }
 
         [Test] static void Awe_PresetsSorted()
@@ -661,7 +756,7 @@ static partial class TNPlus
             Eq("GS001", f.Sample(r1).Name, "second region's wave");
             Eq(48, AweGen(z[2], 58), "a DLS piece: root key = its region's unity note");
             Eq(72, AweGen(z[5], 58), "a DLS piece of the second region: its unity note");
-            EqList(new[] { "all" }, AweKeys(f.ZonesOf(0, 1)), "a zone without keyRange takes all keys: no DLS piece");
+            EqList(new[] { "0-127" }, AweKeys(f.ZonesOf(0, 1)), "a zone without keyRange takes all keys: no DLS piece");
         }
 
         [Test] static void Awe_DlsFillsDrumKeys()
@@ -690,8 +785,8 @@ static partial class TNPlus
             int a = s.Sample("*A", 100, 200, 0, 0);
             s.Simple("Conv", 0, 0,
                 new[] { 43, AweKr(0, 9), 8, 127, 9, 100, 5, 64, 6, -64, 7, 1, 10, 64, 11, -32, 13, 32, 15, 255, 16, -10, 17, 0,
-                    21, 1000, 23, 0, 34, 3000, 36, 10, 38, 30000, 22, 1, 24, 0, 29, 48, 37, 10, 31, 12, 40, -120, 48, 127, 57, 3, 54, 0, 53, a },
-                new[] { 43, AweKr(10, 19), 8, 50, 9, 1000, 15, 300, 17, 127, 29, 96, 37, 0, 48, 0, 22, 0, 40, 32767, 31, -32768, 6, 0, 13, -64, 53, a },
+                    21, 1000, 23, 0, 34, 3000, 36, 10, 38, 30000, 22, 1, 24, 0, 29, 48, 37, 10, 48, 127, 57, 3, 54, 0, 53, a },
+                new[] { 43, AweKr(10, 19), 8, 50, 9, 1000, 15, 300, 17, 127, 29, 96, 37, 0, 48, 0, 22, 0, 6, 0, 13, -64, 53, a },
                 new[] { 43, AweKr(20, 29), 8, 0, 48, 64, 17, 64, 16, 256, 15, 0, 37, 95, 29, 95, 53, a });
             AweSf2 f = AweBuild(s, null);
             List<List<int[]>> z = f.ZonesOf(0, 0);
@@ -699,15 +794,60 @@ static partial class TNPlus
             // filter cutoff 127 -> 14400 then clamped to 13500; Q * 3/2; LFO / envelope to pitch (1200 v / 64 + 1) / 2, to filter
             // 3600 / 7200 cents per 64, to volume 120 cB per 64; sends v * 1000 / 256; pan v * 1000 / 127 - 500; times (ms) in
             // timecents, 0 ms as 1 ms (-11958); LFO frequency 1 -> -7925 cents, 0 -> -725 (mod) / -15600 (vib); sustains below
-            // 96: (96 - v) * 1000 / 96 (mod), (2000 - 21 v) / 2 (vol); key scaling v * 5.55 / 12; attenuation 127 -> 0 cB
+            // 96: (96 - v) * 1000 / 96 (mod), (2000 - 21 v) / 2 (vol); attenuation 127 -> 0 cB
             AweGens(z[0], "zone 0", 43, AweKr(0, 9), 8, 13500, 9, 150, 5, 600, 6, -600, 7, 9, 10, 3600, 11, -3600, 13, 60, 15, 996, 16, 0, 17, -500,
-                21, 0, 23, -11958, 34, 1901, 36, -7972, 38, 5888, 22, -7925, 24, -15600, 29, 500, 37, 895, 31, 5, 40, -55, 48, 0, 57, 3, 54, 0, 58, 60);
-            // cutoff 59 v + 4366; clamps: Q 960, send 1000, key scaling +-1200; attenuation 0 -> 1000 cB; sustain 96 -> 0, vol 0 -> 1000
-            AweGens(z[1], "zone 1", 43, AweKr(10, 19), 8, 7316, 9, 960, 15, 1000, 17, 500, 29, 0, 37, 1000, 48, 1000, 22, -725, 40, 1200, 31, -1200,
+                21, 0, 23, -11958, 34, 1901, 36, -7972, 38, 5888, 22, -7925, 24, -15600, 29, 500, 37, 895, 48, 0, 57, 3, 54, 0, 58, 60);
+            // cutoff 59 v + 4366; clamps: Q 960, send 1000; attenuation 0 -> 127 * 9.375 = 1190 cB; sustain 96 -> 0, vol 0 -> 1000
+            AweGens(z[1], "zone 1", 43, AweKr(10, 19), 8, 7316, 9, 960, 15, 1000, 17, 500, 29, 0, 37, 1000, 48, 1190, 22, -725,
                 6, 0, 13, -120, 24, -15600, 58, 60);
-            // attenuation 64 -> -2000 log10(64 / 127) = 595 cB (awesfx's formula); pan 64 -> 3; sustains 95 -> 10 / 2
-            AweGens(z[2], "zone 2", 43, AweKr(20, 29), 8, 4366, 48, 595, 17, 3, 16, 1000, 15, 0, 37, 2, 29, 10, 22, -725, 24, -15600, 58, 60);
+            // attenuation 64 -> (127 - 64) * 9.375 = 590 cB; pan 64 -> 3; sustains 95 -> 10 / 2
+            AweGens(z[2], "zone 2", 43, AweKr(20, 29), 8, 4366, 48, 590, 17, 3, 16, 1000, 15, 0, 37, 2, 29, 10, 22, -725, 24, -15600, 58, 60);
             Eq(1, f.SampleCount, "one sample for the three zones");
+        }
+
+        [Test] static void Awe_Attenuation()
+        {
+            // the card: 3/8 dB quieter per unit under 127; FluidSynth takes 0.4 of a SoundFont's attenuation, so 9.375 cB a unit
+            AweSbk s = new AweSbk();
+            int a = s.Sample("*A", 100, 200, 0, 0);
+            int[] sbk = { 127, 126, 120, 110, 96, 64, 1, 0, 200, -5 }, cb = { 0, 9, 65, 159, 290, 590, 1181, 1190, 0, 1190 };
+            int[][] zones = new int[sbk.Length + 1][];
+            for (int i = 0; i < sbk.Length; i++) zones[i] = new[] { 43, AweKr(i, i), 48, sbk[i], 53, a };
+            zones[sbk.Length] = new[] { 43, AweKr(100, 127), 53, a };
+            s.Simple("Loud", 0, 0, zones);
+            List<List<int[]>> z = AweBuild(s, null).ZonesOf(0, 0);
+            for (int i = 0; i < sbk.Length; i++) Eq(cb[i], AweGen(z[i], 48), "SBK attenuation " + sbk[i]);
+            Eq(159, AweGen(z[sbk.Length], 48), "no attenuation in the zone: the card's own 110");
+        }
+
+        [Test] static void Awe_KeyScalingOfHoldAndDecay()
+        {
+            // SBK: the volume envelope's hold (35) and decay (36) lose so many milliseconds (39, 40) per key above 60 and gain
+            // them below; SF2 scales the time by so many cents per key: the two agree in the middle of the zone.
+            AweSbk s = new AweSbk();
+            int a = s.Sample("*A", 100, 200, 0, 0);
+            s.Simple("Scaled", 0, 0,
+                new[] { 43, AweKr(0, 9), 36, 2000, 40, 10, 35, 100, 39, -1, 53, a },     // key 4: decay 2560 ms, hold 44 ms
+                new[] { 43, AweKr(55, 65), 36, 2000, 40, 10, 53, a },                     // middle = key 60: matched at 72 (1880 ms)
+                new[] { 43, AweKr(100, 120), 36, 2000, 40, 10, 53, a },                   // key 110: 1500 ms
+                new[] { 43, AweKr(121, 127), 36, 100, 40, 10, 53, a },                    // key 124: under 1 ms, taken as 1
+                new[] { 43, AweKr(10, 19), 40, 10, 39, 10, 53, a },                       // no hold nor decay time to scale
+                new[] { 43, AweKr(20, 29), 36, 2000, 40, 0, 31, 12, 32, -7, 53, a });     // 0 a key; modulation envelope: not on the card
+            s.Simple("Kit", 0, 128, new[] { 43, AweKr(36, 36), 36, 2000, 40, 10, 53, a });
+            AweSf2 f = AweBuild(s, null);
+            List<List<int[]>> z = f.ZonesOf(0, 0);
+            Eq(1200, AweGen(z[0], 36), "decay 2000 ms in timecents");
+            Eq(8, AweGen(z[0], 40), "low zone: 1200 log2(2560 / 2000) / 56");
+            Eq(-3986, AweGen(z[0], 35), "hold 100 ms in timecents");
+            Eq(-25, AweGen(z[0], 39), "low zone, hold: 1200 log2(44 / 100) / 56");
+            Eq(9, AweGen(z[1], 40), "zone around key 60: 1200 log2(1880 / 2000) / -12");
+            Eq(10, AweGen(z[2], 40), "high zone: 1200 log2(1500 / 2000) / -50");
+            Eq(125, AweGen(z[3], 40), "time used up: 1200 log2(1 / 100) / -64");
+            foreach (int g in new[] { 39, 40, 35, 36 }) No(AweHas(z[4], g), "no generator " + g + " without a time");
+            foreach (int g in new[] { 40, 31, 32 }) No(AweHas(z[5], g), "no generator " + g);
+            List<int[]> k = f.ZonesOf(128, 0)[0];
+            Eq(1200, AweGen(k, 36), "drum kit: decay kept");
+            No(AweHas(k, 40), "drum kit: the card doesn't scale it by key");
         }
 
         [Test] static void Awe_SbkDefaultsAndDroppedGenerators()
@@ -715,14 +855,16 @@ static partial class TNPlus
             AweSbk s = new AweSbk();
             int a = s.Sample("*A", 100, 200, 0, 0);
             s.Simple("Bare", 0, 0, new[] { 43, AweKr(0, 63), 53, a },
-                // unused / reserved SF1 generators and scaleTuning 0: dropped; address offsets: kept as they are
-                new[] { 43, AweKr(64, 127), 14, 7, 18, 7, 19, 7, 20, 7, 42, 7, 49, 7, 59, 7, 56, 0, 0, 4, 12, -2, 53, a });
+                // generators the card doesn't play (14, the modulation envelope's key scaling 31 and 32, the velocity range 44),
+                // reserved ones and scaleTuning 0: dropped; address offsets: kept as they are
+                new[] { 43, AweKr(64, 127), 14, 7, 18, 7, 19, 7, 20, 7, 31, 7, 32, 7, 42, 7, 44, AweKr(0, 99), 49, 7, 59, 7, 56, 0, 0, 4, 12, -2, 53, a });
             AweSf2 f = AweBuild(s, null);
             List<List<int[]>> z = f.ZonesOf(0, 0);
             Eq(2, z.Count, "zones");
-            // SBK defaults that differ from SF2's: both envelopes sustain at zero, LFO rates -725 / -15600 cents; root key 60
-            AweGens(z[0], "bare zone", 43, AweKr(0, 63), 29, 1000, 37, 1000, 22, -725, 24, -15600, 58, 60);
-            AweGens(z[1], "zone with dropped generators", 43, AweKr(64, 127), 0, 4, 12, -2, 29, 1000, 37, 1000, 22, -725, 24, -15600, 58, 60);
+            // the card's defaults that differ from SF2's: both envelopes sustain at zero, LFO rates -725 / -15600 cents,
+            // attenuation 110 (159 cB); root key 60
+            AweGens(z[0], "bare zone", 43, AweKr(0, 63), 29, 1000, 37, 1000, 22, -725, 24, -15600, 48, 159, 58, 60);
+            AweGens(z[1], "zone with dropped generators", 43, AweKr(64, 127), 0, 4, 12, -2, 29, 1000, 37, 1000, 22, -725, 24, -15600, 48, 159, 58, 60);
         }
 
         [Test] static void Awe_RootKeyAndTuning()
@@ -948,6 +1090,245 @@ static partial class TNPlus
             EqList(new[] { "0-59", "60-127", "60-127" }, AweKeys(f.ZonesOf(0, 0)), "the zones of both instruments, in order, in one instrument");
             Eq(1, f.InstCount, "one SF2 instrument per preset");
             Eq("Split", f.InstName(0), "named after the preset");
+        }
+
+        [Test] static void Awe_LayersReplaceEachOther()
+        {
+            // the card builds a zone from the preset's global zone, the preset zone, the instrument's global zone and the
+            // zone, each generator replacing the one before: SoundFont 1 adds nothing up
+            AweSbk s = new AweSbk();
+            int a = s.Sample("*A", 100, 200, 0, 0);
+            int i = s.Inst("Layered", new[] { 17, 30, 48, 20 }, new[] { 43, AweKr(0, 59), 53, a }, new[] { 43, AweKr(60, 127), 48, 127, 53, a });
+            s.Preset("Layered", 0, 0, new[] { 48, 10, 9, 100 }, new[] { 17, 100, 15, 128, 41, i });
+            List<List<int[]>> z = AweBuild(s, null).ZonesOf(0, 0);
+            // Q 100 from the preset's global zone, chorus 128 from the preset zone, pan 30 and attenuation 20 from the
+            // instrument's global zone (over the preset's pan 100 and attenuation 10)
+            AweGens(z[0], "low zone", 43, AweKr(0, 59), 9, 150, 15, 500, 17, -264, 48, 1003, 29, 1000, 37, 1000, 22, -725, 24, -15600, 58, 60);
+            AweGens(z[1], "high zone, with its own attenuation", 43, AweKr(60, 127), 9, 150, 15, 500, 17, -264, 48, 0, 29, 1000, 37, 1000, 22, -725, 24, -15600, 58, 60);
+        }
+
+        [Test] static void Awe_PresetZoneKeyRanges()
+        {
+            AweSbk s = new AweSbk();
+            int a = s.Sample("*A", 100, 200, 0, 0), b = s.Sample("*B", 300, 400, 0, 0);
+            int i = s.Inst("Wide", new[] { 43, AweKr(0, 127), 53, a }, new[] { 43, AweKr(100, 127), 53, b });
+            s.Preset("Split", 0, 0, new[] { 43, AweKr(20, 40), 41, i }, new[] { 43, AweKr(60, 110), 41, i });
+            AweSf2 f = AweBuild(s, null);
+            List<List<int[]>> z = f.ZonesOf(0, 0);
+            EqList(new[] { "20-40", "60-110", "100-110" }, AweKeys(z), "a zone sounds on the keys of both its preset zone and its own range");
+            Eq(AweGen(z[0], 53), AweGen(z[1], 53), "the first sample twice");
+            Eq("B", f.Sample(AweGen(z[2], 53)).Name, "the second sample where the two ranges meet");
+        }
+
+        // ------------------------------------------------------------------ with the game's AWE32 driver (SBAWE32.MDI)
+        // the bank: a piano on keys 40-50, a kit with key 36; the card's set: piano, program 5, a kit with keys 36 and 38
+        static void AweCardInputs(out AweSbk s, out AweMdi m, out AweDls d)
+        {
+            s = new AweSbk();
+            int rom = s.Sample("*Rom A", 1000, 1100, 0, 0);
+            s.Simple("Piano", 0, 0, new[] { 43, AweKr(40, 50), 53, rom });
+            s.Simple("Brass", 61, 0, new[] { 53, rom });
+            s.Simple("Kit", 0, 128, new[] { 43, AweKr(36, 36), 53, rom });
+            m = new AweMdi();
+            int same = m.Sample(1000, 1100, 0, 0), other = m.Sample(5000, 5200, 5050, 5150);
+            m.Simple(0, false, new[] { 43, AweKr(0, 127), 54, 1, 53, other });
+            m.Simple(5, false, new[] { 53, same });
+            m.Simple(0, true, new[] { 43, AweKr(36, 36), 53, other }, new[] { 43, AweKr(38, 38), 53, same });
+            d = new AweDls();
+            int w = d.Wave(22050, AweSeq(0, 40, i => i * 11), AweDls.Wsmp(60, 0, 0, -1, 0));
+            d.Ins("GS Kit", 0x80000000, 0, null, AweDls.Rgn(35, 38, 0, 127, 0, null, w, null));
+            d.Ins("GS Organ", 0, 16, null, AweDls.Rgn(0, 127, 0, 127, 0, null, w, null));
+        }
+
+        [Test] static void Awe_Card_FillsWhatTheBankLacks()
+        {
+            AweSbk s; AweMdi m; AweDls d;
+            AweCardInputs(out s, out m, out d);
+            AweSf2 f = AweBuildCard(s, m, d, true, true);
+            Eq("completed from the card's General MIDI set (SBAWE32.MDI)", AweNote, "what Build says");
+            EqList(new[] { "0:0 Piano", "0:5 Program 5", "0:61 Brass", "128:0 Kit" }, AwePresets(f), "the bank's presets and the card's other ones; nothing from the DLS");
+            EqList(new[] { "Piano", "Brass", "Kit", "Program 5" }, AweInstNames(f), "instruments");
+            List<List<int[]>> p = f.ZonesOf(0, 0);
+            EqList(new[] { "40-50", "0-39", "51-127" }, AweKeys(p), "piano: the bank's keys, then the card's piano on the others");
+            AweSmp card = f.Sample(AweGen(p[1], 53));
+            Eq(AweGen(p[1], 53), AweGen(p[2], 53), "both pieces: one sample");
+            Eq("ROM01388", card.Name, "a ROM sample the bank doesn't name: its address");
+            EqList(AweSeq(5000, 200, AweRomWord), f.Pcm(AweGen(p[1], 53)), "its words in the ROM");
+            Eq(50, card.LoopStart - card.Start, "its loop start"); Eq(151, card.LoopEnd - card.Start, "its loop end + 1");
+            List<List<int[]>> k = f.ZonesOf(128, 0);
+            EqList(new[] { "36-36", "38-38" }, AweKeys(k), "kit: the bank's key, the card's other key");
+            Eq("Rom A", f.Sample(AweGen(k[1], 53)).Name, "a ROM sample the bank names too: that name");
+            Eq(AweGen(k[0], 53), AweGen(k[1], 53), "... and the same sample");
+            EqList(new[] { "0-127" }, AweKeys(f.ZonesOf(0, 5)), "a program only the card has");
+            EqList(new[] { "0-127" }, AweKeys(f.ZonesOf(0, 61)), "a program only the bank has");
+        }
+
+        [Test] static void Awe_Card_UnitsOfTheDriver()
+        {
+            // the driver keeps generators 5 to 38 in the units of the chip; the hold and decay of the volume envelope (35, 36)
+            // stay in milliseconds. Times through its tables (made up here: AweMdi.Attack, AweMdi.Decay).
+            AweSbk s = new AweSbk();
+            s.Simple("Other", 9, 0, new[] { 53, s.Sample("*Rom A", 1000, 1100, 0, 0) });
+            AweMdi m = new AweMdi();
+            int a = m.Sample(5000, 5200, 0, 0);
+            m.Simple(0, false,
+                new[] { 43, AweKr(0, 59), 8, 100, 9, 4, 10, 64, 13, -20, 22, 20, 21, 31389, 23, 0x8000, 34, 10, 27, 100, 28, 20, 29, 64,
+                    37, 127, 38, 127, 36, 2000, 48, 127, 53, a },
+                new[] { 43, AweKr(60, 127), 8, 255, 34, 127, 26, 1, 30, 0, 37, 0, 53, a });
+            List<List<int[]>> z = AweBuildCard(s, m, null, true, false).ZonesOf(0, 0);
+            // cutoff 100 / 2 = 50 -> 7316; Q 4 * 8 = 32 -> 48; LFO to filter 64 / 2 -> 1800; to volume -20 / 2 -> -18 cB; LFO rate
+            // 20 / 2 = 10 -> -3938; delays 0x8000 - ms * 1000 / 725: 1000 ms -> 0, 0 ms -> -11958; attack step 10: 1189 ms -> 299;
+            // hold (127 - 100) * 92 = 2484 ms -> 1575; decay step 20: 2264 ms -> 1414; sustains * 75 / 100: 48 -> 500, 96 -> 0;
+            // release step 127: 371 ms -> -1716; decay 2000 ms -> 1200
+            AweGens(z[0], "low zone", 43, AweKr(0, 59), 8, 7316, 9, 48, 10, 1800, 13, -18, 22, -3938, 21, 0, 23, -11958, 34, 299, 27, 1575,
+                28, 1414, 29, 500, 37, 0, 38, -1716, 36, 1200, 48, 0, 24, -15600, 58, 60);
+            // cutoff 255: open (clamped to 13500); attack step 127: 6 ms; step 1: 11879 ms; release step 0: 47514 ms; sustain 0
+            AweGens(z[1], "high zone", 43, AweKr(60, 127), 8, 13500, 34, -8856, 26, 4284, 30, 6684, 37, 1000, 29, 1000, 22, -725, 24, -15600,
+                48, 159, 58, 60);
+        }
+
+        [Test] static void Awe_Card_NotRecognized()
+        {
+            AweSbk s; AweMdi m; AweDls d;
+            AweCardInputs(out s, out m, out d);
+            string[] with = { "0:0 Piano", "0:16 GS Organ", "0:61 Brass", "128:0 Kit" };
+            m.NoTables = true;
+            EqList(with, AwePresets(AweBuildCard(s, m, d, true, true)), "a driver file without the time tables: the DLS instead");
+            Eq("completed from the Roland GS set of Windows (SBAWE32.MDI not recognized)", AweNote, "what Build says");
+            m.NoTables = false; m.NoEnd = true;
+            EqList(with, AwePresets(AweBuildCard(s, m, d, true, true)), "a set not ended by 0x5678: the DLS instead");
+            m.NoEnd = false;
+            byte[] whole = m.Image();
+            string sp = PutFile(Path.Combine(ExeDir, "FF.SBK"), s.Image()), dp = Path.Combine(ExeDir, "gm.dls");
+            string cut = PutFile(Path.Combine(ExeDir, "CUT.MDI"), whole.Take(whole.Length - 60).ToArray());
+            EqList(with, AwePresets(new AweSf2(AweBank.Build(sp, cut, dp, AweRomImage(), true, true, out AweNote))), "a file cut in its samples: the DLS instead");
+            EqList(with, AwePresets(AweBuildCard(s, null, d, true, true)), "no driver file: the DLS");
+            Eq("completed from the Roland GS set of Windows (SBAWE32.MDI not found)", AweNote, "what Build says without the file");
+            EqList(new[] { "0:0 Piano", "0:61 Brass", "128:0 Kit" }, AwePresets(AweBuildCard(s, null, null, true, true)), "neither: the bank alone");
+            Eq("the bank alone (SBAWE32.MDI not found, no gm.dls)", AweNote, "what Build says without both");
+            EqList(new[] { "0:0 Piano", "0:5 Program 5", "0:61 Brass", "128:0 Kit" }, AwePresets(AweBuildCard(s, m, d, true, true)), "the whole file again: read");
+        }
+
+        [Test] static void Awe_Exact_TheCardAsItWas()
+        {
+            // the game loads FF.SBK as the card's only bank: a program it doesn't have plays its first preset, a key without
+            // a zone stays silent
+            AweSbk s; AweMdi m; AweDls d;
+            AweCardInputs(out s, out m, out d);
+            AweSf2 f = AweBuildCard(s, m, d, false, false);
+            Eq("the card as it was (the bank alone)", AweNote, "what Build says");
+            List<AwePre> p = f.Presets();
+            Eq(129, p.Count, "programs 0 to 127 and the kit");
+            for (int i = 0; i < 128; i++)
+            {
+                Eq("0:" + i, p[i].Bank + ":" + p[i].Prog, "preset " + i);
+                Eq(i == 61 ? "Brass" : "Piano", p[i].Name, "program " + i);
+                Eq(i == 61 ? 1 : 0, p[i].Inst, "program " + i + ": instrument (the piano's where the bank has none)");
+            }
+            Eq("128:0 Kit", p[128].Bank + ":" + p[128].Prog + " " + p[128].Name, "the kit");
+            EqList(new[] { "Piano", "Brass", "Kit" }, AweInstNames(f), "instruments: the bank's only");
+            EqList(new[] { "40-50" }, AweKeys(f.ZonesOf(0, 0)), "piano: nothing added on its other keys");
+            EqList(new[] { "36-36" }, AweKeys(f.ZonesOf(128, 0)), "kit: nothing added");
+            Eq(1, f.SampleCount, "one sample");
+        }
+
+        [Test] static void Awe_RomDumpStartingOneWordLate()
+        {
+            // dumps made with AWE-DUMP (86Box's awe32.raw) start one word late: the ROM's name "1MGM" is in words 3-4 instead
+            // of 2-3. The card's addresses are those of the ROM itself.
+            AweSbk s = new AweSbk();
+            s.Simple("P", 0, 0, new[] { 53, s.Sample("*A", 1000, 1100, 0, 0) });
+            string sp = PutFile(Path.Combine(ExeDir, "FF.SBK"), s.Image());
+            byte[] rom = AweRomImage(), late = new byte[rom.Length];
+            Encoding.ASCII.GetBytes("M1MG").CopyTo(rom, 4);
+            Array.Copy(rom, 0, late, 2, rom.Length - 2);
+            byte[] lateCopy = (byte[])late.Clone();
+            AweSf2 a = new AweSf2(AweBank.Build(sp, null, null, rom, true, false, out AweNote));
+            AweSf2 b = new AweSf2(AweBank.Build(sp, null, null, late, true, false, out AweNote));
+            EqList(AweSeq(1000, 100, AweRomWord), a.Pcm(0), "the ROM as it is: words 1000-1099");
+            EqList(AweSeq(1000, 100, AweRomWord), b.Pcm(0), "the dump starting one word late: the same words");
+            EqBytes(a.B, b.B, "the same bank from both");
+            EqBytes(lateCopy, late, "the dump is not changed");
+        }
+
+        [Test] static void Awe_Retune_OwnSamples()
+        {
+            // one of the bank's own samples: a wave of 100 samples a turn (441 Hz), written as an A (440 Hz) with a loop 2
+            // samples too long on the card (102). Tuned: the loop on the wave's own turn, and 4 cents down (441 -> 440 Hz).
+            AweSbk s = new AweSbk();
+            s.Smpl = AweWords(AweSeq(0, 700, i => i % 100 * 600 - 30000));
+            int saw = s.Sample("Saw", 0, 600, 200, 301), rom = s.Sample("*Rom A", 1000, 1100, 1020, 1080);
+            s.Simple("Saw", 0, 0, new[] { 43, AweKr(0, 99), 55, 6900, 54, 1, 53, saw }, new[] { 43, AweKr(100, 127), 55, 6900, 53, saw });
+            s.Simple("Kit", 0, 128, new[] { 43, AweKr(36, 36), 55, 6900, 54, 1, 53, saw });
+            s.Simple("Rom", 1, 0, new[] { 55, 6900, 54, 1, 53, rom });
+            AweSf2 f = AweBuildCard(s, null, null, true, true);
+            Eq("the bank alone (SBAWE32.MDI not found, no gm.dls), 1 zone tuned", AweNote, "what Build says");
+            List<List<int[]>> z = f.ZonesOf(0, 0);
+            AweSmp t = f.Sample(AweGen(z[0], 53));
+            Eq("root 69 fine -4", AweTune(z[0]), "looped zone: 4 cents down");
+            Eq(200, t.LoopStart - t.Start, "loop start as written"); Eq(300, t.LoopEnd - t.Start, "loop end: one turn of the wave later");
+            Eq("root 69", AweTune(z[1]), "the same sample without loop: left alone");
+            Eq("root 69", AweTune(f.ZonesOf(128, 0)[0]), "drum kit: left alone");
+            Eq("root 69", AweTune(f.ZonesOf(0, 1)[0]), "a ROM sample, nothing known about it: left alone");
+            // not tuned: the card's loop
+            AweSf2 e = AweBuildCard(s, null, null, true, false);
+            Eq("the bank alone (SBAWE32.MDI not found, no gm.dls)", AweNote, "what Build says, not tuning");
+            AweSmp c = e.Sample(AweGen(e.ZonesOf(0, 0)[0], 53));
+            Eq("root 69", AweTune(e.ZonesOf(0, 0)[0]), "as written");
+            Eq(198, c.LoopStart - c.Start, "the card's loop start"); Eq(300, c.LoopEnd - c.Start, "the card's loop end (102 samples)");
+        }
+
+        [Test] static void Awe_Retune_RomSamplesFromTheCardsSet()
+        {
+            // the card's set says each ROM sample's own pitch; a zone of the bank left at a whole key on a sample a few cents
+            // off is brought back (the ROM's sine wave is 21 cents above its key)
+            AweSbk s = new AweSbk();
+            int sine = s.Sample("*Sine", 1000, 1100, 1020, 1080), far = s.Sample("*Far", 2000, 2100, 2020, 2080);
+            int unk = s.Sample("*Unknown", 3000, 3100, 3020, 3080);
+            s.Simple("Whistle", 0, 0,
+                new[] { 43, AweKr(0, 9), 55, 6000, 54, 1, 53, sine },                // 21 cents sharp: tuned
+                new[] { 43, AweKr(10, 19), 58, 60, 54, 1, 53, sine },                // the same, its key given as a root key
+                new[] { 43, AweKr(20, 29), 55, 6000, 52, 5, 54, 1, 53, sine },       // fine tune set by hand: left alone
+                new[] { 43, AweKr(30, 39), 55, 6000, 53, sine },                     // no loop: left alone
+                new[] { 43, AweKr(40, 49), 55, 6021, 54, 1, 53, sine },              // already right
+                new[] { 43, AweKr(50, 54), 55, 6000, 54, 1, 53, far },               // more than half a key off: meant
+                new[] { 43, AweKr(55, 59), 55, 6000, 58, 72, 54, 1, 53, sine },      // played an octave down: meant too
+                new[] { 43, AweKr(60, 69), 55, 6000, 54, 1, 53, unk },               // not in the card's set
+                new[] { 43, AweKr(70, 79), 55, 6000, 56, 1, 54, 1, 53, sine });      // half-key scale: left alone
+            s.Simple("Kit", 0, 128, new[] { 43, AweKr(36, 36), 55, 6000, 54, 1, 53, sine });
+            AweMdi m = new AweMdi();
+            int ms = m.Sample(1000, 1100, 1020, 1080), mf = m.Sample(2000, 2100, 2020, 2080);
+            m.Simple(0, false, new[] { 43, AweKr(0, 127), 55, 6021, 53, ms });
+            m.Simple(1, false, new[] { 43, AweKr(0, 59), 55, 6100, 53, mf }, new[] { 43, AweKr(60, 127), 55, 5000, 58, 62, 53, mf });
+            AweSf2 f = AweBuildCard(s, m, null, true, true);
+            Eq("completed from the card's General MIDI set (SBAWE32.MDI), 2 zones tuned", AweNote, "what Build says");
+            EqList(new[] { "root 60 fine -21", "root 60 fine -21", "root 60 fine 5", "root 60", "root 60 fine -21", "root 60", "root 72", "root 60", "root 60 scale 50" },
+                f.ZonesOf(0, 0).Take(9).Select(x => AweTune(x)).ToList(), "the bank's zones");
+            Eq("root 60", AweTune(f.ZonesOf(128, 0)[0]), "drum kit: left alone");
+            Eq("root 60 fine -21", AweTune(f.ZonesOf(0, 0)[9]), "the card's own zone on the free keys (80-127): as the card has it");
+            Eq("root 61", AweTune(f.ZonesOf(0, 1)[0]), "the card's other program: as the card has it");
+            EqList(new[] { "root 60", "root 60", "root 60 fine 5", "root 60", "root 60 fine -21", "root 60", "root 72", "root 60", "root 60 scale 50" },
+                AweBuildCard(s, m, null, true, false).ZonesOf(0, 0).Take(9).Select(x => AweTune(x)).ToList(), "not tuning: as written");
+        }
+
+        [Test] static void Awe_PrepareAwe_SaysWhatTheBankIs()
+        {
+            AweSbk s; AweMdi m; AweDls d;
+            AweCardInputs(out s, out m, out d);
+            LaunchKit.Game();
+            string snd = Path.Combine(GameDir, "TNOVA", "SOUND");
+            PutFile(Path.Combine(snd, "FF.SBK"), s.Image());
+            PutFile(Path.Combine(snd, "SBAWE32.MDI"), m.Image());
+            PutFile(Path.Combine(ExeDir, "awe32.raw"), AweRomImage());
+            string conf = null, sf2 = Path.Combine(ExeDir, "TNPlus_awe32.sf2");
+            string said = LaunchKit.Said(() => conf = PrepareAwe("TNOVA"));
+            Has(said, "AWE32 bank: completed from the card's General MIDI set (SBAWE32.MDI).", "the default: completed and tuned");
+            Eq(Path.Combine(ExeDir, "TNPlus_music.conf"), conf, "the music conf");
+            EqList(new[] { "0:0 Piano", "0:5 Program 5", "0:61 Brass", "128:0 Kit" }, AwePresets(new AweSf2(File.ReadAllBytes(sf2))), "the soundfont written");
+            OptAweExact = true;
+            said = LaunchKit.Said(() => conf = PrepareAwe("TNOVA"));
+            Has(said, "AWE32 bank: the card as it was (the bank alone).", "awe32_exact");
+            Eq(129, new AweSf2(File.ReadAllBytes(sf2)).Presets().Count, "the soundfont written: the bank's programs, the first one for the others");
         }
 
         [Test] static void Awe_SameInputSameBank()

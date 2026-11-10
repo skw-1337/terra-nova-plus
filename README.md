@@ -12,7 +12,7 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **Noclip** | `U` | Free flight: your usual move keys, `Space` / `Left Ctrl` up/down, `Left Shift` ×4 speed. Great to explore the maps and look at the scenery. |
 | **View distance** | `J` | `NORMAL` / `FAR`: the fog is pushed back, the horizon opens up. |
 | **Display** | — | `ORIGINAL`, `320x400` (the engine's best resolution, applied in every mission: the game normally only keeps it in save files), or HD: `640x400` (the 3D drawn at twice the width), `848x480` or `1280x720` (true 16:9). |
-| **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD): the 3D is drawn in a real 16:9 picture (848 columns, sharper than STRETCHED), the cockpit and HUD are stretched to the full width like in STRETCHED. `TRUE 720`: the same in 1280x720. |
+| **Widescreen 16:9** | — | `STRETCHED`: DOSBox stretches the picture to 16:9 and the tool widens the field of view to match (correct proportions in the 3D, the cockpit is stretched). `TRUE` (HD): the 3D is drawn in a real 16:9 picture (848 columns, sharper than STRETCHED), the cockpit and HUD are stretched to the full width like in STRETCHED, the menus and briefings keep their own proportions. `TRUE 720`: the same in 1280x720. |
 | **Scaling** | — | `SHARP` (default): DOSBox draws with OpenGL and its sharp shader, every pixel the same size on screen, less shimmer when the view moves. `GAME'S OWN`: the edition's setting. |
 | **Field of view** | — | `GAME` / `90` / `100` / `110` degrees for the 3D view, cockpit and full view, at every zoom level (the game: 84.5, about 101 in 16:9). The small cockpit cameras keep theirs. Works in 4:3 and in 16:9. |
 | **Terrain detail** | — | `GAME` / `SHARP` / `SHARPER`: smooth ground up to 32 or 48 cells instead of 12 (no stair steps on near slopes), more detail far away. |
@@ -81,6 +81,7 @@ The turret, descrambler and infrared fixes come from Callemann's [TNova Native](
 
 ### True 16:9 and field of view (beta 5)
 - **Widescreen TRUE** (with HD): the game runs in an 848x480 mode and the 3D is drawn 848 pixels wide, so you see more on the sides, not a stretched picture. The cockpit and HUD are stretched to the full width (`wide_hud = 0` keeps them centred).
+- Menus, briefings and their videos keep their 4:3 proportions, in the middle with black on the sides (`wide_menus = 1` stretches them like before). The small 320x200 videos (intro, cutscenes) are still stretched.
 - **Field of view** 90, 100 or 110 degrees, in 4:3 and 16:9, at every zoom level.
 
 ![True 16:9](docs/beta5_true169_small.png)
@@ -123,7 +124,9 @@ The catch: nine sounds out of ten in that bank live in the ROM chip of the real 
 2. Put it in the same folder as `TNPlus.exe` (keep the tool in its own folder, it writes a few files next to itself).
 3. Start the launcher and pick AWE32 in Music: the notice line under the settings says if the ROM was found.
 
-The launcher looks for the file again whenever you change a setting and when you click Launch, no need to restart it. It looks for the exact name `awe32.raw`, in its own folder only (not the game's), and the file must be exactly 1 048 576 bytes, a truncated or different dump counts as not found. Without the file, AWE32 stays selectable but the notice says the ROM wasn't found and music plays on Roland (same for a `music = AWE32` in `TNPlus.ini`, the console says it too). It's experimental: a few instruments are still slightly out of tune, and I have no real card to compare with. The percussion the bank doesn't define is played with the Windows sound set.
+The launcher looks for the file again whenever you change a setting and when you click Launch, no need to restart it. It looks for the exact name `awe32.raw`, in its own folder only (not the game's), and the file must be exactly 1 048 576 bytes, a truncated or different dump counts as not found. Without the file, AWE32 stays selectable but the notice says the ROM wasn't found and music plays on Roland (same for a `music = AWE32` in `TNPlus.ini`, the console says it too).
+
+I have no real card, so what it played was checked by running the game's own AWE32 driver (`SOUND\SBAWE32.MDI`) in an emulator. The bank has a few flaws of its own: the music asks for a bird tweet, two dulcimer keys and four percussion keys (the maracas among them) that it doesn't have, and the card stayed silent there (a piano note for the bird). About a dozen of its instruments are also slightly out of tune, by 6 to 21 cents (whistle, low recorder, piano bass, basses...). By default the tool fills the gaps with the AWE32's own General MIDI sounds, read from that driver file in your game folder, and tunes those instruments. `awe32_exact = 1` in `TNPlus.ini` gives the card as it was. Still experimental.
 
 ### Demos
 
@@ -166,7 +169,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 
 - **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
 - **Noclip**: land before switching it off — switching it off in mid-air means a free fall.
-- **Widescreen STRETCHED** is anamorphic: the engine draws 320 pixels across, so the cockpit and the menus are stretched a little; the 3D keeps correct proportions. **TRUE** needs HD and the game started from the launcher. The cockpit and HUD are stretched like in STRETCHED (`wide_hud = 0` keeps them at their own proportions in the middle, with black above and below the 3D on the sides), the menus are stretched too, and the mouse is captured when you click in the window (DOSBox releases it with its usual key).
+- **Widescreen STRETCHED** is anamorphic: the engine draws 320 pixels across, so the cockpit and the menus are stretched a little; the 3D keeps correct proportions. **TRUE** needs HD and the game started from the launcher. The cockpit and HUD are stretched like in STRETCHED (`wide_hud = 0` keeps them at their own proportions in the middle, with black above and below the 3D on the sides), the menus and briefings keep their proportions with black on the sides (`wide_menus = 1` stretches them), and the mouse is captured when you click in the window (DOSBox releases it with its usual key).
 - Keys are **physical key positions**: `Y`, `U`, `J` are the same keys on QWERTY and AZERTY. To change one, click its purple key in the launcher and press the new key (`Esc` cancels), or edit `TNPlus.ini`. Freelook is on `Y`, so the game's own `Y` (previous target) moves to `K`. An ini still on the old keys is moved once.
 
 ## Settings (`TNPlus.ini`)
@@ -183,6 +186,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `small_views` | `1` | 1280x720: the cockpit cameras drawn in HD |
 | `update_check` | `1` | the launcher asks GitHub for the latest release number at start-up and shows UP TO DATE or UPDATE (click opens the download page), `0` = no check |
 | `wide_hud` | `1` | true 16:9: `1` cockpit and HUD stretched to the full width, `0` centred at their own proportions |
+| `wide_menus` | `0` | true 16:9: `0` menus, briefings and their videos at their own proportions (black on the sides), `1` stretched to the full width |
 | `edge_objects` | `1` | with a wider field of view or true 16:9, terrain and objects are built up to the screen edges (beta) |
 | `view_distance` | `FAR` | `NORMAL` or `FAR` at start |
 | `sensitivity_x`, `sensitivity_y` | `12`, `8` | mouse speed (heading / pitch units per mouse count) |
@@ -200,6 +204,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 | `object_distance` | `MAX` | `GAME`, `FAR` or `MAX`: how far scenery, units and buildings are drawn |
 | `cpu_cycles` | `1800000` | DOSBox CPU cycles set at launch, `0` = keep the edition's own setting |
 | `music` | `ROLAND` | `ROLAND`, `FM`, `GAME'S OWN` or `AWE32` (needs `awe32.raw`) |
+| `awe32_exact` | `0` | AWE32: `1` = the bank as the real card played it, gaps and tuning included |
 | `stereo_fix` | `0` | `1` = swap the Sound Blaster stereo back in DOSBox |
 | `scaling` | `SHARP` | `SHARP` (OpenGL, sharp shader: pixels of equal size) or `GAME'S OWN` |
 | `launch` | `GAME` | `GAME`, `DEMO 1` or `DEMO 2` |
@@ -275,6 +280,7 @@ It builds `tests\TNPlusTests.exe` from the same sources as `TNPlus.exe` (the one
 | Speed fixes (1280x720) | DOSBox runs some instructions through its slow interpreter (SETcc, REPE CMPSB, an opcode the game rewrites at every line), and some loops cost several translated blocks per pixel. The game rewrites those spots itself at its first 3D frame, each group checked first. Same pixels. |
 | Far terrain shading (1280x720) | beyond the polygon ring the ground is drawn in columns, shaded across but flat down each column, so the shade jumped at each ring edge. It is now interpolated down each column too. |
 | True 16:9 (848x480) | the game's driver sets its 640x400 mode through a table of VESA modes: that entry is switched to DOSBox's 848x480 (`vesa_modes = all`), and the scan line set to 848 right after the game switches (its own call asks for 640). The HD composition stretches the 320x400 game screen to 848 columns (one row in five doubled, 400 to 480 rows) and, wherever the game shows the 3D, takes the pixel of the main view, drawn 848 columns wide, at the same column (`wide_hud = 0`: game screen in the middle at x2, black above and below the 3D on the sides). The engine takes its horizontal scale from the drawing width, so on its own that only stretched the picture (and buildings, drawn by the 3D library with their own scale, slid on the ground); the main camera gets the same correction as stretched 16:9 with F = 2 x its canvas width / 848 (298 in the cockpit, 320 in the full view): vertical scale x1/F at its set-up and zoom x F, while the library's pixel ratio stays the game's (its horizontal object scale works out from the canvas height, so objects sit right on the terrain), so the centre is the usual HD view and the sides show more of the world (the polygon terrain builder is limited to its 135° window). The engine's per-column tables are enlarged to 848 columns, which is why `__FF.EXE` gets 24 KB of extra memory now (16 KB before). |
+| Menus in true 16:9 | the game's 2D library calls an optional routine of its video driver after every mode change, an empty slot in the driver's table. A routine of ours goes there. For the 640x480 mode of the menus it switches the driver's VESA number to DOSBox's 848x480, has the driver set the mode again, sets the scan line to 848 and gives the library a screen that starts 104 pixels in, so the game draws its 640x480 picture in the middle. The video player has its own small mode table, which gets the same, and colour 0 is kept black on those screens (the bars are made of it, and a few menu palettes have a dark blue there). Only the game's data is changed, none of its code; the routine sits in the unused end of the last code page and is written before the game's first screen. |
 
 ## Credits
 
