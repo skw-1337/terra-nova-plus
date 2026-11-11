@@ -63,7 +63,12 @@ static partial class TNPlus
             long lp = m.LParam.ToInt64();
             int vk = (int)m.WParam.ToInt64(), scan = (int)((lp >> 16) & 0xFF);
             bool ext = ((lp >> 24) & 1) != 0;
-            if (vk == 0x10 || vk == 0x11 || vk == 0x12 || (vk >= 0xA0 && vk <= 0xA5)) return true;   // a modifier: wait for the key
+            if (vk == 0x10 || vk == 0x11 || vk == 0x12 || (vk >= 0xA0 && vk <= 0xA5))
+            {
+                // a modifier: wait for the key. Shift pressed for the bound: its own key, the bound goes back on it
+                if (rebindGame == null || rebindGame.Id != "bound" || !(vk == 0x10 || vk == 0xA0 || vk == 0xA1)) return true;
+                scan = 0x2A; ext = false;
+            }
             string msg;
             if (vk == 0x1B) msg = "unchanged";
             else if (rebindGame != null)
@@ -154,7 +159,8 @@ static partial class TNPlus
             rebindKey = -1; mouseGame = null; mouseTool = -1;
             rebindGame = rebindGame == g ? null : g;
             GuiRefresh();
-            guiHelp.Text = rebindGame == null ? "> unchanged" : "> press the new key for " + g.Name.ToLowerInvariant() + ", alone or with Alt, Ctrl or Shift (Esc cancels)";
+            guiHelp.Text = rebindGame == null ? "> unchanged" : g.Id == "bound" ? "> press the key to hold for bounding, a key alone; Shift puts it back on Shift (Esc cancels)"
+                : "> press the new key for " + g.Name.ToLowerInvariant() + ", alone or with Alt, Ctrl or Shift (Esc cancels)";
         };
     }
 
