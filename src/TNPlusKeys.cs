@@ -35,6 +35,12 @@ static partial class TNPlus
         k("MOVEMENT", "stop", "Stop", 0x1F, 0, false); k("MOVEMENT", "sidel", "Sidestep left", 0x2C, 0, false);
         k("MOVEMENT", "sider", "Sidestep right", 0x2E, 0, false); k("MOVEMENT", "jump", "Jump jets", 0x39, 0, false);
         k("MOVEMENT", "crouch", "Crouch", 0x29, 0, false);
+        // Shift held with a move key is the game's Bound (its key card: "SHIFT + any motion key"): a leap that way
+        // every four strides, 2.3 units a second against 1.6 walking. The game reads the state of the Shift key itself
+        // for it. The command's key is Shift, and only its: put on another key (a key alone), that key holds Shift
+        // down for the game, translated to 0x2A like any moved command (Shift still bounds too: the modifiers are
+        // never translated). Pressing Shift for it puts it back.
+        k("MOVEMENT", "bound", "Bound (hold)", 0x2A, 0, false);
         k("VIEW", "lookup", "Look up", 0x13, 0, false); k("VIEW", "lookdn", "Look down", 0x2F, 0, false);
         k("VIEW", "lookl", "Look left", 0x10, 0, false); k("VIEW", "lookr", "Look right", 0x12, 0, false);
         k("VIEW", "centre", "Centre view", 0x21, 0, false); k("VIEW", "v360", "360 view", 0x30, 0, false);
@@ -80,7 +86,7 @@ static partial class TNPlus
             case 0xC9: return "PGUP"; case 0xD1: return "PGDN"; case 0xC7: return "HOME"; case 0xCF: return "END";
             case 0xC8: return "UP"; case 0xD0: return "DOWN"; case 0xCB: return "LEFT"; case 0xCD: return "RIGHT";
             case 0xD2: return "INS"; case 0xD3: return "DEL"; case 0x01: return "ESC"; case 0x39: return "SPACE";
-            case 0x1C: return "ENTER"; case 0x0F: return "TAB";
+            case 0x1C: return "ENTER"; case 0x0F: return "TAB"; case 0x2A: return "SHIFT";
         }
         return KeyName(sc);
     }
@@ -94,6 +100,7 @@ static partial class TNPlus
         int mod = 0; string s = v.ToUpperInvariant();
         for (int m = 1; m < 4; m++) if (s.StartsWith(MOD_NAMES[m] + "+")) { mod = m; s = s.Substring(MOD_NAMES[m].Length + 1); }
         int sc = Convert.ToInt32(s, 16);
+        if (g.Id == "bound" && mod != 0) return;      // (a key alone: a chord written by hand is left out)
         if (sc > 0 && sc < 0x80) { g.Sc = sc; g.Mod = mod; }
     }
     static string GameKeysIni()
@@ -106,6 +113,7 @@ static partial class TNPlus
     static void ResetKeys()
     {
         ChosenLayout = -1;
+        boundPut = null;
         foreach (GameKey g in GameKeys) g.Mouse = 0;
         for (int i = 0; i < ToolMouse.Length; i++) ToolMouse[i] = 0;
         foreach (GameKey g in GameKeys) { g.Sc = g.DefSc; g.Mod = g.DefMod; }
@@ -211,9 +219,32 @@ static partial class TNPlus
         return GameKeys.Find(g => g != except && g.Sc == sc && g.Mod == mod);
     }
 
+    // The command the bound took its key from went to a spare key (it cannot have Shift). Remembered, so that the bound
+    // put back on Shift gives it its key back: it stayed on the spare key, its own key doing nothing in missions.
+    static GameKey boundPut = null;
+    static int boundPutKey = 0, boundPutSpare = 0;
+
     // a game command gets a new key; returns the message to show
     static string AssignGameKey(GameKey g, int sc, int mod, bool ext)
     {
+        bool bound = g.Id == "bound";
+        if (bound && !ext && sc == g.DefSc)           // Shift pressed for the bound: back on its own key
+        {
+            if (g.Sc == sc && g.Mod == 0) return g.Name.ToLowerInvariant() + ": unchanged";
+            int was = g.Sc;
+            g.Sc = sc; g.Mod = 0;
+            string back = g.Name.ToLowerInvariant() + ": " + ChordName(sc, 0);
+            if (boundPut != null && was == boundPutKey && boundPut.Sc == boundPutSpare && boundPut.Mod == 0
+                && GameKeyOwner(was, 0, null) == null && ToolKeyOwner(was, -1) < 0)
+            {
+                boundPut.Sc = was; boundPut.Mod = 0;
+                back += ", " + boundPut.Name.ToLowerInvariant() + " back on " + ChordName(was, 0);
+            }
+            boundPut = null;
+            return back;
+        }
+        if (bound && mod != 0 && !ext && sc > 1 && sc < 0x80 && Array.IndexOf(MODIFIER_SC, sc) < 0)
+            return "the bound is a key you hold: a key alone, without Alt, Ctrl or Shift";
         if (ext || sc <= 1 || sc >= 0x80 || Array.IndexOf(MODIFIER_SC, sc) >= 0)
             return ext ? "PgUp / PgDn, Home / End, Ins / Del go on the green badge, as a second bind (the arrows are the game's own)" : "that key can't be used: pick another one";
         if (sc == g.Sc && mod == g.Mod) return g.Name.ToLowerInvariant() + ": unchanged";
@@ -222,8 +253,21 @@ static partial class TNPlus
         if (o != null && o.Fixed) return ChordName(sc, mod) + " is the game's " + o.Name.ToLowerInvariant() + " key: pick another one";
         if (t >= 0 && (g.Mod != 0 || g.Sc >= 0x80 || Array.IndexOf(KEY_RESERVED, g.Sc) >= 0))
             return ChordName(sc, mod) + " is Terra Nova Plus " + KEY_WHAT[t] + ": change that one first";
+        // the command whose key is taken gets this one's old key; not Shift, which is the bound's alone: a spare key
+        int oSc = g.Sc, oMod = g.Mod;
+        if (o != null && Array.IndexOf(MODIFIER_SC, g.Sc) >= 0)
+        {
+            oSc = 0; oMod = 0;
+            foreach (int f in SPARE_KEYS)
+                if (oSc == 0 && f != sc && ToolKeyOwner(f, -1) < 0 && GameKeyOwner(f, 0, null) == null) oSc = f;
+            if (oSc == 0) return ChordName(sc, mod) + " is the " + o.Name.ToLowerInvariant() + " key, with no free key left for it: move that one first";
+            boundPut = o; boundPutKey = sc; boundPutSpare = oSc;
+        }
+        // the bound's key is a key alone (the game reads that key's own state): a swap that would hand it a chord or
+        // an extended key (Drone up's CTRL+PGUP) puts it back on its own key, Shift
+        if (o != null && o.Id == "bound" && (oMod != 0 || oSc >= 0x80)) { oSc = o.DefSc; oMod = 0; }
         string msg = g.Name.ToLowerInvariant() + ": " + ChordName(sc, mod);
-        if (o != null) { o.Sc = g.Sc; o.Mod = g.Mod; msg += ", " + o.Name.ToLowerInvariant() + " moved to " + ChordName(o.Sc, o.Mod); }
+        if (o != null) { o.Sc = oSc; o.Mod = oMod; msg += ", " + o.Name.ToLowerInvariant() + " moved to " + ChordName(o.Sc, o.Mod); }
         if (t >= 0) { SetKey(t, g.Sc); msg += ", " + KEY_WHAT[t] + " moved to " + ScanName(g.Sc); }
         g.Sc = sc; g.Mod = mod;
         return msg;

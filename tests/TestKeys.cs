@@ -101,6 +101,7 @@ static partial class TNPlus
                 seen[c] = g.Id;
                 if (g.Mod == 0 && g.Sc < 0x80 && ToolKeyOwner(g.Sc, -1) >= 0) Fail(when + ": " + g.Id + " on the key of " + KEY_WHAT[ToolKeyOwner(g.Sc, -1)]);
                 if (g.Fixed && g.Changed) Fail(when + ": fixed command " + g.Id + " moved to " + KeysChord(g.Sc, g.Mod));
+                if (g.Id == "bound" && (g.Mod != 0 || g.Sc >= 0x80)) Fail(when + ": the bound on " + KeysChord(g.Sc, g.Mod) + " (a key alone)");
                 if (g.Sc >= 0x80 && !GameKeys.Exists(d => d.DefSc == g.Sc && d.DefMod == g.Mod)) Fail(when + ": " + g.Id + " on an extended key no command has: " + KeysChord(g.Sc, g.Mod));
             }
             for (int m = 1; m < MOUSE_INI.Length; m++)
@@ -146,7 +147,7 @@ static partial class TNPlus
         // ================================================================== the command table
         [Test] static void Keys_Table_CommandsAndIds()
         {
-            Eq(60, GameKeys.Count, "commands of the game's key card");
+            Eq(61, GameKeys.Count, "commands of the game's key card, and the bound");
             List<string> ids = new List<string>(), names = new List<string>();
             foreach (GameKey g in GameKeys)
             {
@@ -193,7 +194,7 @@ static partial class TNPlus
                 Ok(i >= last, g.Id + ": group " + g.Group + " after " + KEY_GROUPS[last] + " (the KEYBOARD tab lists them in table order)");
                 last = i; count[i]++;
             }
-            EqList(new[] { 9, 11, 7, 16, 8, 3, 6 }, count, "commands per group");
+            EqList(new[] { 10, 11, 7, 16, 8, 3, 6 }, count, "commands per group (movement: the key card's nine and the bound)");
         }
 
         [Test] static void Keys_Table_FixedCommands()
@@ -658,6 +659,118 @@ static partial class TNPlus
                 foreach (int mod in new[] { 0, 2 })
                     Eq(KeysBadMsg, AssignGameKey(KeysG("fwd"), sc, mod, false), "scancode 0x" + sc.ToString("X2") + " mod " + mod);
             Eq(before, KeysSnap(), "nothing changed");
+        }
+
+        // ---- the bound (the key card's "SHIFT + any motion key"): Shift held with a move key. Its key is Shift, and only its
+        [Test] static void Keys_Bound_IsShiftByDefault()
+        {
+            KeysStart();
+            GameKey bound = KeysG("bound");
+            Eq("MOVEMENT", bound.Group, "with the move keys");
+            Eq(0x2A, bound.DefSc, "left Shift"); Eq(0, bound.DefMod, "alone");
+            Ok(!bound.Fixed && !bound.Changed, "can be changed, on its own key at the start");
+            Eq("SHIFT", ChordName(bound.Sc, bound.Mod), "its name, whatever the Windows keyboard");
+            Eq("bound (hold): unchanged", AssignGameKey(bound, 0x2A, 0, false), "Shift pressed for it while it is on Shift");
+            Eq("bound (hold): unchanged", AssignGameKey(bound, 0x2A, 1, false), "(the page sees Shift held as a modifier too)");
+            Ok(GameKeysIni().IndexOf("key_game_bound") < 0, "no ini line for the default");
+            KeysCheck("the bound at the start");
+        }
+
+        [Test] static void Keys_Bound_OnAnotherKeyAndBack()
+        {
+            KeysStart();
+            GameKey bound = KeysG("bound");
+            Eq("bound (hold): L", AssignGameKey(bound, 0x26, 0, false), "a free key");
+            Ok(bound.Changed, "changed");
+            Eq(0x8000 | 0x2A, KeysMap()[0x26 * 4], "the key map: L gives the game left Shift");
+            Has(GameKeysIni(), "key_game_bound = 26", "its ini line");
+            KeysCheck("the bound on L");
+            Eq("the bound is a key you hold: a key alone, without Alt, Ctrl or Shift", AssignGameKey(bound, 0x26, 2, false), "no chord for it");
+            Eq(0x26, bound.Sc, "still on L"); Eq(0, bound.Mod, "alone");
+            Eq("bound (hold): SHIFT", AssignGameKey(bound, 0x2A, 1, false), "Shift pressed for it: back on Shift");
+            Ok(!bound.Changed, "the game's own again");
+            Eq(0, KeysMap()[0x26 * 4], "the key map: L is free again");
+            ParseGameKey("bound", "26");
+            Eq(0x26, bound.Sc, "read back from the ini");
+            KeysCheck("the bound read from the ini");
+        }
+
+        [Test] static void Keys_Bound_TakesACommandsKey()
+        {
+            KeysStart();                                // (previous target is on K, the first spare key)
+            GameKey bound = KeysG("bound");
+            Eq("bound (hold): W, forward moved to L", AssignGameKey(bound, 0x11, 0, false), "from Shift: forward does not get Shift");
+            Eq(0x26, KeysG("fwd").Sc, "forward on the next spare key"); Eq(0, KeysG("fwd").Mod, "alone");
+            KeysCheck("the bound on W");
+            Eq("bound (hold): S, stop moved to W", AssignGameKey(bound, 0x1F, 0, false), "from a plain key: the usual swap");
+            Eq("forward: SHIFT+S", AssignGameKey(KeysG("fwd"), 0x1F, 1, false), "Shift is still a modifier for the others");
+            Eq(KeysBadMsg, AssignGameKey(KeysG("fwd"), 0x2A, 0, false), "but never another command's key");
+            KeysCheck("after the swaps");
+        }
+
+        [Test] static void Keys_Bound_NotOnAToolKeyFromShift()
+        {
+            KeysStart();
+            string before = KeysSnap();
+            Eq("Y is Terra Nova Plus freelook: change that one first", AssignGameKey(KeysG("bound"), 0x15, 0, false), "freelook can't go on Shift");
+            Eq(before, KeysSnap(), "nothing changed");
+        }
+
+        [Test] static void Keys_Bound_GetsNoChordInASwap()
+        {
+            KeysStart();
+            GameKey bound = KeysG("bound"), fwd = KeysG("fwd");
+            Eq("bound (hold): L", AssignGameKey(bound, 0x26, 0, false), "the bound on a plain key");
+            Eq("forward: SHIFT+W", AssignGameKey(fwd, 0x11, 1, false), "forward on a chord");
+            string msg = AssignGameKey(fwd, 0x26, 0, false);          // forward takes the bound's key
+            Eq(0x26, fwd.Sc, "forward on L"); Eq(0, fwd.Mod, "alone");
+            Eq(0, bound.Mod, "the bound never gets a chord (" + msg + ")");
+            Eq(0x2A, bound.Sc, "it goes back on its own key, Shift");
+            Ok(!bound.Changed, "the game's own again");
+            Has(msg, "bound (hold) moved to SHIFT", "and the message says so");
+            KeysCheck("after the swap");
+        }
+
+        [Test] static void Keys_Bound_GetsNoExtendedKeyInASwap()
+        {
+            KeysStart();
+            GameKey bound = KeysG("bound"), up = KeysG("d_up");
+            Eq("bound (hold): L", AssignGameKey(bound, 0x26, 0, false), "the bound on a plain key");
+            string msg = AssignGameKey(up, 0x26, 0, false);            // Drone up (CTRL+PGUP) takes the bound's key
+            Eq(0x26, up.Sc, "drone up on L"); Eq(0, up.Mod, "alone");
+            Eq(0x2A, bound.Sc, "the bound back on Shift, not on PGUP (" + msg + ")"); Eq(0, bound.Mod, "alone");
+            Has(msg, "bound (hold) moved to SHIFT", "and the message says so");
+            KeysCheck("after the swap");
+        }
+
+        [Test] static void Keys_Bound_NoChordFromTheIni()
+        {
+            KeysStart();
+            GameKey bound = KeysG("bound");
+            ParseGameKey("bound", "ALT+1E");
+            Eq(0x2A, bound.Sc, "a chord written by hand is left out"); Eq(0, bound.Mod, "alone");
+            ParseGameKey("bound", "26");
+            Eq(0x26, bound.Sc, "a plain key is read");
+            KeysCheck("after the ini");
+        }
+
+        [Test] static void Keys_Bound_BackOnShiftGivesTheKeyBack()
+        {
+            KeysStart();
+            GameKey bound = KeysG("bound"), fwd = KeysG("fwd");
+            Eq("bound (hold): W, forward moved to L", AssignGameKey(bound, 0x11, 0, false), "the bound takes forward's key");
+            Eq("bound (hold): SHIFT, forward back on W", AssignGameKey(bound, 0x2A, 0, false), "a change of mind: Shift again");
+            Eq(0x11, fwd.Sc, "forward on W again"); Eq(0, fwd.Mod, "alone");
+            Ok(!fwd.Changed && !bound.Changed, "both the game's own again");
+            Eq(0, KeysMap()[0x11 * 4], "the key map: nothing left for W");
+            Eq(0, KeysMap()[0x26 * 4], "nor for L");
+            KeysCheck("after the way back");
+            // not when the spare key was given to something else meanwhile
+            Eq("bound (hold): W, forward moved to L", AssignGameKey(bound, 0x11, 0, false), "again");
+            Eq("forward: P", AssignGameKey(fwd, 0x19, 0, false).Split(',')[0], "forward moved on by the player");
+            Eq("bound (hold): SHIFT", AssignGameKey(bound, 0x2A, 0, false), "Shift again: forward is left where the player put it");
+            Eq(0x19, fwd.Sc, "forward still on P");
+            KeysCheck("after the second way back");
         }
 
         [Test] static void Keys_AssignGame_Unchanged()
