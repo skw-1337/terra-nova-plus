@@ -15,7 +15,7 @@ static partial class TNPlus
         // what a new ini holds (no TNPlus.ini at start-up): every "key = value" line SaveSettings writes, in its order.
         // The game's previous target (Y) is on K: freelook has Y (ResolveToolClashes, first spare key K).
         static readonly string[] IniDefaults = {
-            "display = HD", "launch = GAME", "freelook = 1", "noclip = 0", "view_distance = FAR", "terrain_detail = SHARPER",
+            "display = HD", "launch = GAME", "freelook = 1", "noclip = 0", "shift_run = 0", "view_distance = FAR", "terrain_detail = SHARPER",
             "terrain_fps = 60", "widescreen = 3", "wide_hud = 1", "wide_menus = 0", "fps_counter = 1", "speed_fixes = 1", "small_views = 1",
             "update_check = 1", "stereo_fix = 0", "scaling = SHARP", "music = ROLAND", "awe32_exact = 0", "hit_fix = 1", "phys_fix = 1",
             "thick_smoke = 0", "field_of_view = GAME", "object_distance = MAX", "edge_objects = 1",
@@ -28,7 +28,7 @@ static partial class TNPlus
         static string[] IniFull(string gameDir)
         {
             return new[] {
-                "display = 320X400", "launch = DEMO 2", "freelook = 0", "noclip = 1", "view_distance = NORMAL",
+                "display = 320X400", "launch = DEMO 2", "freelook = 0", "noclip = 1", "shift_run = 1", "view_distance = NORMAL",
                 "terrain_detail = SHARP", "terrain_fps = 45", "widescreen = 1", "wide_hud = 0", "wide_menus = 1", "fps_counter = 0",
                 "speed_fixes = 0", "small_views = 0", "update_check = 0", "stereo_fix = 1", "scaling = GAME'S OWN",
                 "music = AWE32", "awe32_exact = 1", "hit_fix = 0", "phys_fix = 0", "thick_smoke = 1", "field_of_view = 110",
@@ -257,7 +257,7 @@ static partial class TNPlus
             string said = IniLoad();
             Eq("", said.Trim(), "nothing printed (no bad setting)");
             Eq(1, Display, "display"); Eq(2, LaunchTarget, "launch");
-            No(OptFreelook, "freelook"); Ok(OptNoclip, "noclip");
+            No(OptFreelook, "freelook"); Ok(OptNoclip, "noclip"); Ok(OptRun, "shift_run");
             Eq(0, OptDistance, "view_distance"); Eq(1, OptDetail, "terrain_detail"); Eq(45, OptTerrainFps, "terrain_fps");
             Eq(1, WideMode(), "widescreen"); Ok(OptWide, "OptWide"); No(OptWideTrue, "OptWideTrue"); No(OptHd720, "OptHd720");
             No(OptWideHud, "wide_hud"); Ok(OptWideMenus, "wide_menus"); No(OptFpsCounter, "fps_counter"); No(OptSpeedFix, "speed_fixes");

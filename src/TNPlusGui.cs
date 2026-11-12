@@ -292,7 +292,7 @@ static partial class TNPlus
             }
         }
     }
-    static CheckBox ckFree, ckClip, ckStereo, ckHit, ckPhys, ckSmoke;
+    static CheckBox ckFree, ckClip, ckStereo, ckHit, ckPhys, ckSmoke, ckRun;
     static bool guiBusy;                            // refreshing the controls: ignore their events
     static Action guiRedrawGame;
 
@@ -398,8 +398,9 @@ static partial class TNPlus
         cbScale = Combo(pPic, "Scaling", 6, SCALING_NAMES, null, "How DOSBox scales the picture to your screen. SHARP: every pixel the same size, edges still sharp (OpenGL, sharp shader): much less shimmer when the view moves. GAME'S OWN: the edition's setting (Direct3D, nearest pixels of uneven sizes). Needs the game launched from here.");
         Panel pSnd = Pane(f, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));
         cbMusic = Combo(pSnd, "Music", 0, MUSIC_NAMES, "BETA", "");   // AWE32 always offered: found or not is shown below
-        Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(1));
+        Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(2));
         ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), ""); KeyBadge(lastBadge, 0);
+        ckRun = Switch(pCtl, "Run on Shift", 1, null, "Shift + a move key is the game's Bound: a leap every four strides, its only fast pace. ON: a run at about the same pace, without the leap. OFF: the game's own.");
         Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(4));
         ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), ""); KeyBadge(lastBadge, 3);
         ckHit = Switch(pFix, "Projectile hits", 1, null, "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
@@ -460,6 +461,7 @@ static partial class TNPlus
         cbScale.Changed += delegate { if (!guiBusy) { OptScaling = cbScale.Index; GuiRefresh(); } };
         cbFov.Changed += delegate { if (!guiBusy) { OptFov = cbFov.Index; GuiRefresh(); } };
         ckFree.CheckedChanged += delegate { if (!guiBusy) { OptFreelook = ckFree.Checked; GuiRefresh(); } };
+        ckRun.CheckedChanged += delegate { if (!guiBusy) { OptRun = ckRun.Checked; GuiRefresh(); } };
         ckClip.CheckedChanged += delegate { if (!guiBusy) { OptNoclip = ckClip.Checked; GuiRefresh(); } };
         ckStereo.CheckedChanged += delegate { if (!guiBusy) { OptStereoFix = ckStereo.Checked; GuiRefresh(); } };
         cbMusic.Changed += delegate { if (!guiBusy) { OptMusic = cbMusic.Index; GuiRefresh(); } };
@@ -531,7 +533,7 @@ static partial class TNPlus
         foreach (KeyValuePair<Label, GameKey> mb in mouseBadges) PaintMouseBadge(mb.Key, mb.Value.Mouse, mouseGame == mb.Value);
         foreach (KeyValuePair<Label, int> mb in mouseToolBadges) PaintMouseBadge(mb.Key, ToolMouse[mb.Value], mouseTool == mb.Value);
         cbDisplay.Set(GuiDisplay()); cbWide.Set(WideMode()); cbDetail.Set(OptDetail); cbDist.Set(OptDistance); cbObj.Set(OptObjDist); cbFov.Set(OptFov); cbScale.Set(OptScaling);
-        ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix;
+        ckFree.Checked = OptFreelook; ckClip.Checked = OptNoclip; ckStereo.Checked = OptStereoFix; ckRun.Checked = OptRun;
         bool aweRom = AweRom() != null;
         cbMusic.Set(OptMusic);
         cbMusic.Tag = MUSIC_INFO[OptMusic] + (OptMusic == 3
@@ -542,7 +544,7 @@ static partial class TNPlus
         int sp = Array.IndexOf(CYCLE_CHOICES, CpuCycles);
         if (sp < 0) { var it = new List<string>(SPEED_NAMES); it.Add(CpuCycles.ToString()); cbSpeed.Items = it.ToArray(); sp = SPEED_NAMES.Length; }
         cbSpeed.CycleMax = SPEED_NAMES.Length - 1; cbSpeed.Set(sp);
-        foreach (CheckBox c in new[] { ckFree, ckClip, ckStereo, ckHit, ckPhys, ckSmoke }) Led(c);
+        foreach (CheckBox c in new[] { ckFree, ckClip, ckStereo, ckHit, ckPhys, ckSmoke, ckRun }) Led(c);
         int p = CurrentPreset(); cbPreset.Set(p < 0 ? 3 : p);
         guiPreset.Text = p < 0 ? "Your own settings. A preset starts again from a known mix." : PRESET_INFO[p];
         string warn = "";

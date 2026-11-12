@@ -1465,5 +1465,131 @@ static partial class TNPlus
                 Eq(l, CurrentLayout(), LAYOUT_NAMES[l] + ": the preset still recognized");
             }
         }
+
+        // ---------------------------------------------------------------- run on Shift (RunTick, RunEnd)
+        // a made-up game in a mission: the two routines the run reads its addresses from, the player's entry, the
+        // keyboard library's key states, the 3D view's frame, a driven suit (number 3) whose speed factor is 90
+        const uint RUN_T_WHO = 0x441350, RUN_T_FACTOR = 0x3A56CE, RUN_T_CLOCK = 0x446AE8, RUN_T_BOUND = 0x44135D;
+        const uint RUN_T_KB = 0x3F0000, RUN_T_SUIT = RUN_T_FACTOR + 3 * 0x582;
+        const int RUN_T_90 = 90 << 16, RUN_T_FAST = (int)((90 << 16) * 1.45);
+
+        static FakeGame RunGame(bool withCode)
+        {
+            FakeGame g = new FakeGame();
+            if (withCode)
+            {
+                g.Put(0x23E07E, SigsBytes(RUN_SIG_BOUND, new uint[] { 0xF1AE8, 0xEC35D, 0xEC361 }, 0xCC));     // the copy not relocated
+                g.Put(0x276849, SigsBytes(RUN_SIG_BOUND, new uint[] { RUN_T_CLOCK, RUN_T_BOUND, RUN_T_BOUND + 4 }, 0xCC));
+                g.Put(0x2D7969, SigsBytes(RUN_SIG_FACTOR, new uint[] { RUN_T_WHO, RUN_T_FACTOR }, 0xCC));
+            }
+            aPlayerId = RUN_T_WHO - 2; aMaster = 0x3C3240; aFrame = 0x460000;
+            g.PutShort(RUN_T_WHO, 7); g.PutShort(RUN_T_WHO + 2, 3);
+            g.PutInt(aMaster + 7 * 0x25 + 0x0F, 100 << 16); g.PutInt(aMaster + 7 * 0x25 + 0x13, 200 << 16);
+            g.PutShort(aFrame, 320); g.PutShort(aFrame + 2, 400);
+            kbLibPtr = 0x45D62C; g.PutUInt(kbLibPtr, RUN_T_KB);
+            g.PutInt(RUN_T_SUIT, RUN_T_90);
+            OptRun = true;
+            return g;
+        }
+
+        static void RunShift(FakeGame g, bool left, bool right) { g.Mem[RUN_T_KB + 0x410 + 0x2A] = (byte)(left ? 1 : 0); g.Mem[RUN_T_KB + 0x410 + 0x36] = (byte)(right ? 1 : 0); }
+
+        [Test] static void Run_ShiftRaisesTheFactorAndBlocksTheBound()
+        {
+            using (FakeGame g = RunGame(true))
+            {
+                RunTick();
+                Eq(1, runState, "the two routines found");
+                Eq(RUN_T_WHO + 2, aRunWho, "the driven suit's number"); Eq(RUN_T_FACTOR, aRunFactor, "the factors"); Eq(RUN_T_BOUND, aRunBound, "the Bound's cooldown (the relocated code's)");
+                Eq(RUN_T_90, g.GetInt(RUN_T_SUIT), "no Shift: the suit's own factor");
+                Eq(RUN_FAR, g.GetInt(RUN_T_BOUND), "the Bound never starts");
+                int beat = g.GetInt(RUN_FLAG);
+                Eq(RUN_MAGIC, beat & ~0xFFFF, "the flag for Uplink's bridge");
+                RunShift(g, true, false); RunTick();
+                Eq(RUN_T_FAST, g.GetInt(RUN_T_SUIT), "left Shift: factor x 1.45");
+                Ok(g.GetInt(RUN_FLAG) != beat && (g.GetInt(RUN_FLAG) & ~0xFFFF) == RUN_MAGIC, "the flag's count moves");
+                RunTick(); Eq(RUN_T_FAST, g.GetInt(RUN_T_SUIT), "held: raised once, not again");
+                RunShift(g, false, true); RunTick(); Eq(RUN_T_FAST, g.GetInt(RUN_T_SUIT), "right Shift");
+                RunShift(g, false, false); RunTick(); Eq(RUN_T_90, g.GetInt(RUN_T_SUIT), "let go: the suit's own factor back");
+                g.PutInt(RUN_T_BOUND, 1234); RunTick(); Eq(RUN_FAR, g.GetInt(RUN_T_BOUND), "a cooldown the game set again (new mission): blocked again");
+            }
+        }
+
+        [Test] static void Run_NotOnTheGamesScreens()
+        {
+            using (FakeGame g = RunGame(true))
+            {
+                RunShift(g, true, false); RunTick();
+                Eq(RUN_T_FAST, g.GetInt(RUN_T_SUIT), "in the 3D view");
+                g.PutShort(aFrame, 640); g.PutShort(aFrame + 2, 480); RunTick();
+                Eq(RUN_T_90, g.GetInt(RUN_T_SUIT), "a 640 x 480 screen of the game (a save is made there): the suit's own factor");
+                g.PutShort(aFrame, 320); g.PutShort(aFrame + 2, 400); RunTick();
+                Eq(RUN_T_FAST, g.GetInt(RUN_T_SUIT), "back in the 3D view, Shift still held");
+            }
+        }
+
+        [Test] static void Run_FollowsTheGamesFactorAndTheDrivenSuit()
+        {
+            using (FakeGame g = RunGame(true))
+            {
+                RunShift(g, true, false); RunTick();
+                g.PutInt(RUN_T_SUIT, 60 << 16); RunTick();
+                Eq((int)((60 << 16) * 1.45), g.GetInt(RUN_T_SUIT), "the game changed the factor while Shift is held: raised from the new one");
+                RunShift(g, false, false); RunTick(); Eq(60 << 16, g.GetInt(RUN_T_SUIT), "let go: the game's new factor");
+                // another suit driven while Shift is held: the first one gets its own pace back
+                uint other = RUN_T_FACTOR + 5 * 0x582;
+                g.PutInt(other, 110 << 16);
+                RunShift(g, true, false); RunTick();
+                g.PutShort(RUN_T_WHO + 2, 5); RunTick();
+                Eq(60 << 16, g.GetInt(RUN_T_SUIT), "the suit left"); Eq((int)((110 << 16) * 1.45), g.GetInt(other), "the suit driven now");
+                // what is not a suit's factor is never written
+                g.PutShort(RUN_T_WHO + 2, 9); RunTick();
+                Eq(0, g.GetInt(RUN_T_FACTOR + 9 * 0x582), "an empty record: left alone");
+                Eq(110 << 16, g.GetInt(other), "and the suit left before it has its own pace");
+            }
+        }
+
+        [Test] static void Run_EndsClean()
+        {
+            using (FakeGame g = RunGame(true))
+            {
+                RunShift(g, true, false); RunTick();
+                RunEnd();                                       // this tool closing, Shift held
+                Eq(RUN_T_90, g.GetInt(RUN_T_SUIT), "the suit's own factor"); Eq(0, g.GetInt(RUN_T_BOUND), "the Bound free again"); Eq(0, g.GetInt(RUN_FLAG), "no flag left");
+                RunTick(); Eq(RUN_T_FAST, g.GetInt(RUN_T_SUIT), "(running again)");
+                g.PutInt(aMaster + 7 * 0x25 + 0x0F, 0); g.PutInt(aMaster + 7 * 0x25 + 0x13, 0);   // the mission is over
+                RunTick();
+                Eq(RUN_T_90, g.GetInt(RUN_T_SUIT), "out of the mission: the suit's own factor"); Eq(0, g.GetInt(RUN_T_BOUND), "the Bound free"); Eq(0, g.GetInt(RUN_FLAG), "no flag");
+                // a factor the game wrote meanwhile is the game's: not replaced by an old one
+                g.PutInt(aMaster + 7 * 0x25 + 0x0F, 100 << 16); g.PutInt(aMaster + 7 * 0x25 + 0x13, 200 << 16);
+                RunTick(); g.PutInt(RUN_T_SUIT, 70 << 16); RunEnd();
+                Eq(70 << 16, g.GetInt(RUN_T_SUIT), "the game's own write is kept");
+            }
+        }
+
+        [Test] static void Run_OffLeftToUplinkOrNotFound()
+        {
+            using (FakeGame g = RunGame(true))
+            {
+                RunShift(g, true, false);
+                FromLauncher = true; RunTick();
+                Eq(RUN_T_90, g.GetInt(RUN_T_SUIT), "under Uplink's launcher: its bridge has the option"); Eq(0, g.GetInt(RUN_T_BOUND), "Bound untouched"); Eq(0, g.GetInt(RUN_FLAG), "no flag");
+                FromLauncher = false; OptRun = false; RunTick();
+                Eq(RUN_T_90, g.GetInt(RUN_T_SUIT), "option off"); Eq(0, g.GetInt(RUN_T_BOUND), "Bound untouched (option off)");
+            }
+            using (FakeGame g = RunGame(false))
+            {
+                RunGameLeft();
+                RunShift(g, true, false); RunTick();
+                Eq(2, runState, "another version of the game: not found");
+                Eq(RUN_T_90, g.GetInt(RUN_T_SUIT), "nothing written"); Eq(0, g.GetInt(RUN_FLAG), "no flag (not found)");
+            }
+            using (FakeGame g = RunGame(true))
+            {
+                RunGameLeft();
+                g.PutInt(RUN_FLAG, 0x12345678); RunTick();      // the spare data is used by something else
+                Eq(2, runState, "the flag's place is not free: off"); Eq(0x12345678, g.GetInt(RUN_FLAG), "left as it is");
+            }
+        }
     }
 }

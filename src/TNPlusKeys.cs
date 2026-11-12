@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 static partial class TNPlus
 {
@@ -569,15 +570,8 @@ static partial class TNPlus
         if (fg || FromLauncher || kbLibPtr == 1 || now - lastRelease < 0.5) return;   // (launchers: Uplink holds them)
         lastRelease = now;
         if (!InMission(PlayerEntry())) return;
-        if (kbLibPtr == 0)
-        {
-            byte[] mem = Read(0x300000, 0x40000);
-            int i = mem == null ? -1 : IndexOf(mem, Hex(KB_LIB_SIG), 0);
-            kbLibPtr = i < 0 || i + 13 > mem.Length ? 1u : BitConverter.ToUInt32(mem, i + 9);
-            if (kbLibPtr == 1) return;
-        }
-        uint kb = ReadUInt(kbLibPtr);
-        if (kb == 0 || kb > 0x400000) return;
+        uint kb = KbLib();
+        if (kb == 0) return;
         byte[] st = Read(kb + 0x410, 256);
         if (st == null) return;
         IntPtr hwnd = IntPtr.Zero;
@@ -590,6 +584,107 @@ static partial class TNPlus
                 if (g.DefSc == c && g.Sc != c && g.Sc < 0x80) PostKeyUp(hwnd, g.Sc, false);
         }
     }
+
+    // the game's keyboard library structure (the keys' states at + 0x410, one byte a scancode), 0 when not found
+    static uint KbLib()
+    {
+        if (kbLibPtr == 0)
+        {
+            byte[] mem = Read(0x300000, 0x40000);
+            int i = mem == null ? -1 : IndexOf(mem, Hex(KB_LIB_SIG), 0);
+            kbLibPtr = i < 0 || i + 13 > mem.Length ? 1u : BitConverter.ToUInt32(mem, i + 9);
+        }
+        if (kbLibPtr == 1) return 0;
+        uint kb = ReadUInt(kbLibPtr);
+        return kb == 0 || kb > 0x400000 ? 0 : kb;
+    }
+
+    // ------------------------------------------------------------------ run on Shift (ini shift_run)
+    // Shift held with a move key is the game's Bound, its only fast pace: a leap every four strides. As an option, a
+    // run at about the same pace without the leap: while the game sees a Shift key down in a mission, the driven suit's
+    // speed factor (a dword per suit, set once by the game from the suit's type: 90 for the player's) is raised by
+    // RUN_FACTOR, and the Bound never starts (the end of its cooldown is kept far away; the game sets it again when a
+    // mission starts). The game's own values are back when Shift is let go, on the game's screens (a save never holds
+    // the raised factor), when the mission ends and when this tool closes. Uplink's bridge has the same option: under
+    // its launchers it is left to it, and RUN_FLAG tells a bridge attached to a game started from here to leave it
+    // (RUN_MAGIC in its high word and a count that moves: a tool stopped dead is not taken for one at work).
+    static bool OptRun = false;
+    const double RUN_FACTOR = 1.45;
+    const uint RUN_FLAG = 0x469A08;                 // free data, before the key translation's
+    const int RUN_MAGIC = 0x52550000, RUN_FAR = 0x7FFFFFFF;
+    // mov eax, [who] / sar eax, 16 / imul eax, 0x582 / mov edx, 0x20000 / mov edi, 0x78 / mov eax, [eax + factor]
+    const string RUN_SIG_FACTOR = "a1 (....) c1f810 69c082050000 ba00000200 bf78000000 8b80 (....)";
+    // mov eax, [clock] / cmp eax, [cooldown] / jbe / cmp dword [steps], 4
+    const string RUN_SIG_BOUND = "a1 (....) 3b05 (....) 0f86 .... 833d (....) 04";
+    static int runState = 0;                        // 0 not looked for, 1 ready, 2 not in this game
+    static uint aRunWho, aRunFactor, aRunBound, runAt;
+    static int runBase, runWrote;                   // the game's own factor, the raised one while it is written (else 0)
+    static bool runOn;                              // the flag and the Bound's block are in place
+    static int runBeat;
+
+    static Match RunMatch(string sig, string mem)
+    {   // the match whose addresses are the game's data (its memory also holds a copy of the code not relocated)
+        for (Match m = Sig(sig).Match(mem); m.Success; m = m.NextMatch())
+        {
+            bool ok = true;
+            for (int i = 1; i < m.Groups.Count; i++) { uint a = Cap(m, i); if (a < 0x300000 || a >= 0x500000) ok = false; }
+            if (ok) return m;
+        }
+        return null;
+    }
+
+    static bool RunFind()
+    {
+        runState = 2;
+        string mem = Latin1(Read(0x240000, 0xC0000));
+        Match f = RunMatch(RUN_SIG_FACTOR, mem), b = RunMatch(RUN_SIG_BOUND, mem);
+        int flag = ReadInt(RUN_FLAG);
+        if (f == null || b == null || Cap(b, 3) != Cap(b, 2) + 4 || (flag != 0 && (flag & ~0xFFFF) != RUN_MAGIC))
+        { Say("Run on Shift unavailable: not found in this version of the game (Shift + move stays the Bound)", 300, 300); return false; }
+        aRunWho = Cap(f, 1) + 2; aRunFactor = Cap(f, 2); aRunBound = Cap(b, 2);
+        runState = 1; runAt = 0; runWrote = 0; runOn = flag != 0;
+        Say("Run on Shift: Shift + a move key runs, without the Bound's leap", 0);
+        return true;
+    }
+
+    // every few milliseconds, the game loaded
+    static void RunTick()
+    {
+        if (!OptRun || FromLauncher || runState == 2 || hProc == IntPtr.Zero) return;
+        if (runState == 0 && !RunFind()) return;
+        if (!InMission(PlayerEntry())) { RunEnd(); return; }
+        uint kb = KbLib();
+        if (kb == 0) return;
+        uint at = aRunFactor + (uint)BitConverter.ToUInt16(Read(aRunWho, 2), 0) * 0x582;
+        if (at != runAt) { RunRestore(); runAt = at; }         // another suit driven: the first one's own pace back
+        int cur = ReadInt(at);
+        if (cur < 0x10000 || cur > 0x2000000) return;          // not a suit's factor: nothing is touched
+        WriteInt(RUN_FLAG, RUN_MAGIC | (++runBeat & 0xFFFF)); runOn = true;
+        if (ReadInt(aRunBound) != RUN_FAR) WriteInt(aRunBound, RUN_FAR);
+        byte[] st = Read(kb + 0x410 + 0x2A, 0x0D);             // the two Shift keys as the game sees them (0x2A, 0x36)
+        bool held = ((st[0] | st[0x0C]) & 1) != 0 && BitConverter.ToInt16(Read(aFrame, 2), 0) < 640;   // (640 wide: a screen of the game)
+        if (cur != runWrote) runBase = cur;                    // the game's own value (the first time, or changed by it)
+        int want = held ? (int)(runBase * RUN_FACTOR) : runBase;
+        if (cur != want) WriteInt(at, want);
+        runWrote = held ? want : 0;
+    }
+
+    static void RunRestore()
+    {   // the suit's own factor back, if the one there is still this tool's
+        if (runAt != 0 && runWrote != 0 && ReadInt(runAt) == runWrote) WriteInt(runAt, runBase);
+        runWrote = 0;
+    }
+
+    static void RunEnd()
+    {   // out of a mission, or this tool closing: the game as it was
+        if (runState != 1 || hProc == IntPtr.Zero) return;
+        RunRestore();
+        if (!runOn) return;
+        if (ReadInt(aRunBound) == RUN_FAR) WriteInt(aRunBound, 0);
+        WriteInt(RUN_FLAG, 0); runOn = false;
+    }
+
+    static void RunGameLeft() { runState = 0; runAt = 0; runWrote = 0; runOn = false; }
 
     // during missions only: the menus and the names typed keep the keyboard as it is
     static void KeysFollowMission(bool inMission)
