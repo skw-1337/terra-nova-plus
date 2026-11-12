@@ -26,10 +26,11 @@ Everything happens in memory while you play, except two files: for HD, terrain d
 
 ## 1.2
 
-**Latest: [1.2.5](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.5)**:
-- **True 16:9**: menus, briefings and their videos keep their 4:3 proportions, with black on the sides, instead of being stretched (`wide_menus = 1` puts them back).
-- **AWE32 music**: what the game's bank doesn't have (a bird tweet, a few drums) now comes from the AWE32's own General MIDI sounds instead of the Windows set, and about a dozen instruments that were slightly out of tune are tuned.
-- **Field of view** and stretched 16:9 no longer come up "unavailable" when the tool finds the game in its first seconds.
+**Latest: [1.2.6](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.6)**:
+- **Run on Shift** (CONTROLS, off by default): Shift + a move key runs at about the Bound's pace, without its leap every four strides.
+- **Bound (hold)** on the KEYBOARD page: the game's Shift + move key leap is a command of its own and can go on another key.
+
+1.2.5: in true 16:9 the menus, briefings and their videos keep their 4:3 proportions (`wide_menus = 1` stretches them again), the AWE32 music fills what the game's bank doesn't have from the card's own sounds, and the field of view no longer comes up "unavailable" at start.
 
 1.2.4 recognizes GOG Galaxy's default build (1.08): the launcher tells you to switch to GOG's Beta branch instead of "GAME NOT FOUND" (see **GOG** under [Download & use](#download--use)). It also fixed small bugs found by the new automatic tests.
 
