@@ -1478,6 +1478,7 @@ static partial class TNPlus
             (OptFreelook ? KeyName(ScanFreelook) + " freelook   " : "") +
             (OptNoclip ? KeyName(ScanNoclip) + " noclip   " : "") + KeyName(ScanDistance) + " view distance");
         if (OptFreelook) Console.WriteLine("Freelook switches off in menus (O / Esc) and when the mission ends.");
+        if (OptRun && !FromLauncher) Console.WriteLine("Shift + a move key: run (no Bound).");
         if (OptNoclip) Console.WriteLine("Noclip: move keys, Space / Left Ctrl up / down, Left Shift x4. Land before switching it off!");
         if (OptHD) Console.WriteLine(HdNow() + ": missions in 320x400 are shown in HD.");
         Console.WriteLine("When you are done playing, close this window (anti-cheat note: see README).");
@@ -1492,7 +1493,7 @@ static partial class TNPlus
         int vkDist = (int)MapVirtualKey((uint)ScanDistance, 1), vkOptions = (int)MapVirtualKey(0x18, 1);
         bool prevSt = false;
         int vkStereo = (int)MapVirtualKey((uint)ScanStereo, 1);
-        double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0, lastCave = -10, lastMenu = -10;
+        double lastHd = -10, lastHit = -10, lastPhys = -10, lastObj = -10, lastKeys = 0, lastCave = -10, lastMenu = -10, lastRun = 0;
         // mouse binds (by MOUSE_NAMES index): state seen last pass, command pressed, wheel taps
         int nb = MOUSE_NAMES.Length;                // mouse buttons, wheel notches, then the extended keys
         bool[] mbPrev = new bool[nb], mbPulse = new bool[nb];
@@ -1544,6 +1545,7 @@ static partial class TNPlus
                     }
                     gameSeen = false;
                     SpanGameLeft();
+                    RunGameLeft();
                     freelook = noclip = false; blocks.Clear(); frozen = false; Unclip();
                     hitFixState = 0; physFixState = 0; smokeState = 0; skyFixState = 0; droneFixState = 0; uiFixState = 0; zoomFixState = 0; turretFixState = 0; descrFixState = 0; ashfordState = 0; fillerFixState = 0; irFixState = 0; viewFixState = 0; affineState = 0; smallState = 0; objState = 0; objWritten = null; smoothState = 0; fovState = 0;
                     keysState = 0; keysActive = false;
@@ -1573,6 +1575,7 @@ static partial class TNPlus
                 if (objState == 1 && now - lastObj > 0.5) { lastObj = now; ObjDistTable(); }
                 if (keysState == 0 && now - lastPhys > 0.5) TryKeys();
                 if (keysState == 1 && now - lastKeys > 0.25) { lastKeys = now; KeysFollowMission(InMission(PlayerEntry())); }
+                if (OptRun && now - lastRun > 0.01) { lastRun = now; RunTick(); }
                 if (uiFixState == 0 && now - lastPhys > 0.5)
                     uiFixState = TryFix(UIFIX_AT, UIFIX_OLD, UIFIX_NEW, "End-of-mission freeze guard", "no more black screen when a mission ends");
                 if (now - lastCave > 0.5 && (!OptHD || hdState != 0) && (zoomFixState == 0 || (OptHitFix && turretFixState == 0) ||
@@ -2739,6 +2742,7 @@ static partial class TNPlus
     {
         try { if (frozen && hProc != IntPtr.Zero) Write(aFreeze, new byte[] { 0 }); } catch { }
         try { if (keysState == 1 && hProc != IntPtr.Zero) { WriteInt(KB_ACTIVE, 0); keysActive = false; } } catch { }   // the game's keys back as they are
+        try { RunEnd(); } catch { }                                                                                     // its own pace and its Bound
         frozen = false; ClipCursorOff(IntPtr.Zero); clipped = false;
     }
 
@@ -3090,6 +3094,7 @@ static partial class TNPlus
                     case "inplace_attach": OptInPlaceAttach = v != "0"; break;
                     case "wide_hud": OptWideHud = v != "0"; break;
                     case "wide_menus": OptWideMenus = v != "0"; break;
+                    case "shift_run": OptRun = v != "0"; break;
                     case "keep_dos": OptKeepDos = v != "0"; break;
                     case "edge_objects": OptEdge = v != "0"; break;
                     case "field_of_view": OptFov = Math.Max(0, Array.IndexOf(FOV_NAMES, v.ToUpperInvariant())); break;
@@ -3135,6 +3140,7 @@ static partial class TNPlus
                 "; GAME, DEMO 1 or DEMO 2\r\nlaunch = " + TARGET_NAMES[LaunchTarget] + "\r\n" +
                 "freelook = " + (OptFreelook ? 1 : 0) + "\r\n" +
                 "noclip = " + (OptNoclip ? 1 : 0) + "\r\n" +
+                "; Shift + a move key: 0 = the game's Bound (a leap every four strides), 1 = a run at about the same pace, no leap\r\nshift_run = " + (OptRun ? 1 : 0) + "\r\n" +
                 "; NORMAL or FAR (the fog pushed back)\r\nview_distance = " + DIST_NAMES[OptDistance] + "\r\n" +
                 "; GAME, SHARP or SHARPER (more terrain detail in the distance)\r\nterrain_detail = " + DETAIL_NAMES[OptDetail] + "\r\n" +
                 "; SHARPER with HD: frame rate kept by drawing the smooth terrain less far when needed (24 to 48 cells), 0 = always 48\r\nterrain_fps = " + OptTerrainFps + "\r\n" +

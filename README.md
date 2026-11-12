@@ -18,6 +18,7 @@ One small external tool. Pick your options in its window, click Launch, and the 
 | **Terrain detail** | — | `GAME` / `SHARP` / `SHARPER`: smooth ground up to 32 or 48 cells instead of 12 (no stair steps on near slopes), more detail far away. |
 | **Object distance** | — | `GAME` / `FAR` / `MAX`: scenery, units and buildings drawn farther. |
 | **Keyboard** | — | Every game command on the key you want, layout presets (WASD, ZQSD...), mouse buttons and wheel. |
+| **Run on Shift** | — | Shift + a move key is the game's Bound: a leap every four strides, its only fast pace. `ON`: a run at about the same pace, without the leap. Off by default. |
 | **Fixes** | `F7` | Projectiles hit at any frame rate (and no longer go through turrets), physics at the same speed at any frame rate, a smooth infrared view, the zoom kept after the Options screen, no black screen at the end of a mission, reversed stereo under DOSBox (`F7` compares). |
 | **Music** | — | Roland / General MIDI, Sound Blaster FM, or the game's own AWE32 bank (you bring the AWE32 ROM). |
 
@@ -181,6 +182,7 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 |---|---|---|
 | `display` | `HD` | `ORIGINAL`, `320X400` or `HD` (640x400, 848x480 or 1280x720 with `widescreen`) |
 | `freelook`, `noclip` | `1`, `0` | the launcher options |
+| `shift_run` | `0` | `1` = Shift + a move key runs, without the Bound's leap (Run on Shift) |
 | `terrain_detail` | `SHARPER` | `GAME`, `SHARP` or `SHARPER` |
 | `terrain_fps` | `60` | SHARPER in HD: frame rate it keeps by drawing the smooth terrain less far, `0` = always 48 cells |
 | `widescreen` | `3` | `0` off, `1` stretched, `2` true 16:9 in 848x480 (HD), `3` true 16:9 in 1280x720 (HD) |
