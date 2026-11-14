@@ -1,5 +1,16 @@
 # Terra Nova Plus
 
+> **This is the Linux branch (experimental).** On Windows? Everything you need is on the [main page](https://github.com/skw-1337/terra-nova-plus).
+>
+> **Linux in two commands** (in a terminal, in an empty folder of your choice):
+>
+> ```bash
+> wget https://raw.githubusercontent.com/skw-1337/terra-nova-plus/linux/linux/tnplus.sh
+> bash tnplus.sh
+> ```
+>
+> The script does the rest: it checks Wine, downloads Terra Nova Plus, finds your game and starts it. The full guide, with the Steam Deck, is [just below](#linux-step-by-step).
+
 **An all-in-one quality-of-life pack for *Terra Nova: Strike Force Centauri*** (Looking Glass Technologies, 1996), running in DOSBox — **Steam, GOG or standalone**.
 
 *Made with the help of Claude Code (an AI coding tool), mostly for reverse engineering the game and writing the code. Every change is tested in the real game before release.*
@@ -170,20 +181,109 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 
 **GOG:** Galaxy installs its old **1.08** build by default (DOSBox 0.74, the game in a `TN` folder). The tool needs the newer build, the same one Steam has, which GOG offers as a beta: in GOG Galaxy, open the game's settings (the gear next to **Play**) > **Manage installation** > **Configure...** > **Beta channels**, pick **Beta** and let it update. Saves from the old build are in `cloud_saves\TN`: copy the `SAVE*.RES` files into `TNOVA` afterwards.
 
-## Linux (experimental)
+## Linux, step by step
 
-TN+ is a Windows program, but it runs under Wine together with the game's own DOSBox. [`linux/tnplus.sh`](linux/tnplus.sh) sets that up in a Wine prefix of its own (your default prefix is left alone).
+Terra Nova Plus is a Windows program. On Linux it runs through **Wine**, together with the DOSBox that comes with the game. You do not have to know Wine: one script sets everything up, in a corner of its own, and touches nothing else on your system.
 
-1. Install `wine` (9.0 or later). At the first start Wine offers to install Mono: say yes (or install your distribution's `wine-mono` package).
-2. Download a release zip, unzip it, and put `tnplus.sh` next to `TNPlus.exe`.
-3. `chmod +x tnplus.sh`, then `./tnplus.sh`. If the game is not in the usual Steam or GOG place: `./tnplus.sh "/path/to/the game"` (the folder that contains `TNOVA`).
+### What you need
 
-It needs the game's Windows files (Steam with Proton enabled, or GOG's installer through Wine, Heroic or Lutris), in a folder you can write to.
+1. **The game**, the Steam or the GOG edition (they are Windows packages, that is fine):
+   - **Steam**: right-click the game, *Properties*, *Compatibility*, tick *Force the use of a specific Steam Play compatibility tool*, choose a Proton, then install it.
+   - **GOG**: install it with [Heroic](https://heroicgameslauncher.com/) or Lutris, and choose GOG's **Beta** version of the game (the default one is too old for TN+).
+2. **Wine**, version 9 or newer. If you do not have it, the script tells you the exact command for your system. For the record:
 
-- **Tried** (Wine 9.0 on Ubuntu 24.04, on a machine with no graphics card and no sound): the launcher window, the game starting, TN+ finding it and applying everything (HD, true 16:9, the fixes, the keys).
-- **Not tried yet:** sound and music, the mouse freelook in a mission, a real graphics card, the Steam Deck.
+   | System | Command |
+   |---|---|
+   | Ubuntu, Debian, Mint, Pop!_OS | `sudo apt install wine` |
+   | Fedora | `sudo dnf install wine` |
+   | Arch, Manjaro, EndeavourOS | `sudo pacman -S wine wine-mono` |
+   | openSUSE | `sudo zypper install wine` |
+   | Steam Deck | nothing to install, see [below](#steam-deck) |
 
-If you try it, tell me what you get in the [issues](https://github.com/skw-1337/terra-nova-plus/issues).
+### Start it
+
+Open a terminal in an empty folder (for example a new `TerraNovaPlus` folder in your home) and paste these two lines:
+
+```bash
+wget https://raw.githubusercontent.com/skw-1337/terra-nova-plus/linux/linux/tnplus.sh
+bash tnplus.sh
+```
+
+The script says what it does, in four steps:
+
+```
+[1/4] Looking for Wine...                 ok: wine-9.0
+[2/4] Looking for Terra Nova Plus...      Not here yet: downloading the latest release (less than 1 MB)...
+[3/4] Looking for your Terra Nova...      ok: /home/you/.steam/steam/steamapps/common/Terra Nova Strike Force Centauri
+[4/4] Starting Terra Nova Plus...
+```
+
+Then three things happen, in this order:
+
+1. **The very first time only**, Wine prepares itself (about a minute) and a small window may ask to install **Wine Mono**. Click **Install**. TN+ needs it.
+2. **The Terra Nova Plus window opens**, the same as on Windows. Choose your settings (the **BEST** preset is a good start) and click **Launch**.
+3. **The game shows a small text menu** ("Press a number key..."). Press **1** to play.
+
+Next time, the same `bash tnplus.sh` in that folder starts it again, without the download and the waiting.
+
+### The script did not find the game
+
+It looks in the usual Steam and GOG folders, including your other Steam libraries. If your game is somewhere else, it asks for its folder: type it, or drag the folder from your file manager into the terminal, and press Enter. You can also give it directly:
+
+```bash
+bash tnplus.sh "/path/to/Terra Nova Strike Force Centauri"
+```
+
+The right folder is the one that contains two folders named `TNOVA` and `_DOSBOX`.
+
+### Steam Deck
+
+**Not tested yet. If you try it, please tell me how it goes.**
+
+SteamOS has no Wine of its own, so the script borrows the one inside Steam's **Proton**. You only need the game installed from Steam (with Proton forced, as above).
+
+1. Hold the power button, choose **Switch to Desktop**.
+2. Open **Konsole** (the terminal), and paste the same two lines:
+
+   ```bash
+   wget https://raw.githubusercontent.com/skw-1337/terra-nova-plus/linux/linux/tnplus.sh
+   bash tnplus.sh
+   ```
+
+If that does not work, there is another way, all inside Steam:
+
+1. Download the TN+ zip from the [releases](https://github.com/skw-1337/terra-nova-plus/releases) and unzip it, for example in `/home/deck/TerraNovaPlus`.
+2. Open the file `TNPlus.ini` in that folder (create it if it is not there) and add this line, which tells TN+ where the game is:
+
+   ```
+   game_dir = Z:\home\deck\.local\share\Steam\steamapps\common\Terra Nova Strike Force Centauri
+   ```
+
+3. In Steam: *Add a Game*, *Add a Non-Steam Game*, *Browse*, pick `TNPlus.exe`.
+4. In its *Properties*, *Compatibility*: force the same Proton as the game. Then play it from Steam.
+
+### If something goes wrong
+
+| What you see | What to do |
+|---|---|
+| `Wine is not installed` | Run the command the script shows, then start it again. |
+| Nothing opens after step 4 | Wine Mono is missing. Delete the folder `~/.local/share/terra-nova-plus/wine`, run the script again and click **Install** when Wine offers Mono. On Arch, `sudo pacman -S wine-mono`. |
+| `FontFamilyNotFound` | No font is installed. `sudo apt install fonts-liberation` (or any font package of your system). |
+| `is not the game's folder` | The folder must contain `TNOVA` and `_DOSBOX`. Give the folder above `TNOVA`, not `TNOVA` itself. |
+| `this folder cannot be written to` | TN+ prepares the game in its folder and the game saves there. Install the game somewhere your user can write. |
+| `the download failed` | Download the zip yourself from the [releases](https://github.com/skw-1337/terra-nova-plus/releases) and unzip it next to `tnplus.sh`. |
+| Anything else | Open an [issue](https://github.com/skw-1337/terra-nova-plus/issues) with what the terminal shows. |
+
+### Remove it
+
+Delete the folder you ran the script in, and `~/.local/share/terra-nova-plus`. Nothing else was installed. In the game's folder, TN+ keeps a copy of the original exe next to the one it prepares.
+
+### What works, what is not known yet
+
+- **Tried** (Wine 9.0 on Ubuntu 24.04, on a machine without a graphics card or sound): the script from an empty folder, the TN+ window, the game starting, and TN+ applying everything (HD, true 16:9, the fixes, the keys).
+- **Not tried yet**: sound and music, the mouse freelook in a mission, a real graphics card, the Steam Deck.
+
+This is an experiment. Tell me what you get, good or bad: [issues](https://github.com/skw-1337/terra-nova-plus/issues).
 
 ## Tips
 
