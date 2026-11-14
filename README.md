@@ -170,21 +170,6 @@ The game folder is detected automatically (**GOG** registry and **Steam** librar
 
 **GOG:** Galaxy installs its old **1.08** build by default (DOSBox 0.74, the game in a `TN` folder). The tool needs the newer build, the same one Steam has, which GOG offers as a beta: in GOG Galaxy, open the game's settings (the gear next to **Play**) > **Manage installation** > **Configure...** > **Beta channels**, pick **Beta** and let it update. Saves from the old build are in `cloud_saves\TN`: copy the `SAVE*.RES` files into `TNOVA` afterwards.
 
-## Linux (experimental)
-
-TN+ is a Windows program, but it runs under Wine together with the game's own DOSBox. [`linux/tnplus.sh`](linux/tnplus.sh) sets that up in a Wine prefix of its own (your default prefix is left alone).
-
-1. Install `wine` (9.0 or later). At the first start Wine offers to install Mono: say yes (or install your distribution's `wine-mono` package).
-2. Download a release zip, unzip it, and put `tnplus.sh` next to `TNPlus.exe`.
-3. `chmod +x tnplus.sh`, then `./tnplus.sh`. If the game is not in the usual Steam or GOG place: `./tnplus.sh "/path/to/the game"` (the folder that contains `TNOVA`).
-
-It needs the game's Windows files (Steam with Proton enabled, or GOG's installer through Wine, Heroic or Lutris), in a folder you can write to.
-
-- **Tried** (Wine 9.0 on Ubuntu 24.04, on a machine with no graphics card and no sound): the launcher window, the game starting, TN+ finding it and applying everything (HD, true 16:9, the fixes, the keys).
-- **Not tried yet:** sound and music, the mouse freelook in a mission, a real graphics card, the Steam Deck.
-
-If you try it, tell me what you get in the [issues](https://github.com/skw-1337/terra-nova-plus/issues).
-
 ## Tips
 
 - **Freelook** switches off by itself in the options screen (`O`), with `Esc` and when the mission ends; press `Y` again when you are back. Switch it off to click the cockpit buttons with the mouse.
