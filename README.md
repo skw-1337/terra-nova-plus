@@ -43,7 +43,7 @@ The 1.2 launcher, with the BEST preset (the default):
 ![Terra Nova Plus launcher](docs/launcher_v12.png)
 
 - **HD 1280x720**: the 3D is drawn 1280 pixels wide and 1.5 times taller, in true 16:9. It's the new BEST preset and the default for a new install. A small frame counter sits top right (`fps_counter = 0` hides it).
-- **Much faster in DOSBox**: a lot of the game's 3D code rewrote itself while running, which DOSBox handles badly. Those spots are fixed, same picture (most of them in 1280x720 only): on Panama I get about 75 to 100 fps in 1280x720. The default CPU speed is now 1800000. If your PC can't keep up, try HD 848x480 or a lower CPU speed.
+- **Much faster in DOSBox**: a lot of the game's 3D code rewrote itself while running, which DOSBox handles badly. Those spots are fixed, same picture (most of them in 1280x720 only). The default CPU speed is now 1800000. If your PC can't keep up, try HD 848x480 or a lower CPU speed.
 - **No more stair steps on far slopes** (1280x720): the distant ground was shaded in blocks along the terrain grid. It's shaded smoothly now.
 
 ![Far terrain, 1.1.0 and 1.2](docs/v12_terrain.png)
@@ -65,7 +65,7 @@ Everything from the five betas, plus the fixes below.
 This is a big one. I rewrote the launcher and added a bunch of things people asked for on TTLG, thanks to [![zjorz](https://img.shields.io/badge/zjorz-ff8c00?style=flat-square)](https://www.ttlg.com/forums/member.php?u=77813). Tell me what breaks.
 
 ### Since beta 5
-- **Infrared view**: as smooth as the normal view (it dropped to about 35 fps when turning fast).
+- **Infrared view**: as smooth as the normal view (it slowed down a lot when turning fast).
 - **Shots no longer go through turrets** (particle beam in mission 26, sometimes the multipulsar).
 - **The zoom stays** after the Options screen.
 - **Mission 26**: the descrambler text scrolls at the original pace, readable again, and in true 16:9 the pirate cockpit no longer lets bits of the 3D through its frame.
@@ -145,7 +145,7 @@ Stereo fix and demos need the tool to start DOSBox (Launch). With **Attach**, ad
 - **End-of-mission freeze guard** (beta 4, always on). The game frees the cockpit's click zones when a mission ends but keeps testing the mouse against them for a moment, and could get stuck there forever on a black screen. The routine that walks those zones now gives up after 255 steps, and freelook stops writing the cursor as soon as the game stops running frames.
 - **Zoom fix** (1.1, always on). Back from the Options screen the view came back unzoomed while the game kept its zoom level, so the next zoom step jumped. The view is now set up at the current level.
 - **Infrared speed fix** (1.1). In infrared the game writes texture steps into the code of its terrain routines many times a frame, and DOSBox has to translate that code again each time: turning fast in IR dropped to about 35 fps, uneven. Those two routines now read the values as data (Callemann's fix for [TNova Native](https://github.com/Murplugg/Terra-Nova-SFC-improved), ported here): IR runs as fast as the normal view. When TN+ starts DOSBox the fix goes into the game's own routines (otherwise, in HD, into copies rebuilt from your own game files at run time): nothing of the game is shipped.
-- **Normal view speed fix** (with HD). Same trouble in the normal view: the two routines the game runs for every polygon edge rewrite their own code at each call. They read those values as data now, rebuilt the same way: on Panama with SHARPER, 43 -> 47 fps at the locks, 40 -> 46 when turning there.
+- **Normal view speed fix** (with HD). Same trouble in the normal view: the two routines the game runs for every polygon edge rewrite their own code at each call. TN+ runs its own versions of them instead, placed the same way.
 - **Polygon speed fix** (prepared exe). The routine that fills textured polygons (models, buildings) rewrites an instruction of its pixel loop line after line, and DOSBox ends up running that instruction through its slow interpreter at every pixel. Same for a rounding in the edge set-up. Both are fixed code now: about 5 % more fps where models fill the screen.
 - **Smoother walking** (beta 4, part of the physics fix). The physics skipped any frame shorter than 10 ms; above ~80 fps DOSBox gives 8 ms frames, so one frame in six had no movement and walking stuttered. Every frame is simulated now.
 - **Object distance** (beta 4, GAME / FAR / MAX, MAX by default). Bushes, trees and rocks were only drawn within 20 terrain cells whatever the detail setting, and units and buildings within a range per type (20 cells for PBAs). FAR draws scenery up to 30 cells and doubles the ranges, MAX goes to 40 cells and triples them (120 cells at most). The engine's fixed-size object list and the limits of its entity walk are raised first so the extra objects fit. The game has no model LOD to improve: objects are always drawn with the same model.
