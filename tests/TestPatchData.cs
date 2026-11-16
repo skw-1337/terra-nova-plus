@@ -47,7 +47,8 @@ static partial class TNPlus
             internal static bool AllZeroHex(string s) { foreach (char c in s) if (c != '0') return false; return true; }
 
             // pieces "B:hex" (ours) and "C:address:length" (copied from the game's memory), as TryIrFix & co read them
-            internal static int PieceLen(string p) { return p[0] == 'C' ? Convert.ToInt32(p.Split(':')[2], 16) : (p.Length - 2) / 2; }
+            // 'V' pieces (ViewFix) are read from the game and hashed, not copied: no byte in the block
+            internal static int PieceLen(string p) { return p[0] == 'V' ? 0 : p[0] == 'C' ? Convert.ToInt32(p.Split(':')[2], 16) : (p.Length - 2) / 2; }
             internal static uint CopyAt(string p) { return Convert.ToUInt32(p.Split(':')[1], 16); }
             internal static int Sum(string[] pieces) { int n = 0; foreach (string p in pieces) n += PieceLen(p); return n; }
             // the block put together, the bytes copied from the game left at 0
@@ -359,11 +360,11 @@ static partial class TNPlus
                 {
                     string what = s.Key + " \"" + (p.Length > 40 ? p.Substring(0, 40) + "..." : p) + "\"";
                     // the writers take 'C' for a copy and anything else for "B:" + hex (its first two characters skipped)
-                    if (p[0] == 'C')
+                    if (p[0] == 'C' || p[0] == 'V')            // V (ViewFix only): read and hashed, not copied
                     {
                         string[] f = p.Split(':');
                         Eq(3, f.Length, what + ": C:address:length");
-                        Ok(f[0] == "C" && DataKit.IsDigits(f[1]) && DataKit.IsDigits(f[2]), what + ": hex address and length");
+                        Ok((f[0] == "C" || (f[0] == "V" && s.Key.StartsWith("ViewFix"))) && DataKit.IsDigits(f[1]) && DataKit.IsDigits(f[2]), what + ": hex address and length");
                         uint a = Convert.ToUInt32(f[1], 16); int n = Convert.ToInt32(f[2], 16);
                         Ok(n > 0, what + ": length");
                         // copied from the game's relocated code (ScanRegion: below 0x100000 is a raw copy of the exe), never from ours
@@ -535,12 +536,13 @@ static partial class TNPlus
 
         // The rebuilt blocks (IrFix, ViewFix) and the stubs that run the original routine until the block is there: the
         // pointer first goes to the stub, then to the block's entry. Both start with the same instructions (the site's,
-        // re-encoded), the stub then jumps back to the site right after them.
+        // re-encoded), the stub then jumps back to the site right after them. ViewFix's two per-column routines are
+        // written anew (2026-11): their entry is ours from the first byte.
         [Test] static void Data_Stubs_JumpBackRightAfterWhatTheyRedo()
         {
             for (int g = 0; g < 2; g++)
             {
-                Action<string, uint, string, uint, string[], int> check = (what, stubAt, stubHex, site, pieces, entry) =>
+                Action<string, uint, string, uint, string[], int, bool> check = (what, stubAt, stubHex, site, pieces, entry, sameHead) =>
                 {
                     byte[] stub = Hex(stubHex);
                     int n = stub.Length - 5;
@@ -549,15 +551,16 @@ static partial class TNPlus
                     Ok(n >= 6, what + ": the stub redoes at least the 6 bytes of the entry (jmp [pointer]) written over the site");
                     int p = DataKit.PieceAt(pieces, entry);
                     Ok(p >= 0 && DataKit.PieceStart(pieces, p) == entry && pieces[p][0] == 'B', what + ": the block's entry starts one of our pieces");
+                    if (!sameHead) return;                  // a routine written anew: nothing of the site's code in it
                     byte[] head = Hex(pieces[p].Substring(2));
                     Ok(head.Length >= n, what + ": entry piece long enough");
                     EqBytes(Slice(stub, 0, n), Slice(head, 0, n), what + ": the block's entry starts like the stub");
                 };
                 string L = "[" + g + "]";
-                check("IrFix span" + L, IrFix.StubSpan, IrFix.CodeStubSpan[g], IrFix.SiteSpan[g], IrFix.Pieces[g], IrFix.EntrySpan[g]);
-                check("IrFix affine" + L, IrFix.StubAffine, IrFix.CodeStubAffine[g], IrFix.SiteAffine[g], IrFix.Pieces[g], IrFix.EntryAffine[g]);
+                check("IrFix span" + L, IrFix.StubSpan, IrFix.CodeStubSpan[g], IrFix.SiteSpan[g], IrFix.Pieces[g], IrFix.EntrySpan[g], true);
+                check("IrFix affine" + L, IrFix.StubAffine, IrFix.CodeStubAffine[g], IrFix.SiteAffine[g], IrFix.Pieces[g], IrFix.EntryAffine[g], true);
                 for (int r = 0; r < ViewFix.Stub.Length; r++)
-                    check("ViewFix routine " + r + L, ViewFix.Stub[r], ViewFix.CodeStub[g][r], ViewFix.Site[g][r], ViewFix.Pieces[g], ViewFix.Entry[g][r]);
+                    check("ViewFix routine " + r + L, ViewFix.Stub[r], ViewFix.CodeStub[g][r], ViewFix.Site[g][r], ViewFix.Pieces[g], ViewFix.Entry[g][r], r == 2);    // 0, 1: the per-column routines, written anew
             }
         }
 
@@ -1207,7 +1210,7 @@ static partial class TNPlus
                         object[] have = { HdPayload.Zone, HdPayload.End, HdPayload.PoolBase, HdPayload.Code, HdPayload.Data, HdPayload.PoolVar, HdPayload.PoolMax, HdPayload.XCode, HdPayload.Frames, HdPayload.Smoothing, HdPayload.HudFilter, HdPayload.HudStretch, HdPayload.FpsValue, HdPayload.SpeedDone, HdPayload.SvPtr, HdPayload.CodeBytes, HdPayload.DataInit, HdPayload.PatchAt, HdPayload.PatchOld, HdPayload.PatchNew, HdPayload.SvCode, HdPayload.English };
                         for (int i = 0; i < names.Length; i++)
                             Ok(Equals(want[i], have[i]), DataKit.Of(l, v) + (h == 1 ? " (asked with hd720 but no 16:9)" : "") + ": " + names[i] + " expected " + Show(want[i]) + ", got " + Show(have[i]));
-                        Eq(v == 2 ? 16 : 0, HdPayload.SpeedNames.Length, DataKit.Of(l, v) + ": speed fix names");
+                        Eq(v == 2 ? 18 : 0, HdPayload.SpeedNames.Length, DataKit.Of(l, v) + ": speed fix names");
                     }
                 }
         }

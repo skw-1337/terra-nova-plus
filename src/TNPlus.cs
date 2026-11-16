@@ -2434,12 +2434,13 @@ static partial class TNPlus
         foreach (string piece in ViewFix.Pieces[L])
         {
             byte[] part;
-            if (piece[0] == 'C')
+            if (piece[0] == 'C' || piece[0] == 'V')             // V: the game's routine, verified (hashed) but not copied
             {
                 string[] f = piece.Split(':');
                 part = Read(Convert.ToUInt32(f[1], 16), Convert.ToInt32(f[2], 16));
                 if (part == null) return;
                 copied.Write(part, 0, part.Length);
+                if (piece[0] == 'V') continue;
             }
             else part = Hex(piece.Substring(2));
             block.Write(part, 0, part.Length);

@@ -155,6 +155,20 @@ def terrain_groups(L, ret_at):
 
 OPTIONAL = {'cloud span'}       # skipped quietly when its slot was already written (3D drawn before the first HD frame)
 
+# ---------------------------------------------------------------- lot 4: two SETcc still interpreted (2026-11-16)
+# Seen in a host-side profile of DOSBox's emulation thread (which guest block is running while the thread is in the
+# interpreter): the slab clipper 0x2B3E9C ('test eax,eax / setl dl / and edx,0xff' = the sign of eax: mov + shr 31,
+# the flags are dead, 'cmp eax,imm' follows the store) and the second exit of the terrain cell routine ('cmp eax,edx /
+# setge al / jmp' = 'cmp edx,eax' into the 'mov al,1 / jle / mov al,0' that the 'terrain cell' group wrote for the
+# first exit; eax, edx and the flags are overwritten before any use). Same length, same results.
+# FR: code -0x10, same bytes.
+P4 = [   # (name, [(en, fr, old, new)], context [(en, fr, bytes)])
+    ('slab side', [(0x2B3ED1, 0x2B3EC1, '85c00f9cc281e2ff000000', '89c2c1ea1f8d9200000000')],
+     [(0x2B3EDC, 0x2B3ECC, '8915'), (0x2B3EE2, 0x2B3ED2, '3d0000003f')]),
+    ('terrain cell exit', [(0x2B1A22, 0x2B1A12, '39d00f9dc0eb72', '39c2eb6f909090')],
+     [(0x2B1A95, 0x2B1A85, 'b0017e02b000'), (0x2B1A9B, 0x2B1A8B, '88442414')]),
+]
+
 # ---------------------------------------------------------------- terrain fill columns without shade (EN 0x2B2AF7)
 # Pixel = P[S[T[HI|dl]]] with T, S, P fixed for a call and dl + 1 per pixel across all its columns: the first 256
 # pixels of a call are drawn as before and kept in a 256-byte table, every later one is read from it (4 per block).
@@ -1458,6 +1472,8 @@ def groups(fr, cv, T):
     out.append(vs_group(VS[L], cv['shading']))      # in the place of 'terrain columns' (its routine is no longer reached)
     out.append(hash_group(HASH[L]))                    # after the 13 groups of lot 2: their bits stay
     out += tp4_groups(fr, cv['terrain p4'])[0]   # last: after every shipped group, their bits stay
+    for name, rs, ctx in P4:                     # lot 4, after 'terrain cell' (its second record checks those new bytes)
+        out.append((name, [rec(f if fr else e, o, n) for e, f, o, n in rs] + [rec(f if fr else e, b) for e, f, b in ctx]))
     return out
 
 

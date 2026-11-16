@@ -883,10 +883,10 @@ static partial class TNPlus
             using (FakeGame g = new FakeGame())
             {
                 HdPayload.Use(true, true, true); hdState = 1;
-                Eq(16, HdPayload.SpeedNames.Length, "16 speed fix groups");
-                g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0xFFFF);
+                Eq(18, HdPayload.SpeedNames.Length, "18 speed fix groups");
+                g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0x3FFFF);
                 string said = MiscSaid(SpeedFixReport);
-                Has(said, "Speed fixes ON (16 of 16)", "all on");
+                Has(said, "Speed fixes ON (18 of 18)", "all on");
                 HasNot(said, "unexpected", "nothing unexpected");
                 Ok(speedSaid, "said once");
             }
@@ -899,8 +899,8 @@ static partial class TNPlus
                 HdPayload.Use(true, true, true); hdState = 1;
                 Eq(0x800u, HdPayload.SpeedOptional, "the optional group: bit 11");
                 Eq("cloud span", HdPayload.SpeedNames[11], "its name");
-                g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0xFFFF & ~0x800u); g.PutUInt(HdPayload.SpeedBad, 0x800);
-                Has(MiscSaid(SpeedFixReport), "Speed fixes ON (15 of 16)", "the optional group off: still ON, counted out");
+                g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0x3FFFF & ~0x800u); g.PutUInt(HdPayload.SpeedBad, 0x800);
+                Has(MiscSaid(SpeedFixReport), "Speed fixes ON (17 of 18)", "the optional group off: still ON, counted out");
             }
         }
 
@@ -910,9 +910,9 @@ static partial class TNPlus
             {
                 HdPayload.Use(false, true, true); hdState = 1;
                 uint bad = (1u << 1) | (1u << 4) | (1u << 11);
-                g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0xFFFF & ~bad); g.PutUInt(HdPayload.SpeedBad, bad);
+                g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0x3FFFF & ~bad); g.PutUInt(HdPayload.SpeedBad, bad);
                 string said = MiscSaid(SpeedFixReport);
-                Has(said, "Speed fixes: 13 of 16 on, unexpected game code for horizon test, map cell key", "the groups not on, the optional one left out");
+                Has(said, "Speed fixes: 15 of 18 on, unexpected game code for horizon test, map cell key", "the groups not on, the optional one left out");
                 HasNot(said, "cloud span", "the optional group is not listed");
             }
         }
@@ -922,10 +922,10 @@ static partial class TNPlus
             using (FakeGame g = new FakeGame())
             {
                 HdPayload.Use(true, true, true); hdState = 1;
-                g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0); g.PutUInt(HdPayload.SpeedBad, 0xFFFF);
+                g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0); g.PutUInt(HdPayload.SpeedBad, 0x3FFFF);
                 List<string> names = new List<string>(HdPayload.SpeedNames);
                 names.RemoveAt(11);
-                Has(MiscSaid(SpeedFixReport), "Speed fixes: 0 of 16 on, unexpected game code for " + string.Join(", ", names.ToArray()), "every group but the optional one listed");
+                Has(MiscSaid(SpeedFixReport), "Speed fixes: 0 of 18 on, unexpected game code for " + string.Join(", ", names.ToArray()), "every group but the optional one listed");
             }
         }
 
@@ -935,7 +935,7 @@ static partial class TNPlus
             {
                 HdPayload.Use(true, true, true); hdState = 1;
                 g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0xFFFFFFFF);
-                Has(MiscSaid(SpeedFixReport), "Speed fixes ON (16 of 16)", "bits 16-31 do not count");
+                Has(MiscSaid(SpeedFixReport), "Speed fixes ON (18 of 18)", "bits 18-31 do not count");
             }
         }
 
@@ -944,14 +944,14 @@ static partial class TNPlus
             using (FakeGame g = new FakeGame())
             {
                 HdPayload.Use(true, true, true); hdState = 1;
-                g.PutUInt(HdPayload.SpeedOn, 0xFFFF);
+                g.PutUInt(HdPayload.SpeedOn, 0x3FFFF);
                 Eq("", MiscSaid(SpeedFixReport), "the game has not run its first 3D frame (done = 0)");
                 No(speedSaid, "not said yet");
                 g.PutInt(HdPayload.SpeedDone, 1); g.PutUInt(HdPayload.SpeedOn, 0); g.PutUInt(HdPayload.SpeedBad, 0);
                 Eq("", MiscSaid(SpeedFixReport), "done but no bit at all: nothing to say yet");
                 No(speedSaid, "still not said");
-                g.PutUInt(HdPayload.SpeedOn, 0xFFFF);
-                Has(MiscSaid(SpeedFixReport), "Speed fixes ON (16 of 16)", "said when the bits are there");
+                g.PutUInt(HdPayload.SpeedOn, 0x3FFFF);
+                Has(MiscSaid(SpeedFixReport), "Speed fixes ON (18 of 18)", "said when the bits are there");
                 g.PutUInt(HdPayload.SpeedOn, 1);
                 Eq("", MiscSaid(SpeedFixReport), "said once only");
             }

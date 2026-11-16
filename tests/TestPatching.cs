@@ -1966,7 +1966,7 @@ static partial class TNPlus
                 for (int l = 0; l < rebuilt[t].Length; l++)
                 {
                     int n = 0;
-                    foreach (string p in rebuilt[t][l]) n += p[0] == 'C' ? Convert.ToInt32(p.Split(':')[2], 16) : (p.Length - 2) / 2;
+                    foreach (string p in rebuilt[t][l]) n += p[0] == 'V' ? 0 : p[0] == 'C' ? Convert.ToInt32(p.Split(':')[2], 16) : (p.Length - 2) / 2;   // V: verified, not copied
                     Eq(rsize[t][l], n, "rebuilt table " + t + " exe " + l + ": size");
                 }
         }

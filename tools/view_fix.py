@@ -1,18 +1,11 @@
-# Normal view without self-modifying code (same method as ir_fix.py, after Callemann's IR fix).
-# The two per-column routines of the 3D library, called for each polygon edge (from 0x2FB220), write operands INTO
-# their own loops at every call: 0x317DF0 tests the edge against a per-column buffer, 0x317EA0 updates it. Both write
-# the buffer's end into their loop's displacements, 0x317EA0 also its return value and the target of a jump (whether
-# a column has been updated yet). DOSBox's dynamic core then translates those loops again and again. The new routines
-# read the operand slots as data, at the same addresses: the set-up code is unchanged and writes into the old loops,
-# which no longer run. In the new 0x317EA0 that jump always goes to the "first update" path: once a column is
-# updated, that path only rewrites the same return value and jump target. Panama, SHARPER, true 16:9: 41 -> 46 fps
-# standing at the locks, 37 -> 45 turning there, same fps where the view is light.
-# What costs is the jump target: DOSBox's dyn_x86 core reads rewritten immediates and [reg+disp32] displacements
-# from memory once they have changed (see filler_fix.py), not branch displacements. Not done: the textured span loop
-# (EN 0x34D390) rewrites its operands per span too, but nearly all of them are of the kind DOSBox reads from memory;
-# a rewrite was 5 % slower.
-# An indexed load with a rewritten displacement goes through eax, which the loop reloads anyway (mov leaves the
-# flags alone). French exe: both routines +0x280, checked instruction by instruction.
+# Normal view: the two per-column routines of the 3D library, called for each polygon edge (from 0x2FB220), replaced
+# by our own in the HD code's buffer: 0x317DF0 tests an edge against a per-column buffer, 0x317EA0 updates it. The
+# game's versions write operands INTO their own loops at every call (the buffer's end, the return value, a jump
+# target), which DOSBox's dynamic core translates again and again; the first fix (1.2) kept their code and read those
+# slots as data. Since 2026-11-16 both are written
+# anew (see below): no slot, 4 columns per translated block.
+# Not done: the textured span loop (EN 0x34D390) is fixed in place (spans_t14.py).
+# French exe: both routines +0x280, checked instruction by instruction.
 #   python view_fix.py EN_IMAGE FR_IMAGE          layout and checks (images: RAM 0x1AB000-0x470000 at the main menu)
 #   python view_fix.py EN_IMAGE FR_IMAGE cs       C# table (src/TNPlusView.cs)
 import hashlib, re, struct, sys
@@ -28,20 +21,204 @@ STUB = {'coltest': 0x469F40, 'colupdate': 0x469F50, 'colpass': 0x469F90}     # f
 PTR = {'coltest': 0x4693F0, 'colupdate': 0x4693F4, 'colpass': 0x4693EC}      # data page: where each entry jumps
 FREE = ((0x469F30, 0x46A000),)
 
-lde = lambda a: 'mov eax, dword ptr [%#x];mov eax, dword ptr [edi+eax];' % a        # mov eax,[edi+slot]
-ste = lambda a: 'mov eax, dword ptr [%#x];mov dword ptr [edi+eax], esi;' % a        # mov [edi+slot],esi (eax dead)
-RECIPES = {   # EN addresses: low, high, no digest (the slots differ from call to call), edits {start: (stop, text)}
-    'coltest': (0x317DF0, 0x317E9D, None, {
-        0x317e82: (0x317e88, lde(0x317e84)),                    # the buffer's end, written at 0x317E07
-    }),
+# ---------------------------------------------------------------- the two per-column routines, rewritten (2026-11-16)
+# A host-side profile of DOSBox's emulation thread showed what these cost: a translated block costs about as much as
+# 11 plain instructions, the loops ran 2 blocks per column, pushal / popal go through a function for each register,
+# and the operand slots kept in the old routines sit in a code page (slow writes). New bodies, same set-up arithmetic
+# (the DDA is the game's: fraction in the high half of ebx, integer in esi), same results:
+#  - registers saved in a stack frame with plain moves, the buffer's end and the result in that frame (no slot);
+#  - columns 4 per block, without a branch inside: 'buffer > y' is counted with the carry of an unsigned compare of
+#    the two values with their sign bit flipped (exact for any 32-bit values), and 'no column counted yet' is folded
+#    into the loop test (cmp ebp,1 / sbb / and LIMIT / cmp / jb): one conditional jump per 4 columns, still stopping
+#    at the first group that has one;
+#  - column test (0x317DF0): 1 if the edge is above the buffer in one of its columns. The game stops at the first
+#    one; it writes nothing, so looking at the rest of a group changes nothing;
+#  - column update (0x317EA0): the game's two loops (search: write where buffer > y, then run: write while
+#    buffer >= y) leave buffer = min(buffer, y) in every column of the edge (where buffer == y the value written is
+#    the one already there) and return 1 if a column was strictly above. Columns are only tested until one is; from
+#    that group (or single column) to the end of the edge the minimum is written without a branch.
+# Checked in Unicorn against the game's routines, EN and FR: registers, returned value and buffer identical over
+# thousands of edges (buffers of screen values, extremes, values next to the edge; empty and one-column edges).
+_B = '0x80000000'
+_SAVE = """
+    lea esp, [esp-40]
+    mov dword ptr [esp+0], ebx
+    mov dword ptr [esp+4], ecx
+    mov dword ptr [esp+8], edx
+    mov dword ptr [esp+12], esi
+    mov dword ptr [esp+16], edi
+    mov dword ptr [esp+20], ebp
+    xor ecx, ecx
+    mov dword ptr [esp+32], ecx
+    mov edi, dword ptr [eax]
+    mov esi, dword ptr [edx]"""
+_SETUP = """
+    mov ecx, dword ptr [edi]
+    mov ebp, dword ptr [esi]
+    mov edx, ecx
+    add edx, 0xffff
+    sar edx, 0x10
+    lea ebx, [ebx+edx*4]
+    mov dword ptr [esp+24], ebx
+    sub ecx, ebp
+    mov ebx, ebp
+    neg ebp
+    and ebp, 0xffff
+    add ebx, 0xffff
+    sar ebx, 0x10
+    sub edx, ebx
+    jle {p}_out
+    mov esi, dword ptr [esi+4]
+    mov eax, dword ptr [edi+4]
+    mov edi, edx
+    shl edi, 2
+    neg edi
+    sub eax, esi
+    je {p}_nodiv
+    cdq
+    mov ebx, edx
+    inc ebx
+    mov edx, eax
+    sar edx, 0x10
+    shl eax, 0x10
+    idiv ecx
+    add eax, ebx
+    add esi, ebx
+{p}_nodiv:
+    mov ecx, eax
+    add esi, 0xffff
+    imul ebp
+    shrd eax, edx, 0x10
+    add esi, eax
+    mov ebx, esi
+    shl ebx, 0x10
+    sar esi, 0x10
+    mov edx, ecx
+    shl ecx, 0x10
+    sar edx, 0x10
+    sub ebx, ecx
+    sbb esi, edx
+    add edi, dword ptr [esp+24]
+    lea esi, [esi-%s]
+    xor ebp, ebp
+    mov eax, dword ptr [esp+24]
+    lea eax, [eax-12]
+    mov dword ptr [esp+28], eax
+""" % _B
+_REST = """
+{p}_out:
+    mov eax, dword ptr [esp+32]
+    mov ebx, dword ptr [esp+0]
+    mov ecx, dword ptr [esp+4]
+    mov edx, dword ptr [esp+8]
+    mov esi, dword ptr [esp+12]
+    mov edi, dword ptr [esp+16]
+    mov ebp, dword ptr [esp+20]
+    lea esp, [esp+40]
+    ret"""
+
+
+def _col_test(k):
+    """one column, test only: ebp += (buffer > y)"""
+    return """
+    mov eax, dword ptr [edi+%d]
+    lea eax, [eax-%s]
+    add ebx, ecx
+    adc esi, edx
+    cmp esi, eax
+    adc ebp, 0""" % (4 * k, _B)
+
+
+def _col_min(k):
+    """one column: buffer = min(buffer, y)"""
+    return """
+    mov eax, dword ptr [edi+%d]
+    lea eax, [eax-%s]
+    add ebx, ecx
+    adc esi, edx
+    sub eax, esi
+    sbb ebp, ebp
+    and eax, ebp
+    lea eax, [eax+esi-%s]
+    mov dword ptr [edi+%d], eax""" % (4 * k, _B, _B, 4 * k)
+
+
+def _chk(lim, loop):
+    """go on while edi < [esp+lim] and no column counted yet: one conditional jump"""
+    return """
+    cmp ebp, 1
+    sbb eax, eax
+    and eax, dword ptr [esp+%d]
+    cmp edi, eax
+    jb %s""" % (lim, loop)
+
+
+COLTEST = (_SAVE + _SETUP + """
+    jmp ct_gc
+ct_g:""" + ''.join(_col_test(k) for k in range(4)) + """
+    lea edi, [edi+16]
+ct_gc:""" + _chk(28, 'ct_g') + """
+    jmp ct_tc
+ct_t:""" + _col_test(0) + """
+    lea edi, [edi+4]
+ct_tc:""" + _chk(24, 'ct_t') + """
+    neg ebp
+    sbb eax, eax
+    neg eax
+    mov dword ptr [esp+32], eax""" + _REST).format(p='ct')
+
+COLUPDATE = (_SAVE + _SETUP + """
+    jmp cu_gc
+cu_g:""" + ''.join(_col_test(k) for k in range(4)) + """
+    lea edi, [edi+16]
+cu_gc:""" + _chk(28, 'cu_g') + """
+    test ebp, ebp
+    jnz cu_back4
+    jmp cu_tc
+cu_t:""" + _col_test(0) + """
+    lea edi, [edi+4]
+cu_tc:""" + _chk(24, 'cu_t') + """
+    test ebp, ebp
+    jz cu_out
+    sub ebx, ecx
+    sbb esi, edx
+    lea edi, [edi-4]
+    jmp cu_w
+cu_back4:""" + """
+    sub ebx, ecx
+    sbb esi, edx""" * 4 + """
+    lea edi, [edi-16]
+cu_w:
+    mov dword ptr [esp+32], 1
+    jmp cu_wgc
+cu_wg:""" + ''.join(_col_min(k) for k in range(4)) + """
+    lea edi, [edi+16]
+cu_wgc:
+    cmp edi, dword ptr [esp+28]
+    jb cu_wg
+    jmp cu_wtc
+cu_wt:""" + _col_min(0) + """
+    lea edi, [edi+4]
+cu_wtc:
+    cmp edi, dword ptr [esp+24]
+    jb cu_wt""" + _REST).format(p='cu')
+
+# What the game's two routines must be for the new ones to stand in for them: every instruction outside the operand
+# slots (the instructions the game rewrites: their bytes differ from call to call), read from the player's memory and
+# hashed with the copied pieces (V: pieces, verified only; nothing of them goes into the new block).
+_lde = lambda a: 'mov eax, dword ptr [%#x];mov eax, dword ptr [edi+eax];' % a
+_ste = lambda a: 'mov eax, dword ptr [%#x];mov dword ptr [edi+eax], esi;' % a
+GUARD = {
+    'coltest': (0x317DF0, 0x317E9D, None, {0x317e82: (0x317e88, _lde(0x317e84))}),
     'colupdate': (0x317EA0, 0x317FAB, None, {
-        0x317f5a: (0x317f60, ste(0x317f5c)),                    # the buffer's end, written at 0x317EBE-0x317ED0
-        0x317f74: (0x317f7a, lde(0x317f76)),
-        0x317f80: (0x317f86, ste(0x317f82)),
-        0x317f94: (0x317f9a, lde(0x317f96)),
-        0x317f9e: (0x317fa0, '@jg 0x317f50;'),                  # its target byte, written at 0x317EF5 / 0x317F62
-        0x317fa5: (0x317faa, 'mov eax, dword ptr [0x317fa6];'), # the return value, written at 0x317EA5 / 0x317F55
-    }),
+        0x317f5a: (0x317f60, _ste(0x317f5c)), 0x317f74: (0x317f7a, _lde(0x317f76)), 0x317f80: (0x317f86, _ste(0x317f82)),
+        0x317f94: (0x317f9a, _lde(0x317f96)), 0x317f9e: (0x317fa0, '@jg 0x317f50;'),
+        0x317fa5: (0x317faa, 'mov eax, dword ptr [0x317fa6];')}),
+}
+
+RECIPES = {   # EN addresses: low, high, no digest (the game rewrites operands inside), edits {start: (stop, text)}
+    'coltest': (0x317DF0, 0x317E9D, None, {0x317DF0: (0x317E9D, COLTEST)}),
+    'colupdate': (0x317EA0, 0x317FAB, None, {0x317EA0: (0x317FAB, COLUPDATE)}),
     # water / haze pass of the terrain, column by column (called from 0x2A87E7): same pixels, same results, but the
     # usual pixel (colour not in the table) costs 5 instructions instead of 9 -- the source position and the row
     # table pointer it would step along are only worked out for the pixels it changes (esi + edi stays constant down
@@ -274,9 +451,13 @@ def build(en_read, fr_read=None):
             d = FR_DELTA[name] if lang == 'FR' else 0
             rec = recipe(lang == 'FR', read) if name == 'colpass' else \
                 (RECIPES[name] if d == 0 else F.shifted(RECIPES[name], d))
-            if d and name != 'colpass': F.same_shape(en_read, fr_read, RECIPES[name][0], RECIPES[name][1], d, RECIPES[name][3])
+            if d and name != 'colpass': F.same_shape(en_read, fr_read, GUARD[name][0], GUARD[name][1], d, GUARD[name][3])
             s = ENTRY[name] + d
             pieces, copied, lab, size = F.layout(read, rec, s)
+            if name in GUARD:               # the game's routine: verified, not copied
+                grec = GUARD[name] if d == 0 else F.shifted(GUARD[name], d)
+                for p in F.layout(read, grec, s)[0]:
+                    if p[0] == 'C': pieces_all.append(('V', p[1], p[2])); copied_all += read(p[1], p[2])
             pad = (-total) % 16
             if pad: pieces_all.append(('B', b'\x90' * pad)); total += pad
             entry[name] = total + lab[s]
@@ -297,8 +478,8 @@ def build(en_read, fr_read=None):
 
 def export_cs(out):
     print('// Generated by tools/view_fix.py (python view_fix.py EN_IMAGE FR_IMAGE cs > ../src/TNPlusView.cs): do not edit.')
-    print('// Normal view without self-modifying code: pieces C:address:length are copied from the game\'s own memory,')
-    print('// B: pieces are ours (edits, re-encoded branches). Routines: %s. See tools/view_fix.py.' % ', '.join(ORDER))
+    print('// Normal view per-column routines: B: pieces are ours; V:address:length pieces are parts of the game\'s own')
+    print('// routines, read from memory and hashed (verified, not copied). Routines: %s. See tools/view_fix.py.' % ', '.join(ORDER))
     print('static class ViewFix\n{')
     L = ('EN', 'FR')
     q = lambda xs: ', '.join(xs)
@@ -317,7 +498,7 @@ def export_cs(out):
     print('    public static readonly string[] Sha = { %s };' % q('"%s"' % out[l]['sha'] for l in L))
     print('    public static readonly string[][] Pieces = {')
     for l in L:
-        ps = ['"C:%X:%X"' % (p[1], p[2]) if p[0] == 'C' else '"B:%s"' % p[1].hex().upper() for p in out[l]['pieces']]
+        ps = ['"%s:%X:%X"' % p if p[0] in 'CV' else '"B:%s"' % p[1].hex().upper() for p in out[l]['pieces']]
         print('        new string[] {')
         for k in range(0, len(ps), 6): print('            ' + ', '.join(ps[k:k + 6]) + ',')
         print('        },')
