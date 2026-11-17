@@ -115,7 +115,7 @@ static partial class TNPlus
         return path;
     }
 
-    static bool KeysChanged() { return GameKeys.Exists(g => g.Changed && !g.Fixed); }
+    static bool KeysChanged() { return GameKeys.Exists(g => g.Moved && !g.Fixed); }
 
     // launch: [sdl] mapperfile for the tool's config when the game's map moves keys and the KEYBOARD tab changes some
     static string LaunchMapper(string db)

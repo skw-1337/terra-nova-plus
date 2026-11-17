@@ -3,7 +3,7 @@
 //  (DOS, 1996) running in DOSBox: Steam, GOG or standalone.
 //
 //  One small external tool, options chosen in a menu before launching the game:
-//    - mouse freelook (Y)       : mouse turns / looks up-down, reticle centred
+//    - mouse freelook (F)       : mouse turns / looks up-down, reticle centred
 //    - noclip (U)               : free flight (move keys, Space / Left Ctrl, Shift x4)
 //    - view distance (J)        : NORMAL / FAR / MAX (fog pushed back)
 //    - force 320x400            : the engine's best resolution in every mission
@@ -81,7 +81,7 @@ static partial class TNPlus
     static int OptDetail = 2;                       // terrain detail: 0 GAME, 1 SHARP, 2 SHARPER
     static int SensX = 12, SensY = 8;               // heading / pitch units per mouse count
     static bool InvertY = false, Sound = true;
-    static int ScanFreelook = 0x15, ScanNoclip = 0x16, ScanDistance = 0x24;   // Y U J (physical keys; the game's Y, previous target, goes to K)
+    static int ScanFreelook = 0x21, ScanNoclip = 0x16, ScanDistance = 0x24;   // F U J (physical keys; the game's F, Centre view, comes without a key)
     static int ScanStereo = 0x41;                   // F7: swap the stereo of the sound effects in game
     // the in-game keys the launcher can change (click the purple key, press the new one)
     static readonly string[] KEY_WHAT = { "freelook", "noclip", "view distance", "stereo swap" };
@@ -1426,7 +1426,7 @@ static partial class TNPlus
         hdExeReady = false;
         // changed game keys too (the default ones as well: Previous target leaves freelook's Y): their code and
         // tables go in the free area of the prepared exe
-        if ((OptHD || OptDetail > 0 || OptFov > 0 || OptWide || GameKeys.Exists(g => g.Changed)) && !demo)
+        if ((OptHD || OptDetail > 0 || OptFov > 0 || OptWide || GameKeys.Exists(g => g.Moved)) && !demo)
         {
             string why;
             hdExeReady = PrepareExeForHd(out why);
@@ -3056,6 +3056,7 @@ static partial class TNPlus
         if (!File.Exists(IniPath)) { ResolveToolClashes(); SaveSettings(); return; }
         bool haveDisplay = false, oldForce = false, oldHd = false, oldDisplay = false;
         int speedVer = 0, keysVer = 0;
+        bool sawKeys = false, sawFreelook = false, sawCentre = false;      // (see the keys' version 4, below)
         foreach (string line in File.ReadAllLines(IniPath))
         {
             string l = line.Trim();
@@ -3064,6 +3065,9 @@ static partial class TNPlus
             string v = l.Substring(l.IndexOf('=') + 1).Trim();
             try
             {
+                if (k.StartsWith("key_") || k.StartsWith("keys_")) sawKeys = true;
+                if (k == "key_freelook") sawFreelook = true;
+                if (k == "key_game_centre") sawCentre = true;
                 if (k.StartsWith("key_game_")) { ParseGameKey(k.Substring(9), v); continue; }
                 if (k.StartsWith("mouse_")) { ParseMouse(k.Substring(6), v); continue; }
                 switch (k)
@@ -3127,6 +3131,15 @@ static partial class TNPlus
         // freelook was on H in beta 5 (Y before): back on Y, the game's previous target moves to K.
         if (keysVer < 3 && ScanFreelook == 0x23) ScanFreelook = 0x15;
         if (keysVer < 3 && ScanDistance == 0x17) ScanDistance = 0x24;   // view distance was on I (the game's infrared) in v1.0
+        // Version 4 of the keys: freelook comes on F, and the game's Centre view (its F) without a key. An ini with
+        // keys from before keeps what it had: freelook on Y unless it says otherwise, Centre view on F (and the
+        // game's previous target off Y, as ResolveToolClashes does). Nobody's keys change by themselves.
+        if (sawKeys && keysVer < 4)
+        {
+            if (!sawFreelook) ScanFreelook = 0x15;
+            GameKey centre = FindGameKey("centre");
+            if (!sawCentre && centre != null) { centre.Sc = centre.OwnSc; centre.Mod = centre.OwnMod; }
+        }
         ResolveToolClashes();
         ApplyDisplay();
     }
@@ -3174,11 +3187,11 @@ static partial class TNPlus
                 "; noclip speed in game units per second\r\nnoclip_speed = " + NoclipSpeed.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n" +
                 "; DOSBox CPU cycles imposed at launch (the editions ship 115000, too slow for HD), 0 = leave the game's own setting.\r\n" +
                 "; raise it if the game feels slow, DOSBox lowers it for a moment when your PC cannot keep up\r\ncpu_cycles = " + CpuCycles + "\r\nspeed_version = 6\r\n" +
-                "; keys as PHYSICAL key scancodes (hex): 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
+                "; keys as PHYSICAL key scancodes (hex): 21 = F, 15 = Y, 16 = U, 24 = J (QWERTY/AZERTY),\r\n" +
                 "; 29 = key left of 1, 3B..44 = F1..F10 (40 = F6, 41 = F7), 57 = F11, 58 = F12\r\n" +
                 "key_freelook = " + ScanFreelook.ToString("X2") + "\r\nkey_noclip = " + ScanNoclip.ToString("X2") + "\r\n" +
                 "key_distance = " + ScanDistance.ToString("X2") + "\r\n" +
-                "key_stereo = " + ScanStereo.ToString("X2") + "\r\nkeys_version = 3\r\n" +
+                "key_stereo = " + ScanStereo.ToString("X2") + "\r\nkeys_version = 4\r\n" +
                 (ChosenLayout >= 0 ? "keys_layout = " + LAYOUT_NAMES[ChosenLayout] + "\r\n" : "") +
                 "; the game's commands changed in the KEYBOARD tab (missions only): [SHIFT+|CTRL+|ALT+]scancode\r\n" +
                 GameKeysIni() +
