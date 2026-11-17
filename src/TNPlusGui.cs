@@ -20,7 +20,7 @@ static partial class TNPlus
     static readonly Color TText = Color.FromArgb(214, 226, 220), TDim = Color.FromArgb(122, 150, 142), TAmber = Color.FromArgb(240, 178, 48);
     static readonly Color TTab = Color.FromArgb(38, 76, 178), TLed = Color.FromArgb(56, 214, 92), TLedOff = Color.FromArgb(40, 58, 54), TRed = Color.FromArgb(236, 72, 60);
     static readonly Color TOrange = Color.FromArgb(214, 122, 28), TField = Color.FromArgb(12, 26, 24);
-    static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono, TKey;
+    static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono, TKey, THead;
 
     static Label guiHelp, guiWarn, guiPreset, guiKeys, lastBadge;
     static readonly List<KeyValuePair<Label, int>> keyBadges = new List<KeyValuePair<Label, int>>();
@@ -188,6 +188,11 @@ static partial class TNPlus
                 List<GameKey> keys = GameKeys.FindAll(g => g.Group == grp);
                 int rows = tool ? KEY_WHAT.Length : keys.Count;
                 Panel p = Pane(page, tool ? "TERRA NOVA PLUS" : grp, x, y, cw[c], 36 + rows * 18 + 6);
+                // over the two columns of badges: which is the keyboard's key, which the mouse's second bind
+                Label hk = Lbl(p, "KEY", 0, 0, THead, TDim), hm = Lbl(p, "MOUSE", 0, 0, THead, TDim);
+                hk.AutoSize = hm.AutoSize = false; hk.Size = hm.Size = new Size(42, 12);
+                hk.TextAlign = ContentAlignment.MiddleRight; hk.Location = new Point(p.Width - 44 - 42, 15);
+                hm.TextAlign = ContentAlignment.MiddleCenter; hm.Location = new Point(p.Width - 46, 15);
                 int ry = 36;
                 if (tool) for (int i = 0; i < KEY_WHAT.Length; i++) { KeyBadge(KeyRow(p, KEY_WHAT[i], ry), i); MouseBadge(p, ry, null, i); ry += 18; }
                 else foreach (GameKey g in keys)
@@ -315,6 +320,7 @@ static partial class TNPlus
         TSmall = Pick(new[] { "Bahnschrift Light", "Bahnschrift", "Segoe UI" }, 9f, FontStyle.Regular);
         TBold = Pick(new[] { "Bahnschrift SemiBold", "Bahnschrift", "Segoe UI" }, 10.5f, FontStyle.Bold);
         TKey = Pick(new[] { "Bahnschrift SemiBold", "Bahnschrift", "Segoe UI" }, 9f, FontStyle.Bold);
+        THead = Pick(new[] { "Bahnschrift SemiBold", "Bahnschrift", "Segoe UI" }, 6.5f, FontStyle.Bold);
         TTitle = Pick(new[] { "Bahnschrift SemiBold Condensed", "Bahnschrift SemiBold", "Impact", "Segoe UI" }, 30f, FontStyle.Bold);
         TTitle2 = Pick(new[] { "Bahnschrift SemiBold Condensed", "Bahnschrift SemiBold", "Segoe UI" }, 12f, FontStyle.Bold);
         TMono = Pick(new[] { "Consolas", "Courier New" }, 9.5f, FontStyle.Regular);
