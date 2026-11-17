@@ -150,8 +150,8 @@ static partial class TNPlus
         b.MouseEnter += delegate
         {
             if (rebindKey >= 0 || rebindGame != null) return;
-            guiHelp.Text = "> " + g.Name.ToLowerInvariant() + ": " + ChordName(g.Sc, g.Mod) +
-                (g.Changed ? " (the game: " + ChordName(g.DefSc, g.DefMod) + ")" : "") + (g.Fixed ? ", can't be changed" : ", click to change it");
+            guiHelp.Text = "> " + g.Name.ToLowerInvariant() + ": " + (g.Sc == 0 ? "no key" : ChordName(g.Sc, g.Mod)) +
+                (g.Moved ? " (the game: " + ChordName(g.OwnSc, g.OwnMod) + ")" : "") + (g.Fixed ? ", can't be changed" : g.Sc == 0 ? ", click to give it one" : ", click to change it");
         };
         b.Click += delegate
         {
@@ -187,13 +187,13 @@ static partial class TNPlus
                 bool tool = grp == "TOOL";
                 List<GameKey> keys = GameKeys.FindAll(g => g.Group == grp);
                 int rows = tool ? KEY_WHAT.Length : keys.Count;
-                Panel p = Pane(page, tool ? "TERRA NOVA PLUS" : grp, x, y, cw[c], 36 + rows * 18 + 6);
-                // over the two columns of badges: which is the keyboard's key, which the mouse's second bind
+                Panel p = Pane(page, tool ? "TERRA NOVA PLUS" : grp, x, y, cw[c], 48 + rows * 18 + 6);
+                // over the two columns of badges, under the pane's name: which is the keyboard's key, which the mouse's second bind
                 Label hk = Lbl(p, "KEY", 0, 0, THead, TDim), hm = Lbl(p, "MOUSE", 0, 0, THead, TDim);
                 hk.AutoSize = hm.AutoSize = false; hk.Size = hm.Size = new Size(42, 12);
-                hk.TextAlign = ContentAlignment.MiddleRight; hk.Location = new Point(p.Width - 44 - 42, 15);
-                hm.TextAlign = ContentAlignment.MiddleCenter; hm.Location = new Point(p.Width - 46, 15);
-                int ry = 36;
+                hk.TextAlign = ContentAlignment.MiddleRight; hk.Location = new Point(p.Width - 44 - 42, 34);
+                hm.TextAlign = ContentAlignment.MiddleCenter; hm.Location = new Point(p.Width - 46, 34);
+                int ry = 48;
                 if (tool) for (int i = 0; i < KEY_WHAT.Length; i++) { KeyBadge(KeyRow(p, KEY_WHAT[i], ry), i); MouseBadge(p, ry, null, i); ry += 18; }
                 else foreach (GameKey g in keys)
                 {
@@ -532,7 +532,7 @@ static partial class TNPlus
             GameKey g = gb.Value; Label b = gb.Key; bool wait = g == rebindGame;
             b.Text = wait ? "?" : ChordName(g.Sc, g.Mod);
             b.BackColor = wait ? TAmber : g.Fixed ? Color.FromArgb(40, 64, 58) : Color.FromArgb(118, 48, 160);
-            b.ForeColor = wait ? Color.FromArgb(40, 30, 0) : g.Fixed ? TDim : g.Changed ? TAmber : Color.White;
+            b.ForeColor = wait ? Color.FromArgb(40, 30, 0) : g.Fixed ? TDim : g.Changed ? TAmber : g.Sc == 0 ? Color.FromArgb(190, 160, 210) : Color.White;
             b.Width = Math.Max(TextRenderer.MeasureText(b.Text, b.Font).Width + 10, 26);
             b.Left = b.Parent.Width - 44 - b.Width;
         }

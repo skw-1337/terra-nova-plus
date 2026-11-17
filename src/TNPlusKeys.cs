@@ -14,12 +14,14 @@ using System.Text.RegularExpressions;
 
 static partial class TNPlus
 {
-    // one command of the game: default and current key (scancode, 0x80 + code for E0 keys) and modifier
-    // (0 none, 1 Shift, 2 Ctrl, 3 Alt)
+    // one command of the game: the game's own key (Own), the key it comes with here (Def: the game's own, but for
+    // Centre view, which comes without a key: its F is freelook's) and the current one (scancode, 0x80 + code for E0
+    // keys; 0: no key) and modifier (0 none, 1 Shift, 2 Ctrl, 3 Alt)
     class GameKey
     {
-        public string Id, Group, Name; public int DefSc, DefMod, Sc, Mod, Mouse; public bool Fixed;
-        public bool Changed { get { return Sc != DefSc || Mod != DefMod; } }
+        public string Id, Group, Name; public int OwnSc, OwnMod, DefSc, DefMod, Sc, Mod, Mouse; public bool Fixed;
+        public bool Changed { get { return Sc != DefSc || Mod != DefMod; } }      // (not as it comes: written in the ini)
+        public bool Moved { get { return Sc != OwnSc || Mod != OwnMod; } }        // (not on the game's own key: translated)
     }
     static readonly string[] MOD_NAMES = { "", "SHIFT", "CTRL", "ALT" };
     static readonly string[] KEY_GROUPS = { "MOVEMENT", "VIEW", "WEAPONS", "SQUAD", "MAP", "DRONE", "SYSTEM" };
@@ -29,7 +31,7 @@ static partial class TNPlus
     {
         List<GameKey> l = new List<GameKey>();
         Action<string, string, string, int, int, bool> k = (g, id, name, sc, mod, fix) =>
-            l.Add(new GameKey { Group = g, Id = id, Name = name, DefSc = sc, DefMod = mod, Sc = sc, Mod = mod, Fixed = fix });
+            l.Add(new GameKey { Group = g, Id = id, Name = name, OwnSc = sc, OwnMod = mod, DefSc = sc, DefMod = mod, Sc = sc, Mod = mod, Fixed = fix });
         // from the game's key card (Quick Reference Card)
         k("MOVEMENT", "fwd", "Forward", 0x11, 0, false); k("MOVEMENT", "back", "Back", 0x2D, 0, false);
         k("MOVEMENT", "turnl", "Turn left", 0x1E, 0, false); k("MOVEMENT", "turnr", "Turn right", 0x20, 0, false);
@@ -68,6 +70,8 @@ static partial class TNPlus
         k("SYSTEM", "pause", "Pause", 0x19, 0, false); k("SYSTEM", "objectives", "Objectives", 0x42, 0, false);
         k("SYSTEM", "help", "Help", 0x35, 0, false); k("SYSTEM", "exit", "Exit game", 0x2D, 3, false);
         k("SYSTEM", "options", "Options", 0x18, 0, true); k("SYSTEM", "abort", "Abort mission", 0x01, 2, true);
+        GameKey centre = l.Find(x => x.Id == "centre");      // F is freelook's: Centre view comes without a key
+        centre.DefSc = centre.Sc = 0;
         return l;
     }
 
@@ -91,7 +95,7 @@ static partial class TNPlus
         }
         return KeyName(sc);
     }
-    static string ChordName(int sc, int mod) { return (mod > 0 ? MOD_NAMES[mod] + "+" : "") + ScanName(sc); }
+    static string ChordName(int sc, int mod) { return sc == 0 ? "-" : (mod > 0 ? MOD_NAMES[mod] + "+" : "") + ScanName(sc); }
 
     // ini: key_game_<id> = [SHIFT+|CTRL+|ALT+]scancode (hex), only the changed ones
     static void ParseGameKey(string id, string v)
@@ -118,12 +122,12 @@ static partial class TNPlus
         foreach (GameKey g in GameKeys) g.Mouse = 0;
         for (int i = 0; i < ToolMouse.Length; i++) ToolMouse[i] = 0;
         foreach (GameKey g in GameKeys) { g.Sc = g.DefSc; g.Mod = g.DefMod; }
-        ScanFreelook = 0x15; ScanNoclip = 0x16; ScanDistance = 0x24; ScanStereo = 0x41;
+        ScanFreelook = 0x21; ScanNoclip = 0x16; ScanDistance = 0x24; ScanStereo = 0x41;
         ResolveToolClashes();
     }
 
-    // a game command on a plain key the tool uses (the game's previous target on Y, freelook's key) goes to the
-    // first free key of these: K L ; 7 8 9 0
+    // a game command on a plain key the tool uses (the game's previous target when freelook is on Y, as it was
+    // before version 4 of the keys) goes to the first free key of these: K L ; 7 8 9 0
     static readonly int[] SPARE_KEYS = { 0x25, 0x26, 0x27, 0x08, 0x09, 0x0A, 0x0B };
     static void ResolveToolClashes()
     {
@@ -160,6 +164,7 @@ static partial class TNPlus
     static string AssignMouse(GameKey g, int tool, int m)
     {
         string name = g != null ? g.Name.ToLowerInvariant() : KEY_WHAT[tool];
+        if (g != null && g.Sc == 0 && m != 0) return name + ": give it a key first (the second bind presses that key)";
         string before = MouseOwner(m);
         foreach (GameKey o in GameKeys) if (m != 0 && o.Mouse == m) o.Mouse = 0;
         for (int i = 0; i < ToolMouse.Length; i++) if (m != 0 && ToolMouse[i] == m) ToolMouse[i] = 0;
@@ -203,6 +208,7 @@ static partial class TNPlus
     }
     static void SendChord(GameKey g, bool down)
     {
+        if (g.Sc == 0) return;                       // (a command without a key)
         int msc = g.Mod == 1 ? 0x2A : g.Mod == 2 ? 0x1D : g.Mod == 3 ? 0x38 : 0;
         if (down) { if (msc != 0) SendScan(msc, false); SendScan(g.Sc, false); }
         else { SendScan(g.Sc, true); if (msc != 0) SendScan(msc, true); }
@@ -252,7 +258,9 @@ static partial class TNPlus
         GameKey o = GameKeyOwner(sc, mod, g);
         int t = mod == 0 ? ToolKeyOwner(sc, -1) : -1;
         if (o != null && o.Fixed) return ChordName(sc, mod) + " is the game's " + o.Name.ToLowerInvariant() + " key: pick another one";
-        if (t >= 0 && (g.Mod != 0 || g.Sc >= 0x80 || Array.IndexOf(KEY_RESERVED, g.Sc) >= 0))
+        // a command that has no key yet has none to give in exchange
+        if (o != null && g.Sc == 0) return ChordName(sc, mod) + " is the " + o.Name.ToLowerInvariant() + " key: move that one first";
+        if (t >= 0 && (g.Sc == 0 || g.Mod != 0 || g.Sc >= 0x80 || Array.IndexOf(KEY_RESERVED, g.Sc) >= 0))
             return ChordName(sc, mod) + " is Terra Nova Plus " + KEY_WHAT[t] + ": change that one first";
         // the command whose key is taken gets this one's old key; not Shift, which is the bound's alone: a spare key
         int oSc = g.Sc, oMod = g.Mod;
@@ -457,9 +465,9 @@ static partial class TNPlus
     {
         ushort[] map = new ushort[512];
         foreach (GameKey g in GameKeys)
-            if (g.Changed && !g.Fixed && g.Sc < 0x80) map[g.Sc * 4 + g.Mod] = (ushort)(0x8000 | g.DefSc | (g.DefMod << 8));
-        foreach (GameKey g in GameKeys)
-            if (g.Changed && g.DefSc < 0x80 && GameKeyOwner(g.DefSc, g.DefMod, null) == null) map[g.DefSc * 4 + g.DefMod] = 0x80FF;
+            if (g.Moved && !g.Fixed && g.Sc > 0 && g.Sc < 0x80) map[g.Sc * 4 + g.Mod] = (ushort)(0x8000 | g.OwnSc | (g.OwnMod << 8));
+        foreach (GameKey g in GameKeys)             // (a command without a key: its own key gives nothing either)
+            if (g.Moved && g.OwnSc < 0x80 && GameKeyOwner(g.OwnSc, g.OwnMod, null) == null) map[g.OwnSc * 4 + g.OwnMod] = 0x80FF;
         byte[] b = new byte[1024];
         Buffer.BlockCopy(map, 0, b, 0, 1024);
         return b;
@@ -470,7 +478,7 @@ static partial class TNPlus
     static void TryKeys()
     {
         keysState = -1;
-        int n = GameKeys.FindAll(g => g.Changed).Count;
+        int n = GameKeys.FindAll(g => g.Moved).Count;
         int lang = -1;
         for (int l = 0; l < 2; l++)
         {
@@ -581,7 +589,7 @@ static partial class TNPlus
             if (hwnd == IntPtr.Zero && (hwnd = GameWindow()) == IntPtr.Zero) return;
             PostKeyUp(hwnd, c & 0x7F, c >= 0x80);
             foreach (GameKey g in GameKeys)                // the key that was pressed for it, when moved
-                if (g.DefSc == c && g.Sc != c && g.Sc < 0x80) PostKeyUp(hwnd, g.Sc, false);
+                if (g.OwnSc == c && g.Sc != c && g.Sc > 0 && g.Sc < 0x80) PostKeyUp(hwnd, g.Sc, false);
         }
     }
 
