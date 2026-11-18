@@ -26,9 +26,14 @@ Everything happens in memory while you play, except two files: for HD, terrain d
 
 ## 1.2
 
-**Latest: [1.2.6](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.6)**:
-- **Run on Shift** (CONTROLS, off by default): Shift + a move key runs at about the Bound's pace, without its leap every four strides.
-- **Bound (hold)** on the KEYBOARD page: the game's Shift + move key leap is a command of its own and can go on another key.
+**Latest: [1.2.7](https://github.com/skw-1337/terra-nova-plus/releases/tag/v1.2.7)**:
+- Alt or Ctrl+Shift held with a moved key no longer turns your suit, and holding a moved key then giving an Alt order no longer repeats "find cover".
+- A game folder TN+ can't use stays in TNPlus.ini, and TN+ says which file is missing and where it looked (with a hint for Steam's Linux edition and GOG 1.08).
+- The window fits small screens (like 1280x800), and texts no longer overlap at 150 % under Wine.
+- Leftover MSTAT files of the game are cleared before it starts (the game could hang on a black screen once all their names were used).
+- Freelook on F for new settings, Centre view without a key, KEY and MOUSE headings on the KEYBOARD tab. Two more interpreted instructions fixed for speed.
+
+1.2.6 added **Run on Shift** (CONTROLS, off by default: Shift + a move key runs at about the Bound's pace, without its leap) and **Bound (hold)** on the KEYBOARD page (the game's Shift + move key leap as a command of its own).
 
 1.2.5: in true 16:9 the menus, briefings and their videos keep their 4:3 proportions (`wide_menus = 1` stretches them again), the AWE32 music fills what the game's bank doesn't have from the card's own sounds, and the field of view no longer comes up "unavailable" at start.
 
