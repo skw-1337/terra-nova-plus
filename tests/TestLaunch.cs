@@ -631,6 +631,7 @@ static partial class TNPlus
         {
             string db = LaunchKit.Game();
             LaunchKit.UseMap(db, LaunchKit.Azerty(db));
+            FindGameKey("centre").Sc = 0x21;           // every command on the game's own key (Centre view comes without one)
             FindGameKey("options").Sc = 0x3B;          // a fixed command (Options): not a change the KEYBOARD tab makes
             string said = LaunchKit.Said(() => WriteLaunchConf(db, 0));
             Eq(LaunchKit.CPU + LaunchKit.SHARP + LaunchKit.STOCK, File.ReadAllText(LaunchKit.ConfPath), "the map moves keys but the game keys are the game's");
@@ -652,7 +653,9 @@ static partial class TNPlus
         // ---------------------------------------------------------------- LaunchMapper
         [Test] static void Launch_KeysChanged_GameKeysOnly()
         {
-            No(KeysChanged(), "defaults");
+            Ok(KeysChanged(), "defaults: Centre view comes without a key");
+            FindGameKey("centre").Sc = 0x21;
+            No(KeysChanged(), "every command on the game's own key");
             FindGameKey("jump").Mouse = 1; ToolMouse[0] = 2;
             No(KeysChanged(), "mouse binds are not key changes");
             ScanFreelook = 0x3B;
@@ -674,6 +677,7 @@ static partial class TNPlus
         {
             string db = LaunchKit.Game();
             LaunchKit.UseMap(db, LaunchKit.Azerty(db));
+            FindGameKey("centre").Sc = 0x21;           // every command on the game's own key (Centre view comes without one)
             Eq("", LaunchMapper(db), "game keys unchanged: nothing");
             FindGameKey("turnl").Sc = 0x10;
             string r = null;

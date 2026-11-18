@@ -700,7 +700,7 @@ static partial class TNPlus
 
         [Test] static void Misc_GetKeySetKey()
         {
-            int[] defaults = { 0x15, 0x16, 0x24, 0x41 };   // Y, U, J, F7
+            int[] defaults = { 0x21, 0x16, 0x24, 0x41 };   // F, U, J, F7
             for (int i = 0; i < 4; i++) Eq(defaults[i], GetKey(i), "default " + KEY_WHAT[i] + " key");
             for (int i = 0; i < 4; i++) SetKey(i, 0x30 + i);
             Eq(0x30, ScanFreelook, "SetKey(0): freelook"); Eq(0x31, ScanNoclip, "SetKey(1): noclip");

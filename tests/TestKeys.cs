@@ -22,16 +22,24 @@ static partial class TNPlus
             return g;
         }
 
-        // the state of a first run (LoadSettings: previous target moved off Y, freelook's key, to K), key names from
-        // TN+'s own QWERTY table (not from the Windows keyboard)
-        static void KeysStart() { ResetKeys(); ChosenLayout = 1; }
+        // the keys of a TNPlus.ini from before version 4 of the keys (freelook on Y, Centre view on the game's F,
+        // previous target moved off Y to K), key names from TN+'s own QWERTY table (not from the Windows keyboard)
+        static void KeysStart()
+        {
+            ResetKeys(); ScanFreelook = 0x15;
+            GameKey c = FindGameKey("centre"); c.Sc = c.OwnSc; c.Mod = c.OwnMod;
+            ResolveToolClashes(); ChosenLayout = 1;
+        }
+
+        // the keys of a first run since version 4: freelook on F, Centre view without a key, previous target on Y
+        static void KeysStartV4() { ResetKeys(); ChosenLayout = 1; }
 
         // the program's start values (what LoadSettings starts from)
         static void KeysFresh()
         {
             foreach (GameKey g in GameKeys) { g.Sc = g.DefSc; g.Mod = g.DefMod; g.Mouse = 0; }
             for (int i = 0; i < ToolMouse.Length; i++) ToolMouse[i] = 0;
-            ScanFreelook = 0x15; ScanNoclip = 0x16; ScanDistance = 0x24; ScanStereo = 0x41;
+            ScanFreelook = 0x21; ScanNoclip = 0x16; ScanDistance = 0x24; ScanStereo = 0x41;
             ChosenLayout = -1;
         }
 
@@ -49,7 +57,7 @@ static partial class TNPlus
         {
             List<string> l = new List<string>();
             for (int i = 0; i < GameKeys.Count; i++)
-                if (ch[i, 0] != GameKeys[i].DefSc || ch[i, 1] != GameKeys[i].DefMod) l.Add(GameKeys[i].Id + "=" + KeysChord(ch[i, 0], ch[i, 1]));
+                if (ch[i, 0] != GameKeys[i].OwnSc || ch[i, 1] != GameKeys[i].OwnMod) l.Add(GameKeys[i].Id + "=" + KeysChord(ch[i, 0], ch[i, 1]));
             return string.Join(" ", l.ToArray());
         }
 
@@ -95,6 +103,7 @@ static partial class TNPlus
             Dictionary<int, string> seen = new Dictionary<int, string>();
             foreach (GameKey g in GameKeys)
             {
+                if (g.Sc == 0 && g.Mod == 0 && !g.Fixed) continue;   // a command without a key (Centre view comes so)
                 if (g.Mod < 0 || g.Mod > 3 || g.Sc <= 0 || g.Sc > 0xFF) Fail(when + ": " + g.Id + " on " + KeysChord(g.Sc, g.Mod));
                 int c = g.Sc * 4 + g.Mod;
                 if (seen.ContainsKey(c)) Fail(when + ": " + seen[c] + " and " + g.Id + " both on " + KeysChord(g.Sc, g.Mod));
@@ -102,7 +111,7 @@ static partial class TNPlus
                 if (g.Mod == 0 && g.Sc < 0x80 && ToolKeyOwner(g.Sc, -1) >= 0) Fail(when + ": " + g.Id + " on the key of " + KEY_WHAT[ToolKeyOwner(g.Sc, -1)]);
                 if (g.Fixed && g.Changed) Fail(when + ": fixed command " + g.Id + " moved to " + KeysChord(g.Sc, g.Mod));
                 if (g.Id == "bound" && (g.Mod != 0 || g.Sc >= 0x80)) Fail(when + ": the bound on " + KeysChord(g.Sc, g.Mod) + " (a key alone)");
-                if (g.Sc >= 0x80 && !GameKeys.Exists(d => d.DefSc == g.Sc && d.DefMod == g.Mod)) Fail(when + ": " + g.Id + " on an extended key no command has: " + KeysChord(g.Sc, g.Mod));
+                if (g.Sc >= 0x80 && !GameKeys.Exists(d => d.OwnSc == g.Sc && d.OwnMod == g.Mod)) Fail(when + ": " + g.Id + " on an extended key no command has: " + KeysChord(g.Sc, g.Mod));
             }
             for (int m = 1; m < MOUSE_INI.Length; m++)
             {
@@ -127,19 +136,23 @@ static partial class TNPlus
         {
             int[] map = KeysMap();
             bool[] used = new bool[512];
+            // Alt on a key moved to a plain command: 0x4000 where the game's own Alt chord is still there (the order is
+            // tapped, then the plain translation once Alt is let go)
+            Func<int, bool> altMark = at => at % 4 == 3 && (map[at - 3] & 0x8000) != 0 && (map[at - 3] & 0xFF) != 0xFF && (map[at - 3] & 0x300) == 0 &&
+                GameKeys.Exists(o => o.OwnMod == 3 && o.OwnSc * 4 + 3 == at && !o.Moved && !o.Fixed);
             foreach (GameKey g in GameKeys)
             {
-                if (g.Sc >= 0x80) continue;         // extended keys: read by the game's handler apart, never translated
+                if (g.Sc >= 0x80 || g.Sc == 0) continue;   // extended keys: read by the game's handler apart, never translated
                 int at = g.Sc * 4 + g.Mod;
                 used[at] = true;
-                int want = g.Changed && !g.Fixed ? 0x8000 | g.DefSc | (g.DefMod << 8) : 0;
+                int want = g.Moved && !g.Fixed ? 0x8000 | g.OwnSc | (g.OwnMod << 8) : altMark(at) ? 0x4000 : 0;
                 if (map[at] != want) Fail(when + ": key map at " + KeysChord(g.Sc, g.Mod) + " (" + g.Id + "): expected 0x" + want.ToString("X4") + ", got 0x" + map[at].ToString("X4"));
             }
             for (int i = 0; i < 512; i++)
             {
                 if (used[i]) continue;
                 int at = i;
-                int want = GameKeys.Exists(g => g.Changed && g.DefSc < 0x80 && g.DefSc * 4 + g.DefMod == at) ? 0x80FF : 0;
+                int want = GameKeys.Exists(g => g.Moved && g.OwnSc < 0x80 && g.OwnSc * 4 + g.OwnMod == at) ? 0x80FF : altMark(at) ? 0x4000 : 0;
                 if (map[i] != want) Fail(when + ": key map at " + KeysChord(i / 4, i % 4) + " (no command): expected 0x" + want.ToString("X4") + ", got 0x" + map[i].ToString("X4"));
             }
         }
@@ -161,7 +174,7 @@ static partial class TNPlus
                 names.Add(n);
                 Ok(g.Sc == g.DefSc && g.Mod == g.DefMod && g.Mouse == 0 && !g.Changed, g.Id + " starts on its default, no mouse bind");
             }
-            No(KeysChanged(), "nothing changed at start");
+            Ok(KeysChanged(), "Centre view starts without a key (its F is freelook's): the key map is needed from the start");
         }
 
         [Test] static void Keys_Table_DefaultChordsUnique()
@@ -169,15 +182,17 @@ static partial class TNPlus
             Dictionary<int, string> seen = new Dictionary<int, string>();
             foreach (GameKey g in GameKeys)
             {
-                int c = g.DefSc * 4 + g.DefMod;
+                int c = g.OwnSc * 4 + g.OwnMod;
                 Ok(!seen.ContainsKey(c), g.Id + " and " + (seen.ContainsKey(c) ? seen[c] : "") + " share a default chord");
                 seen[c] = g.Id;
-                Ok(g.DefMod == 0 || g.DefMod == 2 || g.DefMod == 3, g.Id + ": the game uses no Shift chord (mod " + g.DefMod + ")");
-                Ok(g.DefSc > 0 && g.DefSc < 0x100, g.Id + " scancode");
+                Ok(g.OwnMod == 0 || g.OwnMod == 2 || g.OwnMod == 3, g.Id + ": the game uses no Shift chord (mod " + g.OwnMod + ")");
+                Ok(g.OwnSc > 0 && g.OwnSc < 0x100, g.Id + " scancode");
+                if (g.Id != "centre") Ok(g.DefSc == g.OwnSc && g.DefMod == g.OwnMod, g.Id + " comes on the game's own key");
             }
             // the only extended (E0) keys are the drone's, with Ctrl
             List<string> ext = new List<string>();
-            foreach (GameKey g in GameKeys) if (g.DefSc >= 0x80) ext.Add(g.Id + " " + ChordName(g.DefSc, g.DefMod));
+            foreach (GameKey g in GameKeys) if (g.OwnSc >= 0x80) ext.Add(g.Id + " " + ChordName(g.OwnSc, g.OwnMod));
+            Eq("00/0", KeysChord(KeysG("centre").DefSc, KeysG("centre").DefMod), "Centre view comes without a key (the game's F is freelook's)");
             EqList(new[] { "d_up CTRL+PGUP", "d_down CTRL+PGDN", "d_recall CTRL+HOME" }, ext, "extended keys of the game");
             EqList(new[] { "", "SHIFT", "CTRL", "ALT" }, MOD_NAMES, "modifier names (ini and badges)");
         }
@@ -212,7 +227,7 @@ static partial class TNPlus
         {
             EqList(new[] { "freelook", "noclip", "view distance", "stereo swap" }, KEY_WHAT, "tool actions");
             EqList(new[] { "freelook", "noclip", "distance", "stereo" }, TOOL_IDS, "their ini names (mouse_)");
-            EqList(new[] { 0x15, 0x16, 0x24, 0x41 }, new[] { GetKey(0), GetKey(1), GetKey(2), GetKey(3) }, "default keys Y U J F7");
+            EqList(new[] { 0x21, 0x16, 0x24, 0x41 }, new[] { GetKey(0), GetKey(1), GetKey(2), GetKey(3) }, "default keys F U J F7");
             for (int i = 0; i < 4; i++) Ok(Array.IndexOf(KEY_RESERVED, GetKey(i)) < 0, KEY_WHAT[i] + " default not reserved");
             SetKey(0, 0x30); SetKey(1, 0x31); SetKey(2, 0x32); SetKey(3, 0x33);
             EqList(new[] { 0x30, 0x31, 0x32, 0x33 }, new[] { ScanFreelook, ScanNoclip, ScanDistance, ScanStereo }, "SetKey writes the KEY_WHAT order");
@@ -221,11 +236,11 @@ static partial class TNPlus
             foreach (int m in MODIFIER_SC) Ok(Array.IndexOf(KEY_RESERVED, m) >= 0, "modifier 0x" + m.ToString("X2") + " reserved for the tool too");
         }
 
-        [Test] static void Keys_Table_OnlyPreviousTargetOnAToolKey()
+        [Test] static void Keys_Table_OnlyCentreViewOnAToolKey()
         {
             List<string> clash = new List<string>();
-            foreach (GameKey g in GameKeys) if (g.DefMod == 0 && ToolKeyOwner(g.DefSc, -1) >= 0) clash.Add(g.Id + " " + KEY_WHAT[ToolKeyOwner(g.DefSc, -1)]);
-            EqList(new[] { "tprev freelook" }, clash, "the game's plain keys on the tool's default keys");
+            foreach (GameKey g in GameKeys) if (g.OwnMod == 0 && ToolKeyOwner(g.OwnSc, -1) >= 0) clash.Add(g.Id + " " + KEY_WHAT[ToolKeyOwner(g.OwnSc, -1)]);
+            EqList(new[] { "centre freelook" }, clash, "the game's own plain keys on the tool's default keys (Centre view comes without a key)");
         }
 
         [Test] static void Keys_Table_SpareKeys()
@@ -417,14 +432,16 @@ static partial class TNPlus
         {
             Eq("", GameKeysIni(), "nothing changed: no line");
             KeysStart();
-            Eq("key_game_tprev = 25\r\n", GameKeysIni(), "first run: previous target on K");
+            Eq("key_game_centre = 21\r\nkey_game_tprev = 25\r\n", GameKeysIni(), "keys from before version 4: Centre view on F, previous target on K");
             Has(AssignGameKey(KeysG("jump"), 0x3F, 2, false), "jump jets: CTRL+F5", "jump to Ctrl+F5");
             AssignGameKey(KeysG("w1"), 0x3B, 1, false);
             AssignGameKey(KeysG("o_attack"), 0x0B, 3, false);
-            Eq("key_game_jump = CTRL+3F\r\nkey_game_w1 = SHIFT+3B\r\nkey_game_tprev = 25\r\nkey_game_o_attack = ALT+0B\r\n", GameKeysIni(),
+            Eq("key_game_jump = CTRL+3F\r\nkey_game_centre = 21\r\nkey_game_w1 = SHIFT+3B\r\nkey_game_tprev = 25\r\nkey_game_o_attack = ALT+0B\r\n", GameKeysIni(),
                 "table order, two upper case hex digits, modifier prefix");
             AssignGameKey(KeysG("jump"), 0x39, 0, false);
-            Eq("key_game_w1 = SHIFT+3B\r\nkey_game_tprev = 25\r\nkey_game_o_attack = ALT+0B\r\n", GameKeysIni(), "back on its default: line gone");
+            Eq("key_game_centre = 21\r\nkey_game_w1 = SHIFT+3B\r\nkey_game_tprev = 25\r\nkey_game_o_attack = ALT+0B\r\n", GameKeysIni(), "back on its default: line gone");
+            KeysStartV4();
+            Eq("", GameKeysIni(), "the keys as they come since version 4: no line");
         }
 
         [Test] static void Keys_GameKeysIni_ReadBackForEveryPreset()
@@ -516,17 +533,17 @@ static partial class TNPlus
             KeysFresh();
             KeysLoad("; nothing");
             Eq(-1, ChosenLayout, "no keys_layout");
-            Eq("tprev=25/0", KeysDiff(KeysNow()), "keys_layout only names the preset: the keys come from key_game_");
+            Eq("centre=00/0", KeysDiff(KeysNow()), "keys_layout only names the preset: the keys come from key_game_ (here: as they come)");
         }
 
         [Test] static void Keys_Load_FirstRunWritesTheKeys()
         {
             No(File.Exists(IniPath), "no TNPlus.ini yet");
             LoadSettings();
-            Eq("tprev=25/0", KeysDiff(KeysNow()), "previous target moved off Y");
+            Eq("centre=00/0", KeysDiff(KeysNow()), "Centre view without a key, previous target stays on Y");
             string ini = File.ReadAllText(IniPath);
-            Has(ini, "\r\nkey_freelook = 15\r\nkey_noclip = 16\r\nkey_distance = 24\r\nkey_stereo = 41\r\nkeys_version = 3\r\n", "tool keys");
-            Has(ini, "\r\nkey_game_tprev = 25\r\n", "previous target's line");
+            Has(ini, "\r\nkey_freelook = 21\r\nkey_noclip = 16\r\nkey_distance = 24\r\nkey_stereo = 41\r\nkeys_version = 4\r\n", "tool keys");
+            HasNot(ini, "\r\nkey_game_", "no key_game_ line: every command as it comes");
             HasNot(ini, "keys_layout", "no preset picked");
             HasNot(ini, "\r\nmouse_", "no mouse bind");
         }
@@ -567,16 +584,17 @@ static partial class TNPlus
             AssignMouse(null, 2, 4);
             ResetKeys();
             Eq(-1, ChosenLayout, "no preset");
-            EqList(new[] { 0x15, 0x16, 0x24, 0x41 }, new[] { GetKey(0), GetKey(1), GetKey(2), GetKey(3) }, "tool keys");
+            EqList(new[] { 0x21, 0x16, 0x24, 0x41 }, new[] { GetKey(0), GetKey(1), GetKey(2), GetKey(3) }, "tool keys");
             No(AnyMouseBind(), "no mouse bind");
-            Eq("tprev=25/0", KeysDiff(KeysNow()), "the game's keys, previous target on K");
+            Eq("centre=00/0", KeysDiff(KeysNow()), "the keys as they come: Centre view without a key, previous target on Y");
             Eq(0, CurrentLayout(), "recognized as GAME");
         }
 
         [Test] static void Keys_Resolve_FirstFreeSpare()
         {
+            SetKey(0, 0x15);                         // freelook on Y, as before version 4 of the keys
             ResolveToolClashes();
-            Eq("tprev=25/0", KeysDiff(KeysNow()), "previous target from Y to K");
+            Eq("centre=00/0 tprev=25/0", KeysDiff(KeysNow()), "previous target from Y to K");
             string once = KeysSnap();
             ResolveToolClashes();
             Eq(once, KeysSnap(), "a second time: nothing moves");
@@ -584,10 +602,12 @@ static partial class TNPlus
 
         [Test] static void Keys_Resolve_SkipsUsedSpares()
         {
+            SetKey(0, 0x15);                         // freelook on Y, as before version 4 of the keys
             SetKey(2, 0x25);                         // view distance on K
             ResolveToolClashes();
-            Eq("tprev=26/0", KeysDiff(KeysNow()), "K is a tool key: L");
+            Eq("centre=00/0 tprev=26/0", KeysDiff(KeysNow()), "K is a tool key: L");
             KeysFresh();
+            SetKey(0, 0x15);
             KeysG("jump").Sc = 0x25; KeysG("crouch").Sc = 0x26;
             KeysG("o_attack").Sc = 0x27;             // ALT+; does not take ;
             ResolveToolClashes();
@@ -598,7 +618,7 @@ static partial class TNPlus
         {
             SetKey(0, 0x11); SetKey(1, 0x1F); SetKey(2, 0x1E); SetKey(3, 0x20);   // the tool on W S A D
             ResolveToolClashes();
-            Eq("fwd=25/0 turnl=26/0 turnr=27/0 stop=08/0", KeysDiff(KeysNow()), "K L ; 7 in table order, previous target stays on Y");
+            Eq("fwd=25/0 turnl=26/0 turnr=27/0 stop=08/0 centre=00/0", KeysDiff(KeysNow()), "K L ; 7 in table order, previous target stays on Y");
             KeysCheck("tool on W S A D");
         }
 
@@ -615,19 +635,19 @@ static partial class TNPlus
             SetKey(0, 0x1E);                         // freelook on A: turn left (plain) and aggressive attack (ALT+A)
             ScanNoclip = 0x18;                       // noclip on O, the game's options (only a hand-written ini can do it)
             ResolveToolClashes();
-            Eq("turnl=25/0", KeysDiff(KeysNow()), "turn left to K; ALT+A, options and previous target stay");
+            Eq("turnl=25/0 centre=00/0", KeysDiff(KeysNow()), "turn left to K; ALT+A, options and previous target stay");
         }
 
         // ================================================================== owners
         [Test] static void Keys_ToolKeyOwner()
         {
-            Eq(0, ToolKeyOwner(0x15, -1), "Y freelook"); Eq(1, ToolKeyOwner(0x16, -1), "U noclip");
+            Eq(0, ToolKeyOwner(0x21, -1), "F freelook"); Eq(1, ToolKeyOwner(0x16, -1), "U noclip");
             Eq(2, ToolKeyOwner(0x24, -1), "J view distance"); Eq(3, ToolKeyOwner(0x41, -1), "F7 stereo swap");
             Eq(-1, ToolKeyOwner(0x11, -1), "W: none"); Eq(-1, ToolKeyOwner(0, -1), "0: none");
-            Eq(-1, ToolKeyOwner(0x15, 0), "freelook left out");
-            Eq(0, ToolKeyOwner(0x15, 1), "another one left out");
-            ScanNoclip = 0x15;                       // two on one key (hand-written ini): the first
-            Eq(0, ToolKeyOwner(0x15, -1), "the first of two"); Eq(1, ToolKeyOwner(0x15, 0), "the other");
+            Eq(-1, ToolKeyOwner(0x21, 0), "freelook left out");
+            Eq(0, ToolKeyOwner(0x21, 1), "another one left out");
+            ScanNoclip = 0x21;                       // two on one key (hand-written ini): the first
+            Eq(0, ToolKeyOwner(0x21, -1), "the first of two"); Eq(1, ToolKeyOwner(0x21, 0), "the other");
         }
 
         [Test] static void Keys_GameKeyOwner()
@@ -1134,14 +1154,15 @@ static partial class TNPlus
         // ================================================================== keyboard layouts: presets
         [Test] static void Keys_LayoutChords_EveryPreset()
         {
-            string moves = "back=1F/0 turnl=2C/0 turnr=2E/0 stop=2D/0 sidel=1E/0 sider=20/0 ";
+            // (freelook on F: Centre view without a key, previous target stays on Y)
+            string moves = "back=1F/0 turnl=2C/0 turnr=2E/0 stop=2D/0 sidel=1E/0 sider=20/0 centre=00/0";
             string[] want = {
-                "tprev=25/0",
-                moves + "tprev=25/0",
-                moves + "tprev=25/0 o_attack=10/3 o_follow=27/3 maphud=27/0",
-                moves + "tprev=25/0",
-                moves + "v360=31/0 tnext=25/0 tprev=14/0 o_cover=17/3 o_caution=23/3 o_form=15/3 o_hold=24/3 o_nav=26/3 o_pickup=13/3 o_retreat=18/3 o_status=27/3 o_target=25/3 recentre=26/0 exit=30/3",
-                moves + "ir=26/0 tprev=25/0 o_caution=22/3 o_form=12/3 o_nav=24/3 o_pickup=13/3 o_retreat=1F/3 o_status=20/3 o_target=21/3" };
+                "centre=00/0",
+                moves,
+                moves + " o_attack=10/3 o_follow=27/3 maphud=27/0",
+                moves,
+                moves + " v360=31/0 tnext=25/0 tprev=14/0 o_cover=17/3 o_caution=23/3 o_form=15/3 o_hold=24/3 o_nav=26/3 o_pickup=13/3 o_retreat=18/3 o_status=27/3 o_target=25/3 recentre=26/0 exit=30/3",
+                moves + " ir=26/0 o_caution=22/3 o_form=12/3 o_nav=24/3 o_pickup=13/3 o_retreat=1F/3 o_status=20/3 o_target=21/3" };
             for (int l = 0; l < LAYOUT_COUNT; l++) Eq(want[l], KeysDiff(LayoutChords(l)), LAYOUT_NAMES[l] + " (default tool keys)");
         }
 
@@ -1157,13 +1178,13 @@ static partial class TNPlus
         [Test] static void Keys_LayoutChords_FollowTheToolKeys()
         {
             SetKey(0, 0x32);                         // freelook on M: map to HUD goes, previous target stays
-            Eq("maphud=25/0", KeysDiff(LayoutChords(0)), "GAME, freelook on M");
+            Eq("centre=00/0 maphud=25/0", KeysDiff(LayoutChords(0)), "GAME, freelook on M");
             SetKey(0, 0x27);                         // freelook where AZERTY prints M
-            Eq("back=1F/0 turnl=2C/0 turnr=2E/0 stop=2D/0 sidel=1E/0 sider=20/0 o_attack=10/3 o_follow=27/3", KeysDiff(LayoutChords(2)),
+            Eq("back=1F/0 turnl=2C/0 turnr=2E/0 stop=2D/0 sidel=1E/0 sider=20/0 centre=00/0 o_attack=10/3 o_follow=27/3", KeysDiff(LayoutChords(2)),
                 "AZERTY: map to HUD keeps its place, ALT+M follows the letter");
             SetKey(1, 0x25);                         // noclip on K
             SetKey(0, 0x15);
-            Eq("tprev=26/0", KeysDiff(LayoutChords(0)), "K taken by the tool: L");
+            Eq("centre=00/0 tprev=26/0", KeysDiff(LayoutChords(0)), "K taken by the tool: L");
         }
 
         [Test] static void Keys_LayoutChords_RulesForAnyToolKeys()
@@ -1214,6 +1235,8 @@ static partial class TNPlus
 
         [Test] static void Keys_CurrentLayout_GameOnceResolved()
         {
+            Eq(0, CurrentLayout(), "the keys as they come: GAME");
+            SetKey(0, 0x15);                         // freelook on Y, as before version 4 of the keys
             Eq(LAYOUT_COUNT, CurrentLayout(), "before ResolveToolClashes (previous target on freelook's Y): CUSTOM");
             ResolveToolClashes();
             Eq(0, CurrentLayout(), "then GAME");
@@ -1255,7 +1278,7 @@ static partial class TNPlus
         [Test] static void Keys_Layout_LettersFollowThePrintedKey()
         {
             // the letter shortcuts that can't show their letter (the key is the tool's or a command's): the rest do
-            string[] blocked = { "tprev", "tprev", "tprev", "full ir pause", "full recentre pause tnext tprev" };
+            string[] blocked = { "tprev", "tprev", "tprev", "full ir pause", "recentre pause tprev" };
             for (int l = 1; l < LAYOUT_COUNT; l++)
             {
                 KeysStart();
@@ -1273,10 +1296,14 @@ static partial class TNPlus
         // ================================================================== the key map given to the game, its hook
         [Test] static void Keys_BuildKeyMap_NothingChanged()
         {
-            EqBytes(new byte[1024], BuildKeyMap(), "start values: empty map");
-            SetKey(0, 0x3F);                         // freelook off Y: nothing to move
+            byte[] want = new byte[1024];
+            want[0x21 * 8] = 0xFF; want[0x21 * 8 + 1] = 0x80;   // F alone -> taken away (freelook's; Centre view without a key)
+            EqBytes(want, BuildKeyMap(), "start values: only the game's F taken away");
+            SetKey(0, 0x3F);                         // freelook off F: Centre view still has no key
             ResolveToolClashes();
-            EqBytes(new byte[1024], BuildKeyMap(), "freelook on F5: still empty");
+            EqBytes(want, BuildKeyMap(), "freelook on F5: the same");
+            Eq("centre view: F", AssignGameKey(KeysG("centre"), 0x21, 0, false), "Centre view given its own F");
+            EqBytes(new byte[1024], BuildKeyMap(), "every command on the game's own key: empty map");
             No(KeysChanged(), "and no key changed");
         }
 
@@ -1298,7 +1325,8 @@ static partial class TNPlus
             Eq(0x801F, map[0x11 * 4], "W -> S (stop)");
             int n = 0;
             foreach (int w in map) if (w != 0) n++;
-            Eq(4, n, "plus previous target's two words, nothing taken away");
+            Eq(0x4000, map[0x1F * 4 + 3], "ALT+S: status check stays, S is forward's now (the order, then forward once Alt is let go)");
+            Eq(5, n, "plus previous target's two words and ALT+S, nothing taken away");
             KeysCheckMap("swap");
         }
 
@@ -1319,8 +1347,9 @@ static partial class TNPlus
         [Test] static void Keys_BuildKeyMap_EveryPreset()
         {
             // a word per moved command, plus 0x80FF on each of the game's chords left free (QWERTY: the six moves
-            // take each other's keys, previous target leaves Y)
-            int[] words = { 2, 8, 14, 8, 30, 20 }, away = { 1, 1, 4, 1, 10, 5 };
+            // take each other's keys, previous target leaves Y, Centre view leaves F), plus 0x4000 on each game order
+            // left on Alt + a moved key
+            int[] words = { 3, 14, 19, 14, 32, 26 }, away = { 2, 2, 5, 2, 11, 6 };
             for (int l = 0; l < LAYOUT_COUNT; l++)
             {
                 KeysStart();
@@ -1337,7 +1366,7 @@ static partial class TNPlus
         {
             EqBytes(Bytes("E8FB0F0000"), Rel32Call(0x1000, 0x2000, 5), "forward call, no padding");
             EqBytes(Bytes("E8FBEFFFFF909090"), Rel32Call(0x2000, 0x1000, 8), "backward call, 3 NOPs");
-            EqBytes(Bytes("E848871500909090909090"), Rel32Call(0x312345, KB_MAP_FN, 11), "the 11 bytes at the keyboard handler's site");
+            EqBytes(Bytes("E865871500909090909090"), Rel32Call(0x312345, KB_MAP_FN, 11), "the 11 bytes at the keyboard handler's site");
             foreach (uint at in new uint[] { 0, 0x29E828, 0x33FFF0, 0x46AA20 })
                 foreach (uint target in new uint[] { 0x1000, 0x46AA92, 0x300000 })
                 {
@@ -1357,12 +1386,13 @@ static partial class TNPlus
 
         [Test] static void Keys_KeysChanged()
         {
-            No(KeysChanged(), "start values");
-            ResolveToolClashes();
-            Ok(KeysChanged(), "previous target moved to K: the key translation is needed with the default keys");
+            Ok(KeysChanged(), "start values: Centre view comes without a key, the translation is needed with the default keys");
             KeysFresh();
-            SetKey(0, 0x3F); ResolveToolClashes();
-            No(KeysChanged(), "freelook off Y: nothing moved");
+            SetKey(0, 0x15); KeysG("centre").Sc = 0x21; ResolveToolClashes();
+            Ok(KeysChanged(), "keys from before version 4: previous target moved to K");
+            KeysFresh();
+            SetKey(0, 0x3F); KeysG("centre").Sc = 0x21; ResolveToolClashes();
+            No(KeysChanged(), "freelook on F5, Centre view on F: nothing moved");
             AssignGameKey(KeysG("o_attack"), 0x1E, 1, false);
             Ok(KeysChanged(), "a chord changed");
             AssignGameKey(KeysG("o_attack"), 0x1E, 3, false);
