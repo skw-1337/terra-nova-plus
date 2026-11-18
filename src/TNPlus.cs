@@ -1511,12 +1511,31 @@ static partial class TNPlus
         ProcessStartInfo psi = new ProcessStartInfo(Path.Combine(db, "dosbox-staging.exe"), args);
         psi.WorkingDirectory = db;
         psi.UseShellExecute = false;
+        PruneMstat(Path.Combine(GameDir, TARGET_DIRS[LaunchTarget]));
         launched = Process.Start(psi);
         launchedWide = OptWide;
         if (!OptWide) launchedTrue = false;
         launchedDemo = demo;
         Console.WriteLine((demo ? TARGET_NAMES[LaunchTarget] : "Game") + " started" + (OptWide ? " in widescreen 16:9." : "."));
         return true;
+    }
+
+    // The game makes a scratch file MSTATnnn.RES at each start (the first free name, octal 000 to 777) and only removes
+    // it when it is left by its own menu: when DOSBox is closed instead the file stays, and with all 512 names taken
+    // the game stays on a black screen. No save needs them. Only with no game running (a running game needs its own),
+    // and without insisting where Windows refuses (Program Files)
+    static void PruneMstat(string dir)
+    {
+        if (Process.GetProcessesByName("dosbox-staging").Length > 0) return;
+        int n = 0;
+        try
+        {
+            foreach (string f in Directory.GetFiles(dir, "MSTAT???.RES"))
+                if (Regex.IsMatch(Path.GetFileName(f), @"^MSTAT[0-7]{3}\.RES$", RegexOptions.IgnoreCase))
+                    try { File.Delete(f); n++; } catch { }
+        }
+        catch { }
+        if (n > 0) Console.WriteLine("Removed " + n + " leftover MSTAT file(s) of the game.");
     }
 
     // ------------------------------------------------------------------ main loop
