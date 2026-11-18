@@ -1173,7 +1173,8 @@ static partial class TNPlus
         {
             byte[] code = Hex(KB_CODE_HEX), sweep = Hex(KB_SWEEP_HEX);
             uint codeEnd = KB_CODE + (uint)code.Length;
-            foreach (uint a in DataKit.Refs(code)) Ok(a >= KB_DATA && a < KB_DATA_END, "KB code uses " + DataKit.X(a));
+            // (and its own small table of modifier keys, after the code)
+            foreach (uint a in DataKit.Refs(code)) Ok((a >= KB_DATA && a < KB_DATA_END) || (a >= KB_CODE && a < codeEnd), "KB code uses " + DataKit.X(a));
             foreach (uint a in DataKit.Refs(sweep)) Ok(a >= KB_DATA && a < KB_DATA_END, "KB sweep uses " + DataKit.X(a));
             // install: copies the 11 bytes of KB_PATCH to [KB_SITE] (from inside the game: DOSBox sees that write)
             Ok(DataKit.Contains(code, DataKit.Cat(new byte[] { 0xBE }, DataKit.Le(KB_PATCH), Bytes("8B3D"), DataKit.Le(KB_SITE), new byte[] { 0xB9 }, DataKit.Le(11), Bytes("F3A4"))),

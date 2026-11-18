@@ -13,15 +13,15 @@ static partial class TNPlus
     {
         // ---------------------------------------------------------------- helpers (prefix Ini)
         // what a new ini holds (no TNPlus.ini at start-up): every "key = value" line SaveSettings writes, in its order.
-        // The game's previous target (Y) is on K: freelook has Y (ResolveToolClashes, first spare key K).
+        // Freelook is on F (version 4 of the keys): the game's Centre view comes without a key, previous target stays on Y.
         static readonly string[] IniDefaults = {
             "display = HD", "launch = GAME", "freelook = 1", "noclip = 0", "shift_run = 0", "view_distance = FAR", "terrain_detail = SHARPER",
             "terrain_fps = 60", "widescreen = 3", "wide_hud = 1", "wide_menus = 0", "fps_counter = 1", "speed_fixes = 1", "small_views = 1",
             "update_check = 1", "stereo_fix = 0", "scaling = SHARP", "music = ROLAND", "awe32_exact = 0", "hit_fix = 1", "phys_fix = 1",
             "thick_smoke = 0", "field_of_view = GAME", "object_distance = MAX", "edge_objects = 1",
             "sensitivity_x = 12", "sensitivity_y = 8", "invert_y = 0", "noclip_speed = 15", "cpu_cycles = 1800000",
-            "speed_version = 6", "key_freelook = 15", "key_noclip = 16", "key_distance = 24", "key_stereo = 41",
-            "keys_version = 3", "key_game_tprev = 25", "sound = 1", "game_dir = " };
+            "speed_version = 6", "key_freelook = 21", "key_noclip = 16", "key_distance = 24", "key_stereo = 41",
+            "keys_version = 4", "sound = 1", "game_dir = " };
 
         // every setting away from its default, in the order SaveSettings writes them (so a load + save gives them back).
         // The tool keys (F5, F6, L, 9) are on no game key: ResolveToolClashes moves nothing.
@@ -35,7 +35,7 @@ static partial class TNPlus
                 "object_distance = GAME", "edge_objects = 0", "wide_attach = 1", "inplace_attach = 1", "keep_dos = 1",
                 "smooth_cells = 40", "sensitivity_x = 20", "sensitivity_y = 3", "invert_y = 1", "noclip_speed = 2.5",
                 "cpu_cycles = 2200000", "speed_version = 6", "key_freelook = 3F", "key_noclip = 40", "key_distance = 26",
-                "key_stereo = 0A", "keys_version = 3", "keys_layout = DVORAK",
+                "key_stereo = 0A", "keys_version = 4", "keys_layout = DVORAK",
                 "key_game_fwd = 48", "key_game_jump = SHIFT+39", "key_game_tprev = ALT+15", "key_game_o_attack = CTRL+1E",
                 "key_game_d_up = CTRL+49",
                 "mouse_jump = M4", "mouse_lookup = WHEELUP", "mouse_freelook = MID", "mouse_stereo = DEL",
@@ -141,9 +141,10 @@ static partial class TNPlus
         [Test] static void Ini_NoIni_StateIsTheDefaults()
         {
             IniLoad();
-            Eq(0x15, ScanFreelook, "freelook on Y");
-            IniKeyIs("tprev", 0x25, 0, "the game's previous target moved from Y to K");
-            EqList(new[] { "tprev" }, IniChangedKeys(), "the only game command changed");
+            Eq(0x21, ScanFreelook, "freelook on F");
+            IniKeyIs("tprev", 0x15, 0, "the game's previous target stays on Y");
+            IniKeyIs("centre", 0, 0, "Centre view without a key (its F is freelook's)");
+            EqList(new string[0], IniChangedKeys(), "no game command changed from how it comes");
             Eq(2, Display, "display HD");
             Eq(3, WideMode(), "true 16:9 in 1280x720");
             Eq(1800000, CpuCycles, "cpu cycles");
@@ -168,7 +169,7 @@ static partial class TNPlus
             IniLoad();
             SaveSettings();
             Ok(Directory.Exists(IniPath), "the folder is still there");
-            IniKeyIs("tprev", 0x25, 0, "the defaults still applied (previous target on K)");
+            IniKeyIs("tprev", 0x15, 0, "the defaults still applied (previous target on Y, freelook on F)");
         }
 
         // ---------------------------------------------------------------- the text SaveSettings writes
@@ -201,7 +202,7 @@ static partial class TNPlus
             SaveSettings();
             t = File.ReadAllText(IniPath);
             Has(t, "\r\ncpu_cycles = 1800000\r\nspeed_version = 6\r\n", "cpu cycles then the speed version");
-            Has(t, "\r\nkey_freelook = 15\r\nkey_noclip = 16\r\nkey_distance = 24\r\nkey_stereo = 41\r\nkeys_version = 3\r\n", "the tool keys (hex, 2 digits) then the keys version");
+            Has(t, "\r\nkey_freelook = 21\r\nkey_noclip = 16\r\nkey_distance = 24\r\nkey_stereo = 41\r\nkeys_version = 4\r\n", "the tool keys (hex, 2 digits) then the keys version");
             Has(t, "\r\nsensitivity_x = 12\r\nsensitivity_y = 8\r\ninvert_y = 0\r\n", "mouse sensitivity");
             Has(t, "\r\nnoclip_speed = 15\r\n", "noclip speed 15.0 written 15");
             Has(t, "\r\nscaling = SHARP\r\n", "scaling");
@@ -220,7 +221,7 @@ static partial class TNPlus
             IniLoad();
             SaveSettings();
             Eq("6", IniSavedValue("speed_version"), "speed_version written (one line)");
-            Eq("3", IniSavedValue("keys_version"), "keys_version written (one line)");
+            Eq("4", IniSavedValue("keys_version"), "keys_version written (one line)");
             Eq("2200000", IniSavedValue("cpu_cycles"), "cpu cycles kept");
         }
 
@@ -239,7 +240,7 @@ static partial class TNPlus
             Ok(e > 0 && e + 4 < l.Count, "edge_objects line");
             EqList(new[] { "wide_attach = 1", "inplace_attach = 1", "keep_dos = 1", "smooth_cells = 36" }, l.GetRange(e + 1, 4), "the test lines, after edge_objects");
             Has(File.ReadAllText(IniPath), "\r\n; tests: forced end of the smooth terrain (cells)\r\nsmooth_cells = 36\r\n", "smooth_cells and its comment");
-            int kv = l.IndexOf("keys_version = 3");
+            int kv = l.IndexOf("keys_version = 4");
             Eq("keys_layout = AZERTY", kv >= 0 && kv + 1 < l.Count ? l[kv + 1] : null, "keys_layout, after keys_version");
 
             OptSmoothCells = -5; ChosenLayout = -1; OptKeepDos = false;
@@ -416,8 +417,8 @@ static partial class TNPlus
             string said = IniLoad();
             Eq("", said.Trim(), "nothing printed for unknown keys");
             Eq(5, SensY, "the line after them read");
-            Eq(0x15, ScanFreelook, "key_freelook untouched");
-            EqList(new[] { "tprev" }, IniChangedKeys(), "game commands changed (only previous target, to K)");
+            Eq(0x15, ScanFreelook, "key_ lines from before version 4 of the keys: freelook on Y");
+            EqList(new[] { "centre", "tprev" }, IniChangedKeys(), "Centre view kept on F, previous target off Y to K");
             No(AnyMouseBind(), "no mouse bind");
         }
 
@@ -431,7 +432,7 @@ static partial class TNPlus
                 "key_distance = 1FFFFFFFF", "key_stereo =", "key_game_fwd = CTRL+XY", "key_game_back = SHIFT+" })
                 Has(said, "Ignored bad setting: " + l + Environment.NewLine, "message for " + l);
             Eq(8, IniCount(said, "Ignored bad setting: "), "one message per bad line");
-            Eq(12, SensX, "sensitivity_x kept"); Eq(0x15, ScanFreelook, "key_freelook kept"); Eq(15.0, NoclipSpeed, "noclip_speed kept");
+            Eq(12, SensX, "sensitivity_x kept"); Eq(0x21, ScanFreelook, "key_freelook kept"); Eq(15.0, NoclipSpeed, "noclip_speed kept");
             Eq(1800000, CpuCycles, "cpu_cycles kept"); Eq(0x24, ScanDistance, "key_distance kept (overflow)");
             Eq(0x41, ScanStereo, "key_stereo kept (empty)");
             IniKeyIs("fwd", 0x11, 0, "fwd kept"); IniKeyIs("back", 0x2D, 0, "back kept");
@@ -525,7 +526,7 @@ static partial class TNPlus
             IniKeyIs("d_recall", 0x47, 2, "drone recall (default Ctrl+Home, E0) on Ctrl+keypad 7");
             SaveSettings();
             EqList(new[] { "key_game_fwd = 48", "key_game_back = SHIFT+1F", "key_game_turnl = CTRL+2C", "key_game_turnr = ALT+2E",
-                "key_game_tprev = 25", "key_game_o_attack = 1E", "key_game_d_recall = CTRL+47" }, IniSavedStarting("key_game_"),
+                "key_game_centre = 21", "key_game_tprev = 25", "key_game_o_attack = 1E", "key_game_d_recall = CTRL+47" }, IniSavedStarting("key_game_"),
                 "key_game_ lines, in the order of the key card");
         }
 
@@ -544,9 +545,9 @@ static partial class TNPlus
         {
             IniPut("key_freelook = 3F", "key_game_fwd = 11", "key_game_o_attack = ALT+1E", "key_game_o_cover = SHIFT+2E");
             IniLoad();
-            EqList(new[] { "o_cover" }, IniChangedKeys(), "changed (fwd and o_attack on their own keys; Y free: tprev stays)");
+            EqList(new[] { "centre", "o_cover" }, IniChangedKeys(), "changed (fwd and o_attack on their own keys; Y free: tprev stays; an ini from before version 4: Centre view kept on F)");
             SaveSettings();
-            EqList(new[] { "key_game_o_cover = SHIFT+2E" }, IniSavedStarting("key_game_"), "only the changed command written");
+            EqList(new[] { "key_game_centre = 21", "key_game_o_cover = SHIFT+2E" }, IniSavedStarting("key_game_"), "only the changed commands written");
         }
 
         [Test] static void Ini_Mouse_EveryBindReadAndWritten()
@@ -583,7 +584,7 @@ static partial class TNPlus
             IniKeyIs("fwd", 0x25, 0, "forward moved to K");
             IniKeyIs("tprev", 0x15, 0, "previous target on Y (free)");
             SaveSettings();
-            EqList(new[] { "key_game_fwd = 25" }, IniSavedStarting("key_game_"), "key_game_ lines");
+            EqList(new[] { "key_game_fwd = 25", "key_game_centre = 21" }, IniSavedStarting("key_game_"), "key_game_ lines (an ini from before version 4: Centre view kept on F)");
         }
 
         [Test] static void Ini_Clash_NextFreeSpareKey()
@@ -917,14 +918,14 @@ static partial class TNPlus
 
         [Test] static void Ini_KeyDistance_ChoiceSurvivesARestart()
         {
-            IniLoad();                                // a first start (previous target on K)
+            IniLoad();                                // a first start (freelook on F, previous target on Y)
             Eq("view distance: I, infrared moved to J", AssignToolKey(2, 0x17, false), "view distance put on I");
             SaveSettings();
             IniDefaultKeys(); ScanDistance = 0x24;    // the tool started again
             IniLoad();
             Eq(0x17, ScanDistance, "view distance still on I");
             IniKeyIs("ir", 0x24, 0, "infrared still on J");
-            IniKeyIs("tprev", 0x25, 0, "previous target still on K");
+            IniKeyIs("tprev", 0x15, 0, "previous target still on Y");
         }
 
         [Test] static void Ini_Display_WithoutItsLinesKeepsTheDefault()
