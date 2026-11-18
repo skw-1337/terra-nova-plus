@@ -49,7 +49,7 @@ using System.Reflection;
 
 static partial class TNPlus
 {
-    const string VERSION = "1.2.3-coop3";
+    const string VERSION = "1.2.3-coop4";
     const string TITLE = "Terra Nova Plus";
 
     // ------------------------------------------------------------------ options (TNPlus.ini)
