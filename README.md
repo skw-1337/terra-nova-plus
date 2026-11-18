@@ -187,8 +187,8 @@ Terra Nova Plus is a Windows program. On Linux it runs through **Wine**, togethe
 
 ### What you need
 
-1. **The game**, the Steam or the GOG edition (they are Windows packages, that is fine):
-   - **Steam**: right-click the game, *Properties*, *Compatibility*, tick *Force the use of a specific Steam Play compatibility tool*, choose a Proton, then install it.
+1. **The game**, the Steam or the GOG edition, in its **Windows** version:
+   - **Steam**: on Linux, Steam installs a Linux version of the game by default, and TN+ cannot use that one (it needs the Windows DOSBox that comes with the Windows version). Right-click the game, *Properties*, *Compatibility*, tick *Force the use of a specific Steam Play compatibility tool* and choose a Proton. Steam then downloads the Windows files (about 20 MB) into the same folder. Your saves stay.
    - **GOG**: install it with [Heroic](https://heroicgameslauncher.com/) or Lutris, and choose GOG's **Beta** version of the game (the default one is too old for TN+).
 2. **Wine**, version 9 or newer. If you do not have it, the script tells you the exact command for your system. For the record:
 
@@ -218,17 +218,20 @@ The script says what it does, in four steps:
 [4/4] Starting Terra Nova Plus...
 ```
 
-Then three things happen, in this order:
+Then:
 
 1. **The very first time only**, Wine prepares itself (about a minute) and a small window may ask to install **Wine Mono**. Click **Install**. TN+ needs it.
-2. **The Terra Nova Plus window opens**, the same as on Windows. Choose your settings (the **BEST** preset is a good start) and click **Launch**.
-3. **The game shows a small text menu** ("Press a number key..."). Press **1** to play.
+2. **On a screen at least 900 pixels high, the Terra Nova Plus window opens**, the same as on Windows. Choose your settings (the **BEST** preset is a good start) and click **Launch**.
+3. **On a smaller screen (a Steam Deck, a small laptop)** that window does not fit and cannot be resized, so the script asks in the terminal instead: `1` BEST, `2` CLASSIC+, `3` ORIGINAL, Enter to keep your settings. Then the game starts straight away. The other settings are lines of `TNPlus.ini`, next to `TNPlus.exe` (see [Settings](#settings-tnplusini)). Started this way, *Run on Shift* does nothing.
+4. If the game shows a small text menu first ("Press a number key..."), press **1** to play.
+
+`bash tnplus.sh --window` always opens the window (if its buttons are off the screen, Enter is **Launch**), `bash tnplus.sh --terminal` always asks in the terminal.
 
 Next time, the same `bash tnplus.sh` in that folder starts it again, without the download and the waiting.
 
 ### The script did not find the game
 
-It looks in the usual Steam and GOG folders, including your other Steam libraries. If your game is somewhere else, it asks for its folder: type it, or drag the folder from your file manager into the terminal, and press Enter. You can also give it directly:
+It looks in the Steam folders (the usual one, Flatpak, Snap, your other libraries, SD cards) and the usual GOG ones. If your game is somewhere else, it asks for its folder: type it, or drag the folder from your file manager into the terminal, and press Enter. You can also give it directly:
 
 ```bash
 bash tnplus.sh "/path/to/Terra Nova Strike Force Centauri"
@@ -236,11 +239,13 @@ bash tnplus.sh "/path/to/Terra Nova Strike Force Centauri"
 
 The right folder is the one that contains two folders named `TNOVA` and `_DOSBOX`.
 
+When the script refuses a folder, it says which file it did not find and what is in the folder instead. The most common case is **"holds the LINUX edition of the Steam game"**: force Proton for the game in Steam, as written [above](#what-you-need), and run the script again. If you report a problem, copy those lines.
+
 ### Steam Deck
 
 **Not tested yet. If you try it, please tell me how it goes.**
 
-SteamOS has no Wine of its own, so the script borrows the one inside Steam's **Proton**. You only need the game installed from Steam (with Proton forced, as above).
+SteamOS has no Wine of its own, so the script borrows the one inside Steam's **Proton**. You only need the game installed from Steam, **with Proton forced, as above**: without that, the Deck has the Linux version and TN+ says "game not found" whatever you write in `TNPlus.ini`. The Deck's screen is too small for TN+'s window, so the script asks its question in Konsole and starts the game.
 
 1. Hold the power button, choose **Switch to Desktop**.
 2. Open **Konsole** (the terminal), and paste the same two lines:
@@ -250,7 +255,7 @@ SteamOS has no Wine of its own, so the script borrows the one inside Steam's **P
    bash tnplus.sh
    ```
 
-If that does not work, there is another way, all inside Steam:
+If that does not work, there is another way, all inside Steam (TN+'s window is taller than the Deck's screen: Enter is **Launch**):
 
 1. Download the TN+ zip from the [releases](https://github.com/skw-1337/terra-nova-plus/releases) and unzip it, for example in `/home/deck/TerraNovaPlus`.
 2. Open the file `TNPlus.ini` in that folder (create it if it is not there) and add this line, which tells TN+ where the game is:
@@ -269,7 +274,9 @@ If that does not work, there is another way, all inside Steam:
 | `Wine is not installed` | Run the command the script shows, then start it again. |
 | Nothing opens after step 4 | Wine Mono is missing. Delete the folder `~/.local/share/terra-nova-plus/wine`, run the script again and click **Install** when Wine offers Mono. On Arch, `sudo pacman -S wine-mono`. |
 | `FontFamilyNotFound` | No font is installed. `sudo apt install fonts-liberation` (or any font package of your system). |
-| `is not the game's folder` | The folder must contain `TNOVA` and `_DOSBOX`. Give the folder above `TNOVA`, not `TNOVA` itself. |
+| `holds the LINUX edition of the Steam game`, or `GAME NOT FOUND` in TN+'s window | Steam installed the Linux version. Force Proton for the game in Steam ([what you need](#what-you-need)), let it download, start again. |
+| `... is missing in ...` | The folder is not a game TN+ can use: the line says which file is missing. It must contain `TNOVA` and `_DOSBOX` (with `dosbox-staging.exe` in it). |
+| TN+'s window is cut at the bottom | `bash tnplus.sh --terminal`, or press Enter in the window to launch. |
 | `this folder cannot be written to` | TN+ prepares the game in its folder and the game saves there. Install the game somewhere your user can write. |
 | `the download failed` | Download the zip yourself from the [releases](https://github.com/skw-1337/terra-nova-plus/releases) and unzip it next to `tnplus.sh`. |
 | Anything else | Open an [issue](https://github.com/skw-1337/terra-nova-plus/issues) with what the terminal shows. |
@@ -280,8 +287,8 @@ Delete the folder you ran the script in, and `~/.local/share/terra-nova-plus`. N
 
 ### What works, what is not known yet
 
-- **Tried** (Wine 9.0 on Ubuntu 24.04, on a machine without a graphics card or sound): the script from an empty folder, the TN+ window, the game starting, and TN+ applying everything (HD, true 16:9, the fixes, the keys).
-- **Not tried yet**: sound and music, the mouse freelook in a mission, a real graphics card, the Steam Deck.
+- **Tried** (Wine 9.0 on Ubuntu 24.04, on a machine without a graphics card or sound): the script from an empty folder, the TN+ window, the game starting, and TN+ applying everything (HD, true 16:9, the fixes, the keys). Game folders laid out as on a Steam Deck (internal disk, SD card, Flatpak Steam, a folder with spaces, lower-case names), a 1280x800 screen, and a copy of the game made to look like Steam's Linux version.
+- **Not tried yet**: a real Steam Deck, a real Linux install of the game from Steam, Proton's Wine, sound and music, the mouse freelook in a mission, a real graphics card.
 
 This is an experiment. Tell me what you get, good or bad: [issues](https://github.com/skw-1337/terra-nova-plus/issues).
 
