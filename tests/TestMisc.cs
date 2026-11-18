@@ -1159,5 +1159,20 @@ static partial class TNPlus
                 for (int k = 0; k < 3; k++) Eq((short)ends[k], g.GetShort(aTerrain + 0x30 + 2 * (uint)k), "ring distance " + k);
             }
         }
+        // ================================================================== the game's MSTAT scratch files
+        [Test] static void Misc_PruneMstat_OnlyTheGamesScratchFiles()
+        {
+            string dir = Path.Combine(ExeDir, "TNOVA");
+            Directory.CreateDirectory(dir);
+            string[] gone = { "MSTAT000.RES", "MSTAT507.RES", "mstat777.res" };
+            string[] kept = { "MSTAT778.RES", "MSTAT08.RES", "MSTATA00.RES", "MSTAT000.SAV", "XMSTAT000.RES", "SAVE00.SAV" };
+            foreach (string f in gone) File.WriteAllText(Path.Combine(dir, f), "x");
+            foreach (string f in kept) File.WriteAllText(Path.Combine(dir, f), "x");
+            bool running = Process.GetProcessesByName("dosbox-staging").Length > 0;
+            PruneMstat(dir);
+            foreach (string f in gone) Eq(running, File.Exists(Path.Combine(dir, f)), f + (running ? " kept: a game is running" : " removed"));
+            foreach (string f in kept) Ok(File.Exists(Path.Combine(dir, f)), f + " kept (not one of the game's octal names)");
+            PruneMstat(Path.Combine(ExeDir, "nosuch"));   // no folder: nothing thrown
+        }
     }
 }
