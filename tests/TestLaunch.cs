@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Text;
 
@@ -152,6 +153,90 @@ static partial class TNPlus
             No(IsOldGog(dir), "Beta branch with the old configs left behind");
             Ok(FindInstalls().Contains(dir), "offered as an install");
             Eq("", oldGogDir, "no message any more");
+        }
+
+        [Test] static void Launch_InstallProblem_FileAndFolder()
+        {
+            string dir = TestDir("game"), db = Path.Combine(dir, "_DOSBOX");
+            Eq("this folder does not exist: " + Path.Combine(ExeDir, "nowhere"), InstallProblem(Path.Combine(ExeDir, "nowhere"))[0], "no such folder");
+            Eq("the _DOSBOX folder is missing in " + dir, InstallProblem(dir)[0], "an empty folder");
+            Has(InstallProblem(dir)[1], "the one that holds TNOVA and _DOSBOX", "what game_dir must be");
+            PutFile(Path.Combine(db, "dosbox_terranova_windows.conf"), LaunchKit.EDITION);
+            Eq("dosbox-staging.exe is missing in " + db, InstallProblem(dir)[0], "no DOSBox");
+            File.Delete(Path.Combine(db, "dosbox_terranova_windows.conf"));
+            PutFile(Path.Combine(db, "dosbox-staging.exe"), new byte[0]);
+            Eq("dosbox_terranova_windows.conf is missing in " + db, InstallProblem(dir)[0], "no config");
+            Has(InstallProblem(dir)[1], "check the game's files", "what to do");
+            PutFile(Path.Combine(db, "dosbox_terranova_windows.conf"), LaunchKit.EDITION);
+            Ok(InstallProblem(dir) == null, "an install: nothing to say");
+            // a folder of the game given instead of the game's own
+            Eq("the _DOSBOX folder is missing in " + db, InstallProblem(db)[0], "_DOSBOX itself");
+            Has(InstallProblem(db)[1], "the folder above", "the folder above is the one");
+            Has(InstallProblem(db + "\\")[1], dir, "with a final separator too");
+        }
+
+        [Test] static void Launch_InstallProblem_SteamLinuxEdition()
+        {
+            // Steam's native Linux depot: TerraNova.sh, a Linux DOSBox and its config, none of the Windows files
+            string dir = TestDir("game"), db = Path.Combine(dir, "_DOSBOX");
+            PutFile(Path.Combine(db, "TerraNova.sh"), "#!/bin/sh\n");
+            PutFile(Path.Combine(db, "dosbox_terranova_linux.conf"), LaunchKit.EDITION);
+            PutFile(Path.Combine(dir, "TNOVA", "TN.CFG"), LaunchKit.TNCFG);
+            string[] why = InstallProblem(dir);
+            Eq("dosbox-staging.exe is missing in " + db, why[0], "the missing file and its folder");
+            Has(why[1], "Steam's Linux edition", "named");
+            Has(why[1], "force Proton", "what to do");
+            GameDir = dir;
+            bool r = true;
+            string said = LaunchKit.Said(() => r = Launch());
+            No(r, "not launched");
+            Has(said, "dosbox-staging.exe is missing in " + db, "--launch says the file");
+            Has(said, "force Proton", "and what to do");
+        }
+
+        [Test] static void Launch_InstallProblem_OldGog()
+        {
+            string dir = TestDir("game");
+            PutFile(Path.Combine(dir, "TN", "__FF.EXE"), new byte[0]);
+            PutFile(Path.Combine(dir, "dosboxTerraNova.conf"), "[dos]\r\nems=true\r\n");
+            string[] why = InstallProblem(dir);
+            Eq("the _DOSBOX folder is missing in " + dir, why[0], "the missing folder");
+            Eq(OLD_GOG, why[1], "the Beta branch advice");
+        }
+
+        [Test] static void Launch_GameDir_RefusedIsKeptInTheIni()
+        {
+            // a game_dir the tool cannot launch stays in the ini, whatever the automatic search finds on this machine
+            string dir = TestDir("game"), db = Path.Combine(dir, "_DOSBOX");
+            PutFile(Path.Combine(db, "TerraNova.sh"), "#!/bin/sh\n");
+            IniPut("game_dir = " + dir);
+            LoadSettings();
+            List<string> found = ResolveGameDir();
+            Eq(dir, GameDirSet, "remembered");
+            Eq(found.Count > 0 ? found[0] : "", GameDir, "the game in use: the first one found, or none");
+            Has(GameDirWhy[0], "dosbox-staging.exe is missing in " + db, "the reason");
+            SaveSettings();
+            Eq(dir, IniSavedValue("game_dir"), "game_dir still in the ini");
+            ResolveGameDir(); SaveSettings();
+            Eq(dir, IniSavedValue("game_dir"), "after a second pass (back from a game) too");
+            // the Windows files arrive (Proton forced): taken at the next pass
+            PutFile(Path.Combine(db, "dosbox-staging.exe"), new byte[0]);
+            PutFile(Path.Combine(db, "dosbox_terranova_windows.conf"), LaunchKit.EDITION);
+            ResolveGameDir();
+            Eq(dir, GameDir, "used"); Eq("", GameDirSet, "nothing refused any more"); Ok(GameDirWhy == null, "no reason");
+            SaveSettings();
+            Eq(dir, IniSavedValue("game_dir"), "game_dir unchanged");
+        }
+
+        [Test] static void Launch_GuiFit_SmallScreens()
+        {
+            Size want = new Size(840, 812);
+            Eq(want, GuiFit(want, new Size(1904, 1001), 17, 17), "1920x1080: as it is");
+            Eq(want, GuiFit(want, new Size(840, 812), 17, 17), "just fits");
+            Eq(new Size(857, 761), GuiFit(want, new Size(1264, 761), 17, 17), "1280x800: the room's height, a scroll bar's width more");
+            Eq(new Size(837, 494), GuiFit(want, new Size(837, 494), 17, 17), "1280x800 at 150 %: the room");
+            Eq(new Size(800, 829), GuiFit(want, new Size(800, 900), 17, 17), "narrow only: the bar under the page");
+            Eq(new Size(800, 820), GuiFit(want, new Size(800, 820), 17, 17), "narrow, no room for the bar under: both");
         }
 
         [Test] static void Launch_HasDemo_NeedsBatAndCfg()
@@ -986,7 +1071,9 @@ static partial class TNPlus
                 bool r = true;
                 string said = LaunchKit.Said(() => r = Launch());
                 No(r, "game_dir \"" + dir + "\": not launched");
-                Has(said, "Game folder not found. Set game_dir in TNPlus.ini, or start the game yourself and choose A.", "message");
+                if (dir == "") Has(said, "Game folder not found. Set game_dir in TNPlus.ini, or start the game yourself and choose A.", "message");
+                else Has(said, "Game folder refused (game_dir in TNPlus.ini): " + (dir.EndsWith("nowhere") ? "this folder does not exist: " + dir
+                    : "the _DOSBOX folder is missing in " + dir) + ".", "the reason");
             }
             Eq(LaunchKit.TNCFG, File.ReadAllText(Path.Combine(tnova, "TN.CFG")), "TN.CFG untouched (music not applied)");
             No(File.Exists(LaunchKit.ConfPath), "no launch conf written");
