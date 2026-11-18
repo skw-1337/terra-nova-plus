@@ -950,8 +950,7 @@ static partial class TNPlus
 
     static bool Menu()
     {
-        List<string> installs = FindInstalls();
-        if (GameDir == "" || !IsInstall(GameDir)) GameDir = installs.Count > 0 ? installs[0] : "";
+        List<string> installs = ResolveGameDir();
         try { Console.OutputEncoding = Encoding.UTF8; } catch { }
         while (true)
         {
@@ -978,7 +977,13 @@ static partial class TNPlus
             Rule('═');
             // game line
             C("  GAME  ", ConsoleColor.DarkGray);
-            if (GameDir == "") C(oldGogDir != "" ? OLD_GOG + "\n" : "not found: start the game yourself and press A\n", ConsoleColor.Yellow);
+            if (GameDir == "" && GameDirSet != "")
+            {
+                C("game_dir refused: " + GameDirWhy[0] + "\n", ConsoleColor.Yellow);
+                C("        " + GameDirWhy[1] + "\n", ConsoleColor.Yellow);
+                C("        game_dir is kept in TNPlus.ini; or start the game yourself and press A\n", ConsoleColor.DarkGray);
+            }
+            else if (GameDir == "") C(oldGogDir != "" ? OLD_GOG + "\n" : "not found: start the game yourself and press A\n", ConsoleColor.Yellow);
             else
             {
                 string kind = InstallKind(GameDir), lang = ExeLanguage(GameDir);
@@ -988,6 +993,11 @@ static partial class TNPlus
                 C("  " + Shorten(GameDir, 50), ConsoleColor.Gray);
                 if (installs.Count > 1) { C("   G ", ConsoleColor.Cyan); C("switch (" + installs.Count + ")", ConsoleColor.DarkGray); }
                 Console.WriteLine();
+                if (GameDirSet != "")               // the game above was found by itself, the ini's folder is not used
+                {
+                    C("        game_dir in TNPlus.ini refused: " + GameDirWhy[0] + "\n", ConsoleColor.Yellow);
+                    C("        " + GameDirWhy[1] + "\n", ConsoleColor.Yellow);
+                }
             }
             Rule('─');
             // two columns: the settings on the left (one line each, the chosen value only), what will be
@@ -1083,7 +1093,7 @@ static partial class TNPlus
                 case '0': OptPhysFix = !OptPhysFix; break;
                 case 'S': OptThickSmoke = !OptThickSmoke; break;
                 case 'G':
-                    if (installs.Count > 0) GameDir = installs[(installs.IndexOf(GameDir) + 1) % installs.Count];
+                    if (installs.Count > 0) { GameDir = installs[(installs.IndexOf(GameDir) + 1) % installs.Count]; if (installs.Count > 1) GameDirSet = ""; }
                     break;
                 case 'A': ApplyDisplay(); SaveSettings(); Console.Clear(); return true;
                 case 'Q': SaveSettings(); return false;
@@ -1303,6 +1313,43 @@ static partial class TNPlus
             || File.Exists(Path.Combine(dir, "dosboxTerraNova.conf")));
     }
 
+    // Why a folder is not a game the tool can launch, null when it is one: [0] the file that is missing and the folder
+    // it should be in, [1] what to do. Two cases are known by name: Steam's native Linux edition (its _DOSBOX holds
+    // TerraNova.sh and a Linux DOSBox, none of the Windows files the tool starts) and GOG's default build.
+    const string LINUX_STEAM = "Steam's Linux edition (TerraNova.sh): in Steam, Properties > Compatibility, force Proton to get the game's Windows files";
+    static string[] InstallProblem(string dir)
+    {
+        if (IsInstall(dir)) return null;
+        if (!Directory.Exists(dir)) return new[] { "this folder does not exist: " + dir, "game_dir must be the game's folder, the one that holds TNOVA and _DOSBOX" };
+        string db = Path.Combine(dir, "_DOSBOX");
+        bool exe = File.Exists(Path.Combine(db, "dosbox-staging.exe"));
+        string what = !Directory.Exists(db) ? "the _DOSBOX folder is missing in " + dir
+            : (exe ? "dosbox_terranova_windows.conf" : "dosbox-staging.exe") + " is missing in " + db;
+        if (!exe && File.Exists(Path.Combine(db, "TerraNova.sh"))) return new[] { what, LINUX_STEAM };
+        if (IsOldGog(dir)) return new[] { what, OLD_GOG };
+        string up = "";
+        try { up = Path.GetDirectoryName(dir.TrimEnd('\\', '/')) ?? ""; } catch { }
+        if (IsInstall(up)) return new[] { what, "game_dir must be the folder above, the one that holds TNOVA and _DOSBOX: " + up };
+        return new[] { what, Directory.Exists(db) ? "the Windows edition has this file: check the game's files in Steam or GOG Galaxy"
+            : "game_dir must be the game's folder, the one that holds TNOVA and _DOSBOX (Steam, or GOG's Beta branch)" };
+    }
+
+    // The game folder to use: game_dir of the ini when it is a game, else the first one found (GOG, Steam). A game_dir
+    // that is refused is never forgotten: it stays in the ini (SaveSettings) with the reason shown, and is taken
+    // again as soon as it is a game (files added, Proton forced...).
+    static string GameDirSet = "";                  // the ini's game_dir while it is refused
+    static string[] GameDirWhy = null;              // InstallProblem of it
+    static List<string> ResolveGameDir()
+    {
+        if (GameDirSet != "" && IsInstall(GameDirSet)) { GameDir = GameDirSet; GameDirSet = ""; }
+        if (GameDir != "" && !IsInstall(GameDir)) GameDirSet = GameDir;
+        List<string> installs = FindInstalls();
+        if (GameDirSet != "" && IsOldGog(GameDirSet)) oldGogDir = GameDirSet;
+        if (GameDir == "" || !IsInstall(GameDir)) GameDir = installs.Count > 0 ? installs[0] : "";
+        GameDirWhy = GameDirSet != "" ? InstallProblem(GameDirSet) : null;
+        return installs;
+    }
+
     static List<string> FindInstalls()
     {
         List<string> res = new List<string>();
@@ -1406,7 +1453,9 @@ static partial class TNPlus
     {
         if (!IsInstall(GameDir))
         {
-            Console.WriteLine(oldGogDir != "" ? OLD_GOG + "." : "Game folder not found. Set game_dir in TNPlus.ini, or start the game yourself and choose A.");
+            string[] why = GameDir != "" ? InstallProblem(GameDir) : GameDirSet != "" ? GameDirWhy : null;
+            if (why != null) Console.WriteLine("Game folder refused (game_dir in TNPlus.ini): " + why[0] + ".\r\n" + why[1] + ".");
+            else Console.WriteLine(oldGogDir != "" ? OLD_GOG + "." : "Game folder not found. Set game_dir in TNPlus.ini, or start the game yourself and choose A.");
             return false;
         }
         if (Process.GetProcessesByName("dosbox-staging").Length > 0)
@@ -3185,7 +3234,7 @@ static partial class TNPlus
                 "; mouse binds (middle button, side buttons, wheel), a second bind: MID, M4, M5, WHEELUP, WHEELDOWN\r\n" +
                 MouseIni() +
                 "; 0 = no beeps\r\nsound = " + (Sound ? 1 : 0) + "\r\n" +
-                "; game folder (empty = auto-detect GOG / Steam)\r\ngame_dir = " + GameDir + "\r\n");
+                "; game folder (empty = auto-detect GOG / Steam)\r\ngame_dir = " + (GameDirSet != "" ? GameDirSet : GameDir) + "\r\n");
         }
         catch { }
     }

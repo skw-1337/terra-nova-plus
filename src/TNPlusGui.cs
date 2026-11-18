@@ -23,6 +23,9 @@ static partial class TNPlus
     static Font TFont, TSmall, TBold, TTitle, TTitle2, TMono, TKey;
 
     static Label guiHelp, guiWarn, guiPreset, guiKeys, lastBadge;
+    static Panel guiBody;                           // the page above the readout and the buttons: it scrolls when the screen is too small for the window
+    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] static extern int SetWindowTheme(IntPtr h, string app, string ids);
+    static Rectangle guiTestArea;                   // tests: this working area instead of the screen's
     static readonly List<KeyValuePair<Label, int>> keyBadges = new List<KeyValuePair<Label, int>>();
     static int rebindKey = -1;                      // KEY_WHAT index waiting for its new key, -1 none
     static GameKey rebindGame = null;               // game command waiting for its new key
@@ -59,6 +62,12 @@ static partial class TNPlus
         public bool PreFilterMessage(ref Message m)
         {
             if (mouseGame != null || mouseTool >= 0) return MouseCatch(ref m);
+            if (m.Msg == 0x20A && guiBody != null && guiBody.AutoScroll && Form.ActiveForm == guiBody.FindForm())
+            {   // WM_MOUSEWHEEL: the page scrolls wherever the focus is (it is on the buttons under it at first)
+                Point at = guiBody.AutoScrollPosition;
+                guiBody.AutoScrollPosition = new Point(-at.X, -at.Y - (short)((m.WParam.ToInt64() >> 16) & 0xFFFF) / 2);
+                return true;
+            }
             if ((rebindKey < 0 && rebindGame == null) || (m.Msg != 0x100 && m.Msg != 0x104)) return false;   // WM_(SYS)KEYDOWN
             long lp = m.LParam.ToInt64();
             int vk = (int)m.WParam.ToInt64(), scan = (int)((lp >> 16) & 0xFF);
@@ -296,8 +305,18 @@ static partial class TNPlus
     static bool guiBusy;                            // refreshing the controls: ignore their events
     static Action guiRedrawGame;
 
+    // The window is laid out in pixels for 96 dpi, which is what Windows gives a program that does not scale itself.
+    // Where the program is given the screen's real dpi (Wine at 150 %), fonts grew 1.5 x in a layout that did not and
+    // the texts ran into each other: their size is brought back to the layout's.
+    static float fontScale = 0;
     static Font Pick(string[] names, float size, FontStyle style)
     {
+        if (fontScale == 0)
+        {
+            fontScale = 1;
+            try { using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) if (g.DpiY > 96) fontScale = 96f / g.DpiY; } catch { }
+        }
+        size *= fontScale;
         foreach (string n in names)
         {
             Font f = new Font(n, size, style);
@@ -308,8 +327,7 @@ static partial class TNPlus
 
     static bool GuiMenu()
     {
-        List<string> installs = FindInstalls();
-        if (GameDir == "" || !IsInstall(GameDir)) GameDir = installs.Count > 0 ? installs[0] : "";
+        List<string> installs = ResolveGameDir();
         Application.EnableVisualStyles();
         TFont = Pick(new[] { "Bahnschrift", "Segoe UI" }, 10.5f, FontStyle.Regular);
         TSmall = Pick(new[] { "Bahnschrift Light", "Bahnschrift", "Segoe UI" }, 9f, FontStyle.Regular);
@@ -328,13 +346,21 @@ static partial class TNPlus
         f.FormBorderStyle = FormBorderStyle.FixedSingle; f.MaximizeBox = false;
         f.ClientSize = new Size(GUI_W, 596); f.StartPosition = FormStartPosition.CenterScreen;
         try { f.Icon = Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location); } catch { }
-        f.Paint += delegate(object s, PaintEventArgs e) { PaintHeader(e.Graphics, f.ClientSize.Width); };
+        // two panels: the page, and under it the readout strip and the row of buttons, which stay in place when the
+        // page has to scroll
+        Panel body = new Panel(), bar = new Panel();
+        body.BackColor = bar.BackColor = TBack; f.Controls.Add(body); f.Controls.Add(bar); guiBody = body;
+        body.Paint += delegate(object s, PaintEventArgs e)
+        {
+            e.Graphics.TranslateTransform(body.AutoScrollPosition.X, body.AutoScrollPosition.Y);
+            PaintHeader(e.Graphics, GUI_W);
+        };
 
         // update badge, top right of the title band: filled in by a background check (update_check = 0: none)
         Label upd = new Label(); upd.AutoSize = true; upd.Font = TKey; upd.BackColor = TPanel; upd.ForeColor = TDim;
         upd.Text = OptUpdateCheck ? "CHECKING FOR UPDATES..." : "";
         upd.Location = new Point(GUI_W - 20 - upd.PreferredWidth, 8);
-        f.Controls.Add(upd);
+        body.Controls.Add(upd);
         if (OptUpdateCheck)
         {
             System.Threading.Thread t = new System.Threading.Thread(delegate()
@@ -361,10 +387,21 @@ static partial class TNPlus
         }
 
         // header: game line under the title band
-        Panel gameRow = new Panel(); gameRow.Location = new Point(20, 86); gameRow.Size = new Size(GUI_W - 40, 28); gameRow.BackColor = TBack; f.Controls.Add(gameRow);
+        Panel gameRow = new Panel(); gameRow.Location = new Point(20, 86); gameRow.Size = new Size(GUI_W - 40, 36); gameRow.BackColor = TBack; body.Controls.Add(gameRow);
         Action drawGame = delegate
         {
             gameRow.Controls.Clear();
+            if (GameDir == "" && GameDirSet != "")
+            {   // game_dir of the ini is not a game the tool can launch: the file that is missing and its folder, then what to do
+                string full = "game_dir refused: " + GameDirWhy[0] + ". " + GameDirWhy[1] + ". It is kept in TNPlus.ini.";
+                foreach (Label l in new[] { Lbl(gameRow, "GAME_DIR REFUSED: " + Middle(GameDirWhy[0], 112), 0, 0, TSmall, TAmber),
+                                            Lbl(gameRow, Middle(GameDirWhy[1], 130), 0, 17, TSmall, TText) })
+                {
+                    l.AutoSize = false; l.Size = new Size(gameRow.Width, 17); l.AutoEllipsis = true;
+                    l.MouseEnter += delegate { guiHelp.Text = "> " + full; };
+                }
+                return;
+            }
             if (GameDir == "")
             {
                 Lbl(gameRow, oldGogDir != "" ? OLD_GOG : "GAME NOT FOUND: start the game yourself and ATTACH, or set game_dir in TNPlus.ini",
@@ -379,16 +416,16 @@ static partial class TNPlus
             if (installs.Count > 1)
             {
                 Button sw = Btn(gameRow, "SWITCH", GUI_W - 130, 0, 90, 26, false);
-                sw.Click += delegate { GameDir = installs[(installs.IndexOf(GameDir) + 1) % installs.Count]; hdCheckedDir = null; GuiRefresh(); };
+                sw.Click += delegate { GameDir = installs[(installs.IndexOf(GameDir) + 1) % installs.Count]; GameDirSet = ""; hdCheckedDir = null; GuiRefresh(); };
             }
         };
 
         // panels: picture / sound / controls on the left, fixes / cheats / launch on the right
-        tabSet = Tab(f, "SETTINGS", 20, 124); tabKeys = Tab(f, "KEYBOARD", tabSet.Right + 6, 124);
+        tabSet = Tab(body, "SETTINGS", 20, 124); tabKeys = Tab(body, "KEYBOARD", tabSet.Right + 6, 124);
         tabSet.Cursor = Cursors.Hand; tabKeys.Cursor = Cursors.Hand;
         tabSet.Click += delegate { ShowPage(false); }; tabKeys.Click += delegate { ShowPage(true); };
         int y0 = 156, lx = 20, pw = (GUI_W - 60) / 2, rx = lx + pw + 20;
-        Panel pPic = Pane(f, "PICTURE", lx, y0, pw, PaneH(7));
+        Panel pPic = Pane(body, "PICTURE", lx, y0, pw, PaneH(7));
         cbDisplay = Combo(pPic, "Display", 0, GUI_DISPLAY, "BETA", "");
         cbWide = Combo(pPic, "Widescreen 16:9", 1, WIDE_NAMES, null, "STRETCHED: DOSBox stretches the picture to 16:9, the camera is corrected. TRUE (HD): the 3D drawn in real 16:9 (848 columns, sharper), cockpit and HUD stretched to the full width, mouse captured on click. TRUE 720: the same in 1280x720 (1280 columns, 1.5 x the lines), needs a fast PC. Needs the game launched from here.");
         cbDetail = Combo(pPic, "Terrain detail", 2, DETAIL_NAMES, null, "Smoother ground: polygons instead of stair steps up to 32 (SHARP) or 48 cells (SHARPER, the game: 12), and more detail far away. SHARPER is dynamic in HD: it draws them less far (down to 24 cells) when the frame rate falls under 60 and goes back to 48 when it can.");
@@ -396,19 +433,19 @@ static partial class TNPlus
         cbFov = Combo(pPic, "Field of view", 5, FOV_NAMES, null, "Horizontal field of view of the 3D view in degrees, at every zoom level. GAME: 84.5, or 100.9 in 16:9. The small cockpit cameras keep theirs.");
         cbObj = Combo(pPic, "Object distance", 4, OBJDIST_NAMES, null, "How far bushes, trees, units and buildings are drawn. GAME: scenery 20 cells. FAR: 30, unit ranges x2. MAX: 40, x3. About 4 % fps at MAX.");
         cbScale = Combo(pPic, "Scaling", 6, SCALING_NAMES, null, "How DOSBox scales the picture to your screen. SHARP: every pixel the same size, edges still sharp (OpenGL, sharp shader): much less shimmer when the view moves. GAME'S OWN: the edition's setting (Direct3D, nearest pixels of uneven sizes). Needs the game launched from here.");
-        Panel pSnd = Pane(f, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));
+        Panel pSnd = Pane(body, "SOUND", lx, pPic.Bottom + 10, pw, PaneH(1));
         cbMusic = Combo(pSnd, "Music", 0, MUSIC_NAMES, "BETA", "");   // AWE32 always offered: found or not is shown below
-        Panel pCtl = Pane(f, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(2));
+        Panel pCtl = Pane(body, "CONTROLS", lx, pSnd.Bottom + 10, pw, PaneH(2));
         ckFree = Switch(pCtl, "Mouse freelook", 0, KeyName(ScanFreelook), ""); KeyBadge(lastBadge, 0);
         ckRun = Switch(pCtl, "Run on Shift", 1, null, "Shift + a move key is the game's Bound: a leap every four strides, its only fast pace. ON: a run at about the same pace, without the leap. OFF: the game's own.");
-        Panel pFix = Pane(f, "FIXES", rx, y0, pw, PaneH(4));
+        Panel pFix = Pane(body, "FIXES", rx, y0, pw, PaneH(4));
         ckStereo = Switch(pFix, "Reversed stereo", 0, KeyName(ScanStereo), ""); KeyBadge(lastBadge, 3);
         ckHit = Switch(pFix, "Projectile hits", 1, null, "Above ~30 fps the game cannot hit moving targets (multipulsar, drones): fixed at any speed, for you and the enemies.");
         ckPhys = Switch(pFix, "Physics speed", 2, null, "The game walks faster the higher the frame rate (+65 % at 76 fps), jumps and falls too. Fixed: same speed at any frame rate.");
         ckSmoke = Switch(pFix, "Thicker smoke", 3, null, "Smoke grenades: a thicker cloud (256 particles, not 192) that lasts about twice as long before it thins out. The game's own cloud is half gone in ~4 s.");
-        Panel pCheat = Pane(f, "CHEATS", rx, pFix.Bottom + 10, pw, PaneH(1));
+        Panel pCheat = Pane(body, "CHEATS", rx, pFix.Bottom + 10, pw, PaneH(1));
         ckClip = Switch(pCheat, "Noclip", 0, KeyName(ScanNoclip), ""); KeyBadge(lastBadge, 1);
-        Panel pLaunch = Pane(f, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);
+        Panel pLaunch = Pane(body, "LAUNCH", rx, pCheat.Bottom + 10, pw, PaneH(3) + 24);
         cbTarget = Combo(pLaunch, "Run", 0, new[] { "FULL GAME", "DEMO 1", "DEMO 2" }, null, "The two 1996 demos shipped with GOG and Steam have missions the full game hasn't. No HD there yet.");
         cbPreset = Combo(pLaunch, "Preset", 1, new[] { "ORIGINAL", "CLASSIC+", "BEST", "CUSTOM" }, null, "Presets set picture and controls at once. Fixes, cheats and music are yours to choose.");
         cbSpeed = Combo(pLaunch, "CPU speed", 2, SPEED_NAMES, null,
@@ -419,27 +456,67 @@ static partial class TNPlus
         int yb = Math.Max(pCtl.Bottom, pLaunch.Bottom) + 14;
         setPage.Clear(); setPage.AddRange(new Control[] { pPic, pSnd, pCtl, pFix, pCheat, pLaunch });
         kbPage = new Panel(); kbPage.Location = new Point(20, y0); kbPage.Size = new Size(GUI_W - 40, yb - 10 - y0); kbPage.BackColor = TBack;
-        kbPage.Visible = false; f.Controls.Add(kbPage);
-        Panel strip = new Panel(); strip.Location = new Point(20, yb); strip.Size = new Size(GUI_W - 40, 56); strip.BackColor = TField; f.Controls.Add(strip);
+        kbPage.Visible = false; body.Controls.Add(kbPage);
+        Panel strip = new Panel(); strip.Location = new Point(20, 0); strip.Size = new Size(GUI_W - 40, 56); strip.BackColor = TField; bar.Controls.Add(strip);
         strip.Paint += delegate(object s, PaintEventArgs e) { Bevel(e.Graphics, strip.Size, true); };
         guiHelp = Lbl(strip, "> point at a setting to read what it does", 12, 8, TMono, TLed); guiHelp.AutoSize = false; guiHelp.Size = new Size(GUI_W - 64, 30);
         guiWarn = Lbl(strip, "", 12, 36, TMono, TAmber); guiWarn.AutoSize = false; guiWarn.Size = new Size(GUI_W - 64, 16);
-        guiKeys = Lbl(f, "", 20, yb + 64, TSmall, TDim);
+        guiKeys = Lbl(bar, "", 20, 64, TSmall, TDim);
+        guiWarn.MouseEnter += delegate
+        {
+            if (GameDirSet != "" && GameDir != "") guiHelp.Text = "> game_dir refused: " + GameDirWhy[0] + ". " + GameDirWhy[1] + ". It is kept in TNPlus.ini.";
+        };
 
         // buttons, orange like the loadout screen's
-        Button bLaunch = Btn(f, "LAUNCH", 20, yb + 88, 170, 32, true);
-        Button bAttach = Btn(f, "ATTACH TO A RUNNING GAME", 202, yb + 88, 250, 32, false);
-        Button bSaves = Btn(f, "SAVES", 464, yb + 88, 110, 32, false);
+        Button bLaunch = Btn(bar, "LAUNCH", 20, 88, 170, 32, true);
+        Button bAttach = Btn(bar, "ATTACH TO A RUNNING GAME", 202, 88, 250, 32, false);
+        Button bSaves = Btn(bar, "SAVES", 464, 88, 110, 32, false);
         bSaves.MouseEnter += delegate { guiHelp.Text = "> The game's 9 save slots: delete one to free it (a copy is kept in the save backups folder next to TNPlus.exe)."; };
         bSaves.Click += delegate { SavesDialog(f); };
-        Button bQuit = Btn(f, "QUIT", GUI_W - 110, yb + 88, 90, 32, false);
-        f.ClientSize = new Size(GUI_W, yb + 88 + 32 + 20);
+        Button bQuit = Btn(bar, "QUIT", GUI_W - 110, 88, 90, 32, false);
+        // The window is 812 pixels high: on a screen whose working area is lower (1280x800, or 1920x1080 at 150 %) its
+        // bottom row was out of reach. There it takes the room there is, the page scrolls, the readout and the buttons stay.
+        Size page = new Size(GUI_W, yb);
+        const int BAR_H = 88 + 32 + 20;
+        f.ClientSize = new Size(page.Width, page.Height + BAR_H);
+        Rectangle area = guiTestArea.IsEmpty ? Screen.FromPoint(Cursor.Position).WorkingArea : guiTestArea;
+        Size frame = f.Size - f.ClientSize;
+        Size fit = GuiFit(f.ClientSize, area.Size - frame, SystemInformation.VerticalScrollBarWidth, SystemInformation.HorizontalScrollBarHeight);
+        if (fit != f.ClientSize)
+        {
+            f.ClientSize = fit;
+            body.AutoScroll = true; body.AutoScrollMinSize = page;
+            f.HandleCreated += delegate { try { SetWindowTheme(body.Handle, "DarkMode_Explorer", null); } catch { } };   // dark scroll bars where Windows has them
+            f.StartPosition = FormStartPosition.Manual;
+            f.Location = new Point(area.X + Math.Max(0, (area.Width - f.Width) / 2), area.Y + Math.Max(0, (area.Height - f.Height) / 2));
+            bQuit.Left = Math.Max(bSaves.Right + 12, Math.Min(GUI_W, fit.Width) - 110);
+        }
+        Action place = delegate
+        {
+            body.Bounds = new Rectangle(0, 0, f.ClientSize.Width, f.ClientSize.Height - BAR_H);
+            bar.Bounds = new Rectangle(0, body.Bottom, f.ClientSize.Width, BAR_H);
+        };
+        place();
+        f.Shown += delegate
+        {   // a frame taller than it was announced (Wine: 9 pixels) still leaves the bottom under the screen: taken off
+            int over = f.RectangleToScreen(f.ClientRectangle).Bottom - area.Bottom;
+            if (over <= 0 || over > 200) return;
+            int w = f.ClientSize.Width + (body.AutoScroll ? 0 : Math.Min(SystemInformation.VerticalScrollBarWidth, Math.Max(0, area.Right - f.Bounds.Right)));
+            f.ClientSize = new Size(w, f.ClientSize.Height - over);
+            body.AutoScroll = true; body.AutoScrollMinSize = page;
+            place();
+        };
         bLaunch.Click += delegate
         {
             ApplyDisplay(); SaveSettings();
             ShowWindow(console, 5);
             if (Launch()) { result = true; f.Close(); }
-            else { ShowWindow(console, 0); guiWarn.Text = "COULD NOT LAUNCH: " + (IsInstall(GameDir) ? "see README (demos)" : "game folder not found"); }
+            else
+            {
+                ShowWindow(console, 0);
+                guiWarn.Text = "COULD NOT LAUNCH: " + (IsInstall(GameDir) ? "see README (demos)"
+                    : GameDir == "" && GameDirSet != "" ? Middle(GameDirWhy[0], 88).ToUpperInvariant() : "game folder not found");
+            }
         };
         bAttach.Click += delegate { ApplyDisplay(); SaveSettings(); ShowWindow(console, 5); result = true; f.Close(); };
         bQuit.Click += delegate { if (KeysOnly) SaveSettings(); f.Close(); };
@@ -482,8 +559,30 @@ static partial class TNPlus
         Application.RemoveMessageFilter(catcher);
         rebindKey = -1; rebindGame = null; mouseGame = null; mouseTool = -1;
         keyBadges.Clear(); gameBadges.Clear(); mouseBadges.Clear(); mouseToolBadges.Clear();
-        guiRedrawGame = null;
+        guiRedrawGame = null; guiBody = null;
         return result;
+    }
+
+    // The window's client size on a screen that leaves `room` for it: its own size when it fits, else no more than the
+    // room. A page that scrolls down gets the width of its scroll bar when there is room for it, so that it only
+    // scrolls one way; if the room is narrower than the page too, it scrolls both ways.
+    static Size GuiFit(Size want, Size room, int barW, int barH)
+    {
+        if (want.Width <= room.Width && want.Height <= room.Height) return want;
+        bool down = want.Height > room.Height || (want.Width > room.Width && want.Height + barH > room.Height);
+        int w = Math.Min(want.Width + (down ? barW : 0), room.Width);
+        int h = Math.Min(want.Height + (w < want.Width + (down ? barW : 0) ? barH : 0), room.Height);
+        return new Size(Math.Max(w, 200), Math.Max(h, 200));
+    }
+
+    // a long line cut in its middle: its start (what) and its end (the last folders of a path) both stay. "X is
+    // missing in <folder>": the folder is what gets shortened.
+    static string Middle(string s, int n)
+    {
+        if (s.Length <= n) return s;
+        int at = Math.Max(s.LastIndexOf(" in ") + 4, s.LastIndexOf(": ") + 2);
+        if (at > 4 && at <= n - 16) return s.Substring(0, at) + Shorten(s.Substring(at), n - at);
+        return s.Substring(0, n / 2 - 2) + "..." + s.Substring(s.Length - (n - n / 2 - 1));
     }
 
     // Display with every resolution in one list: the three HD ones are display HD + a widescreen mode (TRUE / TRUE 720
@@ -551,6 +650,8 @@ static partial class TNPlus
         if (Display == 2 && !hdOk) warn = HdName() + " " + why + ": 320x400 is used.";
         if (LaunchTarget > 0 && !HasDemo(GameDir, LaunchTarget)) warn += (warn == "" ? "" : "  ") + "Demo " + LaunchTarget + " not found in the game folder, see README.";
         if (OptMusic == 3) warn += (warn == "" ? "" : "  ") + (aweRom ? "AWE32 ROM found: AWE32 music on." : "AWE32 ROM not found (awe32.raw next to TNPlus.exe): ROLAND is used.");
+        // the ini's game_dir refused while another game was found: said here (the game line shows the game in use)
+        if (GameDirSet != "" && GameDir != "") warn = "game_dir refused: " + Middle(GameDirWhy[0], 78) + (warn == "" ? "" : "  " + warn);
         guiWarn.Text = warn.ToUpperInvariant();
         guiBusy = false;
     }
